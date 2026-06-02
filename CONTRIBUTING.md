@@ -29,7 +29,7 @@
 
 1. Fork 本仓库
 2. 创建特性分支 (`git checkout -b feat/your-feature`)
-3. 确保现有测试通过：`python -m pytest backend/tests/ -v`
+3. 确保现有测试通过：`python -m pytest tests/ -v`
 4. 如果你的改动涉及新功能，请添加测试
 5. 提交时使用中文或英文，格式：`feat: xxx` / `fix: xxx` / `docs: xxx`
 6. Push 并创建 Pull Request
@@ -38,17 +38,17 @@
 
 ```bash
 # 1. 克隆
-git clone https://github.com/834063245-creator/-First-beat.CH-MemorySystem.git && cd chuchen
+git clone https://github.com/834063245-creator/-First-beat.CH-MemorySystem.git && cd -First-beat.CH-MemorySystem
 
 # 2. 安装依赖
 pip install -r requirements.txt
 
 # 3. 配置
 cp .env.example .env
-# 编辑 .env，填入 DEEPSEEK_API_KEY
+# 编辑 .env，填入 Ollama 配置（可选，默认即可运行）
 
 # 4. 运行测试
-python -m pytest backend/tests/ -v
+python -m pytest tests/ -v
 
 # 5. 启动开发服务器
 python run.py
