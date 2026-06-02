@@ -8,9 +8,9 @@ import sys
 import os
 import socket
 
-PASS = "✅"
-FAIL = "❌"
-WARN = "⚠️"
+PASS = "[OK]"
+FAIL = "[FAIL]"
+WARN = "[WARN]"
 exit_code = 0
 
 
@@ -126,8 +126,8 @@ else:
 print()
 print("=" * 55)
 if exit_code == 0:
-    print("  ✅ 环境检查全部通过！运行: python run.py")
+    print("  [OK] 环境检查全部通过！运行: python run.py")
 else:
-    print(f"  ❌ 发现 {exit_code} 处问题，请按上方提示修复")
+    print(f"  [FAIL] 发现 {exit_code} 处问题，请按上方提示修复")
 print("=" * 55)
 sys.exit(exit_code)
