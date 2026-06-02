@@ -1,0 +1,41 @@
+# 初痕记忆引擎 + Ollama 一键启动
+# 用法: docker compose up -d
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: chuchen-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+
+  chuchen:
+    build: .
+    container_name: chuchen-app
+    ports:
+      - "8082:8082"
+    environment:
+      - LOCAL_LLM_OLLAMA_URL=${LOCAL_LLM_OLLAMA_URL:-http://ollama:11434}
+      - OLLAMA_EMBED_MODEL=${OLLAMA_EMBED_MODEL:-bge-m3}
+      - OLLAMA_NUM_THREADS=${OLLAMA_NUM_THREADS:-4}
+    volumes:
+      - chuchen_data:/app/data
+    depends_on:
+      ollama:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8082/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  ollama_models:
+  chuchen_data:

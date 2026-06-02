@@ -1,0 +1,27 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+.pytest_cache
+
+# 运行时数据（挂载到卷，不进镜像）
+data/
+instances/
+
+# 日志
+*.log
+
+# 环境配置（含密钥，不进镜像）
+.env
+
+# IDE
+.vscode
+.idea
+.codegraph
+.claude
+
+# 前端（MCP 模式下不需要维护）
+static/

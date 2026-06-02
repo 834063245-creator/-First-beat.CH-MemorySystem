@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+dist/
+
+# Environment
+.env
+backend/.env
+
+# Runtime data
+data/
+*.sqlite3
+*.bin
+*.pickle
+*.jsonl
+*.log
+
+# Backend data directories
+backend/data/
+backend/data_test/
+backend/instances/
+backend/audit/
+backend/scripts/
+backend/longmemeval_data/
+backend/longmemeval_results/
+backend/static/
+backend/*.html
+backend/perf*.txt
+backend/chat_test_result.txt
+backend/_audit_report.md
+backend/_compare_reports.py
+backend/prompt.txt
+backend/prompt_test.txt
+
+# OS
+Thumbs.db
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.codebuddy/
+.codegraph/
+.claude/
