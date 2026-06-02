@@ -232,7 +232,7 @@ python scripts/compare_reports.py audit/report_before.json audit/report_after.js
 
 ## 许可
 
-MIT License — 详见 [LICENSE](LICENSE)。
+当前版本采用 [MIT License](LICENSE)。后续版本及衍生作品可能采用不同许可，作者保留权利。
 
 ---
 

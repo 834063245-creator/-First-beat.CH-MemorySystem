@@ -219,7 +219,7 @@ Issues and PRs are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT License — see [LICENSE](LICENSE).
+This version is released under the [MIT License](LICENSE). Future versions and derivative works may adopt different licensing terms at the author's discretion.
 
 ---
 
