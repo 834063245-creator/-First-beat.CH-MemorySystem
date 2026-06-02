@@ -6,6 +6,8 @@
 [![MCP](https://img.shields.io/badge/MCP-10%20tools-orange.svg)]()
 [中文文档](README.md)
 
+👉 [Setup Guide](SETUP.md) | 🔧 [Environment Check](verify_env.py) | ⚡ [Lightweight Install](requirements-lite.txt)
+
 **Doesn't generate text. Only does memory.** First Beat is a standalone cognitive engine that serves memory capabilities to any AI Agent through the MCP protocol. The engine handles retrieval, consolidation, personality modeling, and cognitive decisions — the Agent's LLM acts purely as its language cortex.
 
 > Others bolt memory plugins onto LLMs. First Beat treats the LLM as its mouth.
@@ -64,7 +66,8 @@ curl http://localhost:8082/health
 python verify_env.py
 ```
 
-> Troubleshooting? See [SETUP.md](SETUP.md) for detailed diagnostics.
+> Troubleshooting? See [SETUP.md](SETUP.md) for detailed diagnostics.  
+> Lightweight install without PyTorch? Use `pip install -r requirements-lite.txt`.
 
 ---
 

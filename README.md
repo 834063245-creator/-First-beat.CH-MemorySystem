@@ -6,6 +6,8 @@
 [![MCP](https://img.shields.io/badge/MCP-10%20tools-orange.svg)]()
 [English](README_EN.md)
 
+👉 [快速安装？看这里](SETUP.md) | 🔧 [一键环境诊断](verify_env.py)
+
 **不做文本生成。只做记忆。** 初痕是一个独立的认知引擎，通过 MCP 协议对任何 AI Agent 提供记忆服务。引擎负责检索、巩固、人格建模和认知决策，Agent 的 LLM 只管说话。
 
 > 别人给 LLM 加记忆插件；初痕把 LLM 当作自己的语言皮层。
