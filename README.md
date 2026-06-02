@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-85%20passed-green.svg)]()
+[![Tests](https://img.shields.io/badge/tests-214%20passed-green.svg)]()
 [![MCP](https://img.shields.io/badge/MCP-10%20tools-orange.svg)]()
 [English](README_EN.md)
 

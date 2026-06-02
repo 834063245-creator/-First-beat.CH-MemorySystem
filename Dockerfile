@@ -10,7 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Python 依赖
-COPY requirements.txt .
+# 用 lite 版加速构建（完整版含 torch/transformers，正常引擎运行不需要）
+COPY requirements-lite.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 项目代码（.dockerignore 已排除 data/log/static）
