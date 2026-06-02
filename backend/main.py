@@ -2267,6 +2267,12 @@ async def openai_chat_completions(raw: dict, ctx: AppContext = Depends(get_user_
     )
 
 
+# ── 兼容导出（已迁至 app/，保留此引用供旧导入使用） ──
+from app.core.feedback import log_error_report as _log_error_report, clear_memory_errors as _clear_memory_errors  # noqa: E402, F401
+from app.core.helpers import timed as _timed, build_trace as _build_trace, build_debug_info as _build_debug_info, load_recent_reversals as _load_recent_reversals  # noqa: E402, F401
+from app.core.tools import SEARCH_WEB_TOOL, READ_FILE_TOOL, LIST_FILES_TOOL, GREP_FILES_TOOL, WRITE_FILE_TOOL, EDIT_FILE_TOOL, BASH_TOOL, GLOB_TOOL  # noqa: E402, F401
+
+
 # 静态文件挂载（如 static/ 目录不存在则跳过——开源版不包含前端）
 try:
     app.mount("/static", StaticFiles(directory="static"), name="static")

@@ -20,7 +20,7 @@ class UserContextManager:
             return self._contexts[user_id]
         with self._lock:
             if user_id not in self._contexts:
-                from main import AppContext
+                from app.core.context import AppContext
                 ctx = AppContext(data_dir=data_dir)
                 self._contexts[user_id] = ctx
                 logger.info("用户上下文已创建: %s data_dir=%s", user_id, data_dir)

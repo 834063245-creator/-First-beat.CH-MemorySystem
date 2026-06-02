@@ -137,6 +137,6 @@ def api_memory_feedback(body: dict, ctx: AppContext = Depends(get_user_context))
     memory_id = body.get("memory_id", "")
     reason = body.get("reason", "")
     if memory_id:
-        from backend.main import _log_error_report as log_err
+        from app.core.feedback import log_error_report as log_err
         log_err(memory_id, reason, "user", data_dir=ctx.data_dir)
     return {"ok": True}
