@@ -180,6 +180,25 @@ chuchen/
 
 ---
 
+## 审计套件
+
+8 类审计覆盖语义检索、关键词、时间检索、排序、纠正反馈、人格一致性、工作记忆、时间节律。**每次修改检索逻辑后跑一次，确保分数不倒退。**
+
+```bash
+python scripts/audit.py           # 跑全部 8 类
+python scripts/audit.py --quick   # 快速模式
+```
+
+对比两次审计的分数变化：
+
+```bash
+python scripts/compare_reports.py audit/report_before.json audit/report_after.json
+```
+
+审计报告保存在 `audit/` 目录（已加入 .gitignore）。
+
+---
+
 ## 设计哲学
 
 | # | 原则 | 含义 |
