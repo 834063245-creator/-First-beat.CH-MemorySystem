@@ -2,6 +2,10 @@
 
 编排顺序：意图分析 → 记忆检索 → 一致性校验 → 响应选控（门控）
 不重写现有模块，只编排"先走谁再走谁"。
+
+模型增强：analyze_user_message() 可通过 brain 参数使用小模型。
+用法：analyze_user_message(msg, brain=brain) → 模型优先+规则兜底
+     analyze_user_message(msg)              → 纯规则（原有行为）
 """
 
 import logging
@@ -11,6 +15,30 @@ from typing import Optional
 from app.core.state import UserMessageAnalysis, GatingDecision, UtteranceSpec
 
 logger = logging.getLogger(__name__)
+
+# ── 模型增强开关 ──────────────────────────────────────
+
+_CHUCHEN_BRAIN = None
+_CHUCHEN_BRAIN_LOADED = False
+
+def get_brain() -> Optional[object]:
+    """获取 ChuchenBrain 实例（惰性初始化，失败返回 None）。"""
+    global _CHUCHEN_BRAIN, _CHUCHEN_BRAIN_LOADED
+    if _CHUCHEN_BRAIN_LOADED:
+        return _CHUCHEN_BRAIN
+    _CHUCHEN_BRAIN_LOADED = True
+    try:
+        from app.brain.models import ChuchenBrain
+        _CHUCHEN_BRAIN = ChuchenBrain(model_name="qwen2.5:3b")
+        status = _CHUCHEN_BRAIN.load_all()
+        if any(status.values()):
+            logger.info("ChuchenBrain 已加载: %s", status)
+        else:
+            logger.info("ChuchenBrain 未连接Ollama，使用纯规则")
+        return _CHUCHEN_BRAIN
+    except Exception:
+        _CHUCHEN_BRAIN = None
+        return None
 
 
 # ── 回路①：用户消息分析 ────────────────────────────
@@ -169,23 +197,41 @@ def _compute_emotion_intensity(text: str) -> float:
 
 
 def analyze_user_message(user_message: str, chat_history=None,
-                         query_embedding: Optional[list] = None) -> UserMessageAnalysis:
+                         query_embedding: Optional[list] = None,
+                         brain: Optional[object] = None) -> UserMessageAnalysis:
     """分析用户消息的意图和情绪。
 
-    双路策略：
-      - 优先走 embedding 路径（query_embedding 提供时）
-      - keyword 路径始终运行作为兜底
-      - 取 confidence 高的结果
+    决策优先级：模型 > embedding > keyword
+      - brain 参数传入时：先走小模型（qwen2.5:3b），失败自动回退
+      - 无 brain 时：保持原有双路策略不变
     """
     if not user_message:
         return UserMessageAnalysis(intent="casual", emotion="neutral")
 
     text = user_message.strip()
 
+    # ── 小模型路径（新增） ────────────────────────────────
+    if brain is not None:
+        try:
+            model_intent = brain.classify_intent(text)
+            model_emotion = brain.analyze_emotion(text)
+            if (model_intent.source == "model"
+                    and model_intent.confidence >= 0.6):
+                urgency = _compute_urgency(text)
+                topics = _extract_topics(text)
+                emotion_intensity = model_emotion.intensity
+                return UserMessageAnalysis(
+                    intent=model_intent.intent, emotion=model_emotion.primary,
+                    urgency=urgency, topics=topics, raw_text=text,
+                    confidence=model_intent.confidence,
+                    emotion_intensity=emotion_intensity,
+                )
+        except Exception:
+            pass  # 模型失败 → 继续走原有逻辑
+
     # ── keyword 路径 ──────────────────────────────────────
     kw_intent = _keyword_intent(text)
     kw_emotion = _keyword_emotion(text)
-    # 否定检测
     if kw_emotion != "neutral":
         target_words = _EMOTION_WORDS.get(kw_emotion, [])
         if _detect_negation(text, target_words):
@@ -204,7 +250,6 @@ def analyze_user_message(user_message: str, chat_history=None,
     # ── embedding 路径 ────────────────────────────────────
     emb_intent = None
     emb_confidence = 0.0
-    emb_emotion = "neutral"
 
     if query_embedding is not None:
         try:
@@ -220,7 +265,6 @@ def analyze_user_message(user_message: str, chat_history=None,
                     if sim > best_sim:
                         best_sim = sim
                         best_intent = intent
-                # 阈值：需要 >= 0.5 才采纳 embedding 结果
                 if best_sim >= 0.5:
                     emb_intent = best_intent
                     emb_confidence = min(0.5 + (best_sim - 0.5) * 2, 0.95)
@@ -230,28 +274,23 @@ def analyze_user_message(user_message: str, chat_history=None,
     # ── 双路投票 ──────────────────────────────────────────
     if emb_intent is not None and emb_confidence > kw_confidence:
         final_intent = emb_intent
-        # embedding 不输出情绪，复用 keyword 情绪
         final_emotion = kw_emotion if kw_emotion != "neutral" else _keyword_emotion(text)
-        # 但否定检测仍然适用
         if final_emotion != "neutral":
             target_words = _EMOTION_WORDS.get(final_emotion, [])
             if _detect_negation(text, target_words):
                 final_emotion = "neutral"
-        # embedding 路径下额外检查否定（原型匹配可能已含情绪）
         if _has_explicit_negation(text) and final_emotion != "neutral":
             final_emotion = "neutral"
     else:
         final_intent = kw_intent
         final_emotion = kw_emotion
 
-    # ask_fact 过度捕获修正：如果问句包含情感词且已被 embedding 识别，不走 ask_fact
     if final_intent == "ask_fact" and "吗" in text:
         has_emotion = any(kw in text for words in _EMOTION_WORDS.values() for kw in words)
         if has_emotion and emb_intent is not None and emb_intent in ("emotional_sharing", "recall"):
             final_intent = emb_intent
             final_emotion = kw_emotion
 
-    # 最终置信度
     if emb_intent is not None and emb_confidence > kw_confidence:
         final_confidence = emb_confidence
     else:
@@ -482,9 +521,10 @@ class CircuitOrchestrator:
             _ticks.append((name, _t.perf_counter()))
         _log_step('prep')
 
-        # ① 用户消息分析（传入 query_embedding 启用 embedding 路径）
+        # ① 用户消息分析（传入 query_embedding 启用 embedding 路径，传入 brain 启用模型增强）
         prefrontal = analyze_user_message(user_message, self._chat_history,
-                                           query_embedding=query_embedding)
+                                           query_embedding=query_embedding,
+                                           brain=get_brain())
 
         _log_step('user_analysis')
         # 行为预测：预测用户下一步行为模式
