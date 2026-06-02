@@ -45,7 +45,7 @@
 ollama pull bge-m3
 
 # 2. 克隆 & 安装
-git clone https://github.com/834063245-creator/chuchen.git
+git clone https://github.com/834063245-creator/-First-beat.CH-MemorySystem.git
 cd chuchen
 pip install -r requirements.txt
 

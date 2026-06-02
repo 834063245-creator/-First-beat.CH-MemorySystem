@@ -38,7 +38,7 @@
 
 ```bash
 # 1. 克隆
-git clone https://github.com/834063245-creator/chuchen.git && cd chuchen
+git clone https://github.com/834063245-creator/-First-beat.CH-MemorySystem.git && cd chuchen
 
 # 2. 安装依赖
 pip install -r requirements.txt
