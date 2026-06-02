@@ -59,7 +59,12 @@ python run.py
 ```bash
 curl http://localhost:8082/health
 # → {"status":"ok"}
+
+# Or run the full environment diagnostic
+python verify_env.py
 ```
+
+> Troubleshooting? See [SETUP.md](SETUP.md) for detailed diagnostics.
 
 ---
 
@@ -116,7 +121,9 @@ curl http://localhost:8082/health
 
 ## Connect Your AI Agent
 
-Create `.claude/mcp.json` in your Agent's workspace (or equivalent config for other MCP clients):
+### Local Deployment
+
+Create `.claude/mcp.json` in your Agent's workspace:
 
 ```json
 {
@@ -128,7 +135,29 @@ Create `.claude/mcp.json` in your Agent's workspace (or equivalent config for ot
 }
 ```
 
-Any MCP-compatible Agent will immediately have access to all 10 tools above.
+### Remote Deployment
+
+```json
+{
+  "mcpServers": {
+    "chuchen": {
+      "url": "https://your-server.com:8082/mcp/jsonrpc"
+    }
+  }
+}
+```
+
+### Verify Connection
+
+Try calling `get_memory_stats` from your Agent. If it returns memory stats, the connection is working. Or test via curl:
+
+```bash
+curl -X POST http://localhost:8082/mcp/jsonrpc \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"get_memory_stats","arguments":{}},"id":"1"}'
+```
+
+Any MCP-compatible Agent (Claude Code, Cursor, etc.) gains immediate access to all 10 tools.
 
 ---
 

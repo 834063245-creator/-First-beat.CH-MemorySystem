@@ -59,7 +59,12 @@ python run.py
 ```bash
 curl http://localhost:8082/health
 # → {"status":"ok"}
+
+# 或一键诊断所有环境依赖
+python verify_env.py
 ```
+
+> 安装遇到问题？查阅 [SETUP.md](SETUP.md) 详细排查指南。
 
 ---
 
@@ -111,7 +116,9 @@ curl http://localhost:8082/health
 
 ## 接入 AI Agent
 
-在 Agent 的工作区创建 `.claude/mcp.json`（或其他 MCP 客户端的等价配置）：
+### 本地部署（推荐）
+
+在 Agent 工作区创建 `.claude/mcp.json`：
 
 ```json
 {
@@ -123,7 +130,29 @@ curl http://localhost:8082/health
 }
 ```
 
-任何支持 MCP 的 Agent 启动后即可直接调用上述 10 个工具。
+### 远程部署
+
+```json
+{
+  "mcpServers": {
+    "chuchen": {
+      "url": "https://your-server.com:8082/mcp/jsonrpc"
+    }
+  }
+}
+```
+
+### 连接验证
+
+启动 Agent 后尝试调用 `get_memory_stats`，如果能返回记忆统计信息说明连接成功。或直接 curl 测试：
+
+```bash
+curl -X POST http://localhost:8082/mcp/jsonrpc \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"get_memory_stats","arguments":{}},"id":"1"}'
+```
+
+任何支持 MCP 的 Agent（Claude Code、Cursor 等）配置后即可直接调用全部 10 个工具。
 
 ---
 
