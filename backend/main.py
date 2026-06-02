@@ -2206,12 +2206,14 @@ async def openai_chat_completions(raw: dict, ctx: AppContext = Depends(get_user_
                 continue
             break
 
+        # ── 线程安全保存（避免阻塞事件循环） ──
         try:
             now_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            ctx._enqueue_store_task(user_message, full_text, now_ts)
-            ctx.chat_history.append(user_message, full_text, now_ts)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(ctx.storage_executor, ctx.chat_history.append, user_message, full_text, now_ts)
+            await loop.run_in_executor(ctx.storage_executor, ctx._enqueue_store_task, user_message, full_text, now_ts)
             from working_memory import incremental_update as _iu
-            _iu([{"user_message": user_message, "llm_reply": full_text}], wm_path=f"{ctx.data_dir}/working_memory.json")
+            await loop.run_in_executor(ctx.storage_executor, _iu, [{"user_message": user_message, "llm_reply": full_text}], f"{ctx.data_dir}/working_memory.json")
         except Exception:
             pass
 
@@ -2252,12 +2254,14 @@ async def openai_chat_completions(raw: dict, ctx: AppContext = Depends(get_user_
         else:
             break
 
+    # ── 线程安全保存（避免阻塞事件循环） ──
     try:
         now_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        ctx._enqueue_store_task(user_message, final_text, now_ts)
-        ctx.chat_history.append(user_message, final_text, now_ts)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(ctx.storage_executor, ctx.chat_history.append, user_message, final_text, now_ts)
+        await loop.run_in_executor(ctx.storage_executor, ctx._enqueue_store_task, user_message, final_text, now_ts)
         from working_memory import incremental_update as _iu
-        _iu([{"user_message": user_message, "llm_reply": final_text}], wm_path=f"{ctx.data_dir}/working_memory.json")
+        await loop.run_in_executor(ctx.storage_executor, _iu, [{"user_message": user_message, "llm_reply": final_text}], f"{ctx.data_dir}/working_memory.json")
     except Exception as exc:
         logger.debug("工作记忆更新失败: %s", exc)
 
