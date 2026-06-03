@@ -4,6 +4,7 @@
 AppContext 类在此处完整定义，底层模块仍可从 backend/ 导入。
 """
 import asyncio
+import queue
 import json
 import logging
 import os
@@ -37,7 +38,7 @@ from app.config.settings import (                  # noqa: E402
     CONSOLIDATION_SHALLOW_INTERVAL, CONSOLIDATION_DEEP_INTERVAL,
     AI_CHROMA_DIR, AI_COLLECTION, AI_DISTILL_STATE_PATH,
     IS_LITE, LITE_DISABLE_BACKGROUND_TASKS, LITE_DISABLE_IMPULSE,
-    LITE_WORK_MEMORY_BUDGET, USER_DATA_DIRS, AUTH_TOKEN_PATH,
+    LITE_WORK_MEMORY_BUDGET, USER_DATA_DIRS,
     STOP_WORDS as _STOP_WORDS,
 )
 from memory import ChromaService                   # noqa: E402
