@@ -61,6 +61,8 @@ More directly: if First Beat's goal were to score high on LongMemEval, I could w
 
 **If you're interested in helping with benchmarks, you're very welcome.** The engine exposes a standard MCP interface — any evaluation tool can call it directly. Open an issue or PR and I'll help however I can. Thank you.
 
+> The repo also includes an audit suite (`scripts/audit.py`) I built for my own use — it covers 8 categories of regression tests (semantic retrieval, keyword search, temporal, ranking, etc.). It's not an industry-standard benchmark like LongMemEval, but it provides comprehensive functional verification of the entire system. Feel free to use it as a reference.
+
 ---
 
 ## How It Works
