@@ -418,6 +418,22 @@ class AppContext:
                 if timestamp and ' ' in timestamp:
                     try:
                         dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
+                        # 时间段标签（与 TemporalPatternIndex._current_bucket 保持一致）
+                        h = dt.hour
+                        if h < 6:
+                            period = "深夜"
+                        elif h < 9:
+                            period = "早晨"
+                        elif h < 12:
+                            period = "上午"
+                        elif h < 14:
+                            period = "中午"
+                        elif h < 17:
+                            period = "下午"
+                        elif h < 21:
+                            period = "傍晚"
+                        else:
+                            period = "晚上"
                         time_features = {
                             "date": dt.strftime("%Y-%m-%d"),
                             "year": dt.year,
@@ -426,6 +442,9 @@ class AppContext:
                             "week": dt.isocalendar()[1],
                             "day_of_week": dt.weekday(),
                             "quarter": (dt.month - 1) // 3 + 1,
+                            "season": (dt.month % 12 + 3) // 3,   # 1冬2春3夏4秋，与 TemporalPatternIndex 一致
+                            "year_month": dt.strftime("%Y-%m"),
+                            "time_period": period,
                         }
                     except (ValueError, OSError):
                         pass
