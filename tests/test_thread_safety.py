@@ -1,4 +1,7 @@
-"""ChatHistory 线程安全 + Impulse 锁修复测试。"""
+"""ChatHistory 线程安全 + Impulse 锁 + get_brain 竞态 + emb_cache。
+
+扩展：增加 get_brain() 竞态条件测试和 _emb_cache 并发写测试。
+"""
 import sys
 sys.path.insert(0, ".")
 import threading
@@ -20,15 +23,12 @@ class TestChatHistorySnapshot:
         assert len(snap) == 2
         assert snap[0]["user_message"] == "hello"
 
-        # 修改 snapshot 不影响原 records
         snap.clear()
         assert len(ch.records) == 2
 
     def test_concurrent_append_and_snapshot(self, tmp_path):
-        """并发追加和快照不崩溃。"""
         from chat_history import ChatHistory
         ch = ChatHistory(path=str(tmp_path / "chat.jsonl"), max_memory=200)
-
         errors = []
 
         def writer():
@@ -61,11 +61,9 @@ class TestImpulseLock:
     """冲动系统锁修复验证。"""
 
     def test_fatigue_lock_protects_dict(self, tmp_path):
-        """feed_impulse 和 get_next 并发访问 _source_fatigue 不崩溃。"""
         import os
         from impulse import ImpulseScheduler
 
-        # 使用临时路径防污染
         original = os.environ.get("DATA_DIR", "")
         os.environ["DATA_DIR"] = str(tmp_path)
 
@@ -99,3 +97,82 @@ class TestImpulseLock:
             assert not errors, f"并发锁错误: {errors}"
         finally:
             os.environ["DATA_DIR"] = original
+
+
+class TestGetBrainRace:
+    """get_brain() 竞态条件验证。"""
+
+    def test_get_brain_only_initialized_once(self, monkeypatch):
+        """10线程并发首次调用 get_brain()，ChuchenBrain.__init__ 只被调1次。"""
+        call_count = [0]
+        call_count_lock = threading.Lock()
+
+        class MockBrain:
+            def __init__(self, model_name="", ollama_url=""):
+                with call_count_lock:
+                    call_count[0] += 1
+                self.intent_classifier = None
+                self.emotion_analyzer = None
+                self.gate_maker = None
+
+            def load_all(self):
+                return {"intent": False, "emotion": False, "gate": False}
+
+        # MonkeyPatch ChuchenBrain at its definition site
+        import app.brain.models as models_mod
+        monkeypatch.setattr(models_mod, "ChuchenBrain", MockBrain)
+
+        # Reset global state
+        import app.core.circuit as circuit_mod
+        circuit_mod._CHUCHEN_BRAIN = None
+        circuit_mod._CHUCHEN_BRAIN_LOADED = False
+
+        from app.core.circuit import get_brain
+
+        threads = [threading.Thread(target=get_brain) for _ in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert call_count[0] == 1, f"ChuchenBrain 被初始化了 {call_count[0]} 次（应为 1 次）"
+
+
+class TestEmbCacheConcurrentWrite:
+    """ChromaService._emb_cache 并发写测试。"""
+
+    def test_concurrent_write_different_keys(self):
+        import threading
+
+        class MockChroma:
+            def __init__(self):
+                self._emb_cache: dict[str, list] = {}
+                self._emb_cache_lock = threading.Lock()
+
+        chroma = MockChroma()
+        errors = []
+
+        def writer_a():
+            try:
+                with chroma._emb_cache_lock:
+                    chroma._emb_cache["key_a"] = [0.1, 0.2]
+            except Exception as e:
+                errors.append(f"writer_a: {e}")
+
+        def writer_b():
+            try:
+                with chroma._emb_cache_lock:
+                    chroma._emb_cache["key_b"] = [0.3, 0.4]
+            except Exception as e:
+                errors.append(f"writer_b: {e}")
+
+        t1 = threading.Thread(target=writer_a)
+        t2 = threading.Thread(target=writer_b)
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert not errors, f"并发写错误: {errors}"
+        assert "key_a" in chroma._emb_cache
+        assert "key_b" in chroma._emb_cache
