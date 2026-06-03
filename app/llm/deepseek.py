@@ -1,4 +1,5 @@
 """LLM 调用层 — 硅基流动（Embedding + 小模型）+ DeepSeek + Jina AI."""
+import asyncio
 import json
 import logging
 import os
@@ -31,11 +32,10 @@ from app.config.settings import (
     DEEPSEEK_MODEL,
 )
 
-import os as _os
 
-_PROMPT_PATH = _os.path.join(
-    _os.path.dirname(__file__),
-    _os.getenv("PROMPT_FILE", "prompt.txt"),
+_PROMPT_PATH = os.path.join(
+    os.path.dirname(__file__),
+    os.getenv("PROMPT_FILE", "prompt.txt"),
 )
 
 
@@ -221,7 +221,7 @@ class DeepSeekLLM:
                 messages.append({"role": "system", "content": execute_text})
 
             # 【模式观察】注入（tool role，与记忆/冲动同模式）
-            pattern_text = self._build_pattern_observations()
+            pattern_text = await asyncio.to_thread(self._build_pattern_observations)
             if pattern_text:
                 messages.append({
                     "role": "assistant", "content": None,
@@ -362,7 +362,7 @@ class DeepSeekLLM:
                 messages.append({"role": "system", "content": execute_text})
 
             # 【模式观察】注入（tool role，与记忆/冲动同模式）
-            pattern_text = self._build_pattern_observations()
+            pattern_text = await asyncio.to_thread(self._build_pattern_observations)
             if pattern_text:
                 messages.append({
                     "role": "assistant", "content": None,

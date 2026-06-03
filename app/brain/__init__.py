@@ -13,7 +13,6 @@ from app.brain.models import (
     EmotionAnalyzer,
     GateDecisionMaker,
     ChuchenBrain,
-    ShadowResult,
 )
 
 __all__ = [
@@ -21,5 +20,4 @@ __all__ = [
     "EmotionAnalyzer",
     "GateDecisionMaker",
     "ChuchenBrain",
-    "ShadowResult",
 ]

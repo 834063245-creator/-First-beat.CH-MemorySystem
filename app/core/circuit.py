@@ -13,6 +13,10 @@ import threading
 from typing import Optional
 
 from app.core.state import UserMessageAnalysis, GatingDecision, UtteranceSpec
+from app.brain.keywords import (
+    INTENT_KEYWORDS, EMOTION_KEYWORDS,
+    INTENSIFIERS, EMOTION_REPEAT_PATTERN, WORK_KEYWORDS, NEGATION_WORDS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,46 +52,13 @@ def get_brain() -> Optional[object]:
 
 # ── 回路①：用户消息分析 ────────────────────────────
 
-_INTENT_MAP = {
-    "recall": ["记得", "之前", "上次", "以前", "曾经", "想起", "是不是说过",
-               "那时候", "那会儿", "还记得", "记不记得"],
-    "emotional_sharing": ["想", "觉得", "感觉", "心情", "难过", "开心", "烦",
-                          "累", "困", "疲惫", "焦虑", "担心", "感动", "温暖",
-                          "梦到", "失眠", "心疼", "好烦", "好累", "好开心",
-                          "好难过"],
-    "conflict": ["不对", "不是", "你错了", "别说了", "你搞错了", "乱说",
-                 "你没听懂", "不是这样"],
-    "ask_fact": ["什么", "怎么", "为什么", "如何", "能不能", "请问",
-                 "啥", "是不是"],
-    "request": ["帮我", "请你", "需要你", "帮我查", "帮我找", "帮我写",
-                "帮我改", "帮我看看", "能不能帮我"],
-    "meta": ["你是谁", "你能做什么", "你会什么", "你叫什么", "你有什么功能",
-             "你是吗"],
-}
-
-_EMOTION_WORDS = {
-    "intimate": ["想你", "爱", "心疼", "抱", "陪", "温暖", "梦到", "亲", "在乎",
-                 "想你", "爱你", "抱抱"],
-    "positive": ["开心", "高兴", "好", "棒", "喜欢", "感动", "幸福", "感谢",
-                 "太棒", "太好了", "不错", "厉害"],
-    "negative": ["难过", "烦", "累", "焦虑", "担心", "生气", "讨厌", "失望",
-                 "痛苦", "崩溃", "孤独", "压力", "郁闷", "烦躁"],
-    "frustrated": ["烦死了", "受不了", "无语", "气死", "崩溃", "不想说了",
-                   "够了", "算了吧"],
-}
-
-# 程度副词 — 用于计算情绪强度
-_INTENSIFIERS = {"很", "非常", "特别", "太", "超级", "极其", "好", "真", "真的", "实在"}
-_EMOTION_REPEAT_PATTERN = ["好好好", "哈哈哈", "呜呜呜", "啊啊啊", "嘿嘿嘿"]
-
-_WORK_KEYWORDS = [
-    "bug", "代码", "修", "调试", "部署", "重构",
-    "PR", "commit", "改bug", "熬夜", "加班", "上线",
-    "项目", "进度", "需求", "排期", "接口", "数据库",
-]
-
-# 否定词
-_NEGATION_WORDS = {"不", "没", "别", "不要", "没有", "不用", "不会", "不是"}
+# ── 从统一常量表导入（唯一来源 app/brain/keywords.py） ──
+_INTENT_MAP = INTENT_KEYWORDS
+_EMOTION_WORDS = EMOTION_KEYWORDS
+_INTENSIFIERS = INTENSIFIERS
+_EMOTION_REPEAT_PATTERN = EMOTION_REPEAT_PATTERN
+_WORK_KEYWORDS = WORK_KEYWORDS
+_NEGATION_WORDS = NEGATION_WORDS
 
 # ── Embedding 意图原型（惰性初始化） ──
 _INTENT_PROTOTYPES = {

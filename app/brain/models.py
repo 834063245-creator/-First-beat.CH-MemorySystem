@@ -24,6 +24,7 @@ import requests as _requests
 
 # ChuchuCNN 自研模型
 from app.brain.chuchu_model import ChuchuCNN
+from app.brain.keywords import INTENT_LABELS, INTENT_KEYWORDS, EMOTION_KEYWORDS, EMOTION_LABELS
 from app.brain.chuchu_tok import ChuchuTok
 
 
@@ -111,32 +112,6 @@ class GateResult:
     suppression_reasons: list[str] = field(default_factory=list)
     confidence: float = 0.0
     source: str = "rule"
-
-
-@dataclass
-class ShadowResult:
-    """影子对比结果 — 规则侧和模型侧并排数据。"""
-    user_message: str
-    rule_intent: IntentResult
-    model_intent: IntentResult
-    rule_emotion: EmotionResult
-    model_emotion: EmotionResult
-    rule_gate: GateResult
-    model_gate: GateResult
-
-    @property
-    def intent_match(self) -> bool:
-        return self.rule_intent.intent == self.model_intent.intent
-
-    @property
-    def emotion_match(self) -> bool:
-        return self.rule_emotion.primary == self.model_emotion.primary
-
-
-# ═══════════════════════════════════════════════════════
-# 意图分类器
-# ═══════════════════════════════════════════════════════
-
 class IntentClassifier:
     """意图分类器 — ChuchuCNN + Ollama + 规则三层兜底。
 
@@ -147,24 +122,9 @@ class IntentClassifier:
     CHUCHU_PATH = os.path.join(_BRAIN_DIR, "model_intent", "chuchu_cnn.pt")
     CHUCHU_TOK = os.path.join(_BRAIN_DIR, "chuchu_tok.json")
 
-    LABELS = [
-        "recall", "emotional_sharing", "conflict",
-        "ask_fact", "request", "meta", "casual",
-    ]
+    LABELS = INTENT_LABELS
 
-    _INTENT_KEYWORDS = {
-        "conflict": ["不对", "不是", "你错了", "别说了", "你搞错了", "乱说",
-                     "你没听懂", "不是这样"],
-        "emotional_sharing": ["想", "觉得", "感觉", "心情", "难过", "开心", "烦",
-                              "累", "困", "疲惫", "焦虑", "担心", "感动", "温暖",
-                              "梦到", "失眠", "心疼", "好烦", "好累", "好开心", "好难过"],
-        "recall": ["记得", "之前", "上次", "以前", "曾经", "想起", "是不是说过",
-                   "那时候", "那会儿", "还记得", "记不记得"],
-        "request": ["帮我", "请你", "需要你", "帮我查", "帮我找", "帮我写",
-                    "帮我改", "帮我看看", "能不能帮我"],
-        "ask_fact": ["什么", "怎么", "为什么", "如何", "能不能", "请问", "啥", "是不是"],
-        "meta": ["你是谁", "你能做什么", "你会什么", "你叫什么", "你有什么功能", "你是吗"],
-    }
+    _INTENT_KEYWORDS = INTENT_KEYWORDS
 
     _INTENT_PROMPT = """对用户消息分类，只输出标签名。
 
@@ -326,15 +286,9 @@ class EmotionAnalyzer:
     CHUCHU_PATH = os.path.join(_BRAIN_DIR, "model_emotion", "chuchu_cnn.pt")
     CHUCHU_TOK = os.path.join(_BRAIN_DIR, "chuchu_tok.json")
 
-    LABELS = ["intimate", "positive", "negative", "frustrated", "neutral"]
+    LABELS = EMOTION_LABELS
 
-    _EMOTION_KEYWORDS = {
-        "intimate": ["想你", "爱", "心疼", "抱", "陪", "温暖", "梦到", "亲", "在乎", "爱你", "抱抱"],
-        "positive": ["开心", "高兴", "好", "棒", "喜欢", "感动", "幸福", "感谢", "太棒", "太好了", "不错", "厉害"],
-        "negative": ["难过", "烦", "累", "焦虑", "担心", "生气", "讨厌", "失望", "痛苦", "崩溃",
-                     "孤独", "压力", "郁闷", "烦躁"],
-        "frustrated": ["烦死了", "受不了", "无语", "气死", "崩溃", "不想说了", "够了", "算了吧"],
-    }
+    _EMOTION_KEYWORDS = EMOTION_KEYWORDS
 
     _RUSSELL_MAP = {
         "intimate":    (0.5, 0.4),
@@ -586,27 +540,3 @@ class ChuchenBrain:
 
     def analyze_emotion(self, text: str) -> EmotionResult:
         return self.emotion_analyzer.analyze(text)
-
-    def decide_gate(self, intent: str, emotion: str,
-                    context: dict | None = None) -> GateResult:
-        return self.gate_maker.decide(intent, emotion, context)
-
-    def shadow_analyze(self, text: str, context: dict | None = None) -> ShadowResult:
-        rule_intent = IntentResult(
-            intent=self.intent_classifier._rule_classify(text),
-            confidence=0.7, source="rule",
-        )
-        rule_emotion = self.emotion_analyzer._rule_analyze(text)
-        model_intent = self.intent_classifier.predict(text)
-        model_emotion = self.emotion_analyzer.analyze(text)
-        rule_gate = self.gate_maker._rule_decide(rule_intent.intent, rule_emotion.primary)
-        model_gate = self.gate_maker.decide(model_intent.intent, model_emotion.primary, context)
-        return ShadowResult(
-            user_message=text,
-            rule_intent=rule_intent,
-            model_intent=model_intent,
-            rule_emotion=rule_emotion,
-            model_emotion=model_emotion,
-            rule_gate=rule_gate,
-            model_gate=model_gate,
-        )
