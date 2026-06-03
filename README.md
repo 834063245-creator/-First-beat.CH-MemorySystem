@@ -268,7 +268,6 @@ app/
 │   ├── model_topic/      # 话题分类 (50类，567KB)
 │   └── model_fact/       # 事实域判断 (二分类，494KB)
 ├── config/        # 中央配置
-├── models/        # Pydantic schemas
 └── models/        # Pydantic schemas
 
 backend/           # 旧模块桥接层（逐步迁移至 app/）

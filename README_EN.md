@@ -159,7 +159,6 @@ python verify_env.py                        # One-click diagnostics
 | **`get_personality_tags`** | Source (user/ai) | Personality tag list |
 | **`get_topic_tree`** | — | Topic tree structure |
 | **`get_relationship`** | — | Familiarity / trust / closeness / interaction mode |
-| **`search_knowledge`** | Query text | Knowledge base search |
 | **`get_pattern_observations`** | — | Pattern discoveries + auto-tuning records |
 
 ### run_engine Response Example
@@ -269,8 +268,7 @@ app/
 │   ├── model_topic/      # Topic classification (50-class, 567KB)
 │   └── model_fact/       # Fact domain binary classifier (494KB)
 ├── config/        # Central config
-├── models/        # Pydantic schemas
-└── knowledge/     # Knowledge base management
+└── models/        # Pydantic schemas
 
 backend/           # Legacy module shims (migrating to app/)
 tests/             # 320+ tests, 5 layers: engine logic · gate · inverted index · thread safety · integration
