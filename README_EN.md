@@ -1,36 +1,58 @@
-# 初痕 · First Beat — Cognitive Memory Engine for AI Agents
+# First Beat — A Cognitive Memory Engine with Its Own Rhythm
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-214%20passed-green.svg)]()
+[![Tests](https://img.shields.io/badge/tests-250%20passed-green.svg)]()
 [![MCP](https://img.shields.io/badge/MCP-10%20tools-orange.svg)]()
 [中文文档](README.md)
 
-👉 [Setup Guide](SETUP.md) | 🔧 [Environment Check](verify_env.py) | ⚡ [Lightweight Install](requirements-lite.txt)
+👉 [Setup Guide](SETUP.md) | 🔧 [Environment Check](verify_env.py)
 
-**Doesn't generate text. Only does memory.** First Beat is a standalone cognitive engine that serves memory capabilities to any AI Agent through the MCP protocol. The engine handles retrieval, consolidation, personality modeling, and cognitive decisions — the Agent's LLM acts purely as its language cortex.
+---
 
-> Others bolt memory plugins onto LLMs. First Beat treats the LLM as its mouth.
+**Others bolt memory plugins onto LLMs. First Beat treats the LLM as its mouth.**
+
+Doesn't generate text. Only does memory. First Beat is a standalone cognitive engine that serves memory to any AI Agent through the MCP protocol. The engine handles retrieval, consolidation, personality modeling, and cognitive decisions — the Agent's LLM is just the speaker.
+
+---
+
+## What Makes It Different
+
+| | LangChain Memory | MemGPT / Letta | **First Beat** |
+|---|---|---|---|
+| Architecture | LLM calls tools to read memory | LLM manages its own memory | **Engine decides → LLM executes** |
+| Retrieval | Semantic similarity | Semantic + self-editing | 8-path parallel recall + 2-stage rerank |
+| Personality modeling | ❌ | ❌ | User + AI dual personality, evolving independently |
+| Autonomous rhythm | ❌ | ❌ | **5-source impulse system, AI speaks unprompted** |
+| Model dependency | Heavy | Heavy | Rule fallback, LLM not a hard requirement |
+| Deployment | Intrusive | Intrusive | **MCP protocol, zero-code integration** |
+
+One sentence: other memory systems are passive tools for the LLM. First Beat is **an independent organ with its own heartbeat**. The engine runs consolidation, distillation, and impulse generation in the background — it doesn't wait for user input.
 
 ---
 
 ## How It Works
 
 ```
-  Your AI Agent ─── MCP ──→ First Beat Engine (localhost:8082)
-      │                         │
-      │ ── run_engine("user said something") ──→
-      │                         │  Intent → Multi-path retrieval → Gate
-      │                         │  Personality → Impulse → Emotion
-      │                         │
-      │ ←── Structured Context ────  │
-      │   {execute, memories,        │
-      │    personality, impulses,    │
-      │    relationship, mood}       │
-      │                             │
-  LLM generates reply                │
-      │                             │
-      └── store_turn ──→ Persist ───┘
+ Your AI Agent ─── MCP ──→ First Beat Engine (localhost:8082)
+     │                          │
+     │ ── run_engine("user said something") ──→
+     │                          │  ① Intent / emotion analysis
+     │                          │  ② 8-path parallel retrieval
+     │                          │  ③ Cognitive state layering (fact / reference / background)
+     │                          │  ④ Gating (suppress inappropriate impulses)
+     │                          │
+     │ ←── Structured Context ────  │
+     │   {execute, memories,        │
+     │    personality, impulses,     │
+     │    relationship, mood}        │
+     │                              │
+ LLM generates reply                 │
+     │                              │
+     └── store_turn ──→ Persist ────┘
+
+ Background (no user needed):
+   Consolidation 4h/24h · 5-source impulse (Poisson) · Distillation · Pattern discovery
 ```
 
 ---
@@ -50,11 +72,8 @@ ollama pull bge-m3
 git clone https://github.com/834063245-creator/-First-beat.CH-MemorySystem.git
 cd chuchen
 
-# Full install (includes torch/transformers, for local-only mode)
-pip install -r requirements.txt
-
-# Lightweight install (no torch/transformers, for MCP-only mode)
-# pip install -r requirements-lite.txt
+pip install -r requirements.txt          # Full
+# pip install -r requirements-lite.txt   # Lightweight
 
 # 3. Start the engine
 python run.py
@@ -64,60 +83,11 @@ python run.py
 ### Verify
 
 ```bash
-curl http://localhost:8082/health
-# → {"status":"ok"}
-
-# Or run the full environment diagnostic
-python verify_env.py
+curl http://localhost:8082/health          # → {"status":"ok"}
+python verify_env.py                        # One-click diagnostics
 ```
 
-> Troubleshooting? See [SETUP.md](SETUP.md) for detailed diagnostics.  
-> Lightweight install without PyTorch? Use `pip install -r requirements-lite.txt`.
-
----
-
-## Docker Deployment
-
-### One-Click Start (recommended)
-
-```bash
-docker compose up -d
-# → Ollama (11434) + First Beat Engine (8082) start together
-```
-
-### Build & Run
-
-```bash
-docker build -t chuchen .
-docker run -d -p 8082:8082 -v chuchen_data:/app/data chuchen
-```
-
-### docker-compose.yml
-
-```yaml
-services:
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_models:/root/.ollama
-
-  chuchen:
-    build: .
-    ports:
-      - "8082:8082"
-    environment:
-      - LOCAL_LLM_OLLAMA_URL=http://ollama:11434
-      - OLLAMA_EMBED_MODEL=bge-m3
-    volumes:
-      - chuchen_data:/app/data
-    depends_on:
-      ollama:
-        condition: service_started
-```
-
-> On first run, pull the embedding model: `docker exec chuchen-ollama ollama pull bge-m3`
+> Troubleshooting? See [SETUP.md](SETUP.md).
 
 ---
 
@@ -125,15 +95,15 @@ services:
 
 | Tool | Input | Output |
 |------|-------|--------|
-| **`run_engine`** | User message | Full cognitive context: intent, emotion, retrieved memories, personality notes, impulse signals, relationship state, execution directives |
+| **`run_engine`** | User message | Intent / emotion / memories / personality / impulses / relationship / execution directive |
 | **`store_turn`** | User msg + AI reply | Persistence confirmation |
-| **`query_memories`** | Query text | Semantic search results with relevance, timestamps, emotion |
+| **`query_memories`** | Query text | Semantic results with relevance, time, emotion |
 | **`get_recent_history`** | N | Last N conversation turns |
 | **`get_memory_stats`** | — | Total count, heat distribution, emotion distribution |
 | **`get_personality_tags`** | Source (user/ai) | Personality tag list |
 | **`get_topic_tree`** | — | Topic tree structure |
-| **`get_relationship`** | — | 4D relationship state (familiarity/trust/closeness/mode) |
-| **`search_knowledge`** | Query text | Knowledge base search results |
+| **`get_relationship`** | — | Familiarity / trust / closeness / interaction mode |
+| **`search_knowledge`** | Query text | Knowledge base search |
 | **`get_pattern_observations`** | — | Pattern discoveries + auto-tuning records |
 
 ### run_engine Response Example
@@ -141,26 +111,21 @@ services:
 ```json
 {
   "execute": {
-    "tone": "warm",
-    "formality": 0.3,
-    "intimacy": 0.3,
-    "response_mode": "question_first",
-    "user_mood": "neutral",
+    "tone": "caring",
+    "formality": 0.1,
+    "response_mode": "soothe",
+    "user_mood": "negative",
     "user_intent": "emotional_sharing"
   },
   "memories": [
-    {
-      "role": "fact",
-      "summary": "User is building an AI memory system",
-      "time_hint": "Today",
-      "emotional_context": "User seems positive"
-    }
+    {"role": "fact",   "summary": "User has been under pressure lately", "time_hint": "Today", "emotional_context": "User seems down"},
+    {"role": "reference", "summary": "User mentioned a project deadline last week", "time_hint": "Last week"}
   ],
-  "impulses": ["Follow up on the progress of their project"],
   "personality": {
-    "user": [{"content": "Prefers deep technical discussions", "hit_count": 12}],
-    "ai":  [{"content": "Replies tend toward analytical style", "hit_count": 8}]
+    "user": [{"content": "Tends to be emotional late at night", "hit_count": 8}],
+    "ai":   [{"content": "Prefers empathy before advice", "hit_count": 12}]
   },
+  "impulses": ["Something comes to mind — about their project"],
   "relationship": {
     "familiarity": 0.42,
     "trust": 0.68,
@@ -174,9 +139,7 @@ services:
 
 ## Connect Your AI Agent
 
-### Local Deployment
-
-Create `.claude/mcp.json` in your Agent's workspace:
+Create `.claude/mcp.json` in your Agent's workspace (Claude Code), or use any MCP-compatible client:
 
 ```json
 {
@@ -188,21 +151,9 @@ Create `.claude/mcp.json` in your Agent's workspace:
 }
 ```
 
-### Remote Deployment
+For remote: replace with `https://your-server.com:8082/mcp/jsonrpc`.
 
-```json
-{
-  "mcpServers": {
-    "chuchen": {
-      "url": "https://your-server.com:8082/mcp/jsonrpc"
-    }
-  }
-}
-```
-
-### Verify Connection
-
-Try calling `get_memory_stats` from your Agent. If it returns memory stats, the connection is working. Or test via curl:
+Verify:
 
 ```bash
 curl -X POST http://localhost:8082/mcp/jsonrpc \
@@ -210,55 +161,40 @@ curl -X POST http://localhost:8082/mcp/jsonrpc \
   -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"get_memory_stats","arguments":{}},"id":"1"}'
 ```
 
-Any MCP-compatible Agent (Claude Code, Cursor, etc.) gains immediate access to all 10 tools.
+---
+
+## Docker
+
+```bash
+docker compose up -d   # Ollama + Engine, one command
+```
+
+Pull the model on first run: `docker exec chuchen-ollama ollama pull bge-m3`
 
 ---
 
 ## Architecture
 
 ```
-chuchen/
-├── app/
-│   ├── core/          # Cognitive pipeline: intent · gating · orchestration
-│   ├── memory/        # ChromaDB store + working memory + co-occurrence/temporal indices
-│   ├── retrieval/     # 8-path parallel recall + BM25/embedding two-stage rerank
-│   ├── background/    # Autonomous rhythms: 4h/24h consolidation · 5-source impulse · distillation
-│   ├── analysis/      # Russell emotion circumplex · entity extraction · pattern discovery · personality symmetry
-│   ├── personality/   # Dual-personality system (user + AI evolve independently)
-│   ├── mcp/           # MCP JSON-RPC server
-│   ├── llm/           # Local embedding (bge-m3) + DeepSeek/local LLM clients
-│   ├── api/           # REST admin endpoints
-│   ├── tools/         # Atomic writes · tool dispatch
-│   ├── brain/         # ChuchuCNN custom char-level CNN — intent/emotion classification, 500KB, <5ms
-│   ├── config/        # Central config · env defaults · path utils
-│   ├── models/        # Pydantic schemas (ChatRequest, ChatResponse, etc.)
-│   └── knowledge/     # Knowledge base management
-├── backend/           # Legacy module shims (migrating to app/)
-├── tests/             # 320+ unit tests, 5 layers: engine logic · gate · inverted index · thread safety · integration
-├── scripts/           # Audit suite · report comparison
-├── Dockerfile         # Container build
-├── docker-compose.yml # Ollama + Engine one-click deployment
-└── run.py             # Entry point
+app/
+├── core/          # Cognitive pipeline: intent · gating · orchestration
+├── memory/        # ChromaDB + working memory + inverted / co-occurrence / temporal indices
+├── retrieval/     # 8-path parallel recall + BM25 / embedding two-stage rerank
+├── background/    # Autonomous: 4h/24h consolidation · 5-source impulse · distillation
+├── analysis/      # Russell circumplex · entity extraction · pattern discovery · personality symmetry
+├── personality/   # Dual personality (user + AI, evolve independently)
+├── mcp/           # MCP JSON-RPC server
+├── llm/           # Local embedding (bge-m3) + DeepSeek / local LLM
+├── api/           # REST admin endpoints
+├── tools/         # Atomic writes · tool dispatch
+├── brain/         # ChuchuCNN custom char-level CNN, 500KB, <5ms CPU inference
+├── config/        # Central config
+├── models/        # Pydantic schemas
+└── knowledge/     # Knowledge base management
+
+backend/           # Legacy module shims (migrating to app/)
+tests/             # 250 tests, 5 layers: engine logic · gate · inverted index · thread safety · integration
 ```
-
----
-
-## Audit Suite
-
-8 audit categories covering semantic retrieval, keyword search, temporal search, ranking, corrective feedback, personality consistency, working memory, and temporal rhythms. **Run after every retrieval logic change to ensure no regression.**
-
-```bash
-python scripts/audit.py           # Run all 8 categories
-python scripts/audit.py --quick   # Quick mode
-```
-
-Compare two audit reports:
-
-```bash
-python scripts/compare_reports.py audit/report_before.json audit/report_after.json
-```
-
-Reports are saved to `audit/` (gitignored).
 
 ---
 
@@ -266,11 +202,11 @@ Reports are saved to `audit/` (gitignored).
 
 | # | Principle | Meaning |
 |---|-----------|---------|
-| 1 | **Raw text, never compressed** | Summaries and embeddings are translations, not alterations. Originals are immutable |
-| 2 | **Time as skeleton** | Timestamps organize, associate, and surface memories — they're never used as decay factors |
-| 3 | **Behavior is weight** | `hit_count` determines relevance weight. No artificial time decay functions |
-| 4 | **The engine has its own rhythm** | Consolidation, impulse, distillation, and pattern discovery run autonomously — no user feedback required |
-| 5 | **Engine decides, LLM executes** | The LLM owns no memory, calls no retrieval tools — it only speaks as directed |
+| 1 | **Raw text, never compressed** | Summaries and embeddings are translations, not alterations |
+| 2 | **Time as skeleton** | Timestamps organize and surface — never used as decay factors |
+| 3 | **Behavior is weight** | `hit_count` determines relevance. No artificial time decay |
+| 4 | **The engine has its own rhythm** | Consolidation, impulse, distillation, pattern discovery run autonomously |
+| 5 | **Engine decides, LLM executes** | The LLM owns no memory, calls no tools — it only speaks as directed |
 
 ---
 
@@ -279,33 +215,26 @@ Reports are saved to `audit/` (gitignored).
 | Variable | Required | Description |
 |----------|:--------:|-------------|
 | `OLLAMA_EMBED_MODEL` | Yes | Embedding model, default `bge-m3` |
-| `OLLAMA_NUM_THREADS` | No | CPU threads, default `4` |
 | `LOCAL_LLM_OLLAMA_URL` | Yes | Ollama endpoint, default `http://localhost:11434` |
-| `DEEPSEEK_API_KEY` | No | DeepSeek API key for enhanced working memory summaries |
-| `DEEPSEEK_BASE_URL` | No | DeepSeek API base URL, default `https://api.deepseek.com` |
-| `DEEPSEEK_MODEL` | No | DeepSeek model name, default `deepseek-chat` |
-| `LOCAL_LLM_ENABLED` | No | Enable local LLM (Ollama summary), default `false` |
+| `DEEPSEEK_API_KEY` | No | DeepSeek API key |
+| `DEEPSEEK_BASE_URL` | No | DeepSeek API base URL |
+| `LOCAL_LLM_ENABLED` | No | Enable local LLM, default `true` |
 | `LOCAL_LLM_MODEL` | No | Local LLM model, default `qwen2.5:7b` |
-| `LOCAL_LLM_TIMEOUT` | No | Local LLM timeout in seconds, default `30` |
-| `BOCHA_API_KEY` | No | Bocha search API key for web search |
+| `BOCHA_API_KEY` | No | Bocha search API key |
 | `DATA_DIR` | No | Data directory, default `./data` |
 | `DEPLOY_MODE` | No | `full` / `lite` |
-| `USERS` | No | Multi-user auth (JSON), e.g. `{"admin":"changeme"}` |
-| `DEBUG_INCLUDE_PROMPT` | No | Include prompt in debug output, default `false` |
-| `IMPULSE_ACTIVE_PATH_B` | No | Enable impulse system (proactive chat), default `true` |
-| `OLLAMA_MODELS` | No | Docker-only: Ollama model mount path |
-
-See `.env.example` for details.
+| `USERS` | No | Multi-user auth JSON |
+| `IMPULSE_ACTIVE_PATH_B` | No | Impulse system toggle, default `true` |
 
 ---
 
 ## Contributing
 
-Issues and PRs are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Issues and PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-This version is released under the [MIT License](LICENSE). Future versions and derivative works may adopt different licensing terms at the author's discretion.
+[MIT License](LICENSE).
 
 ---
 
