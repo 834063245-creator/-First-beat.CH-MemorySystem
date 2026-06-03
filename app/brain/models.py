@@ -1,9 +1,9 @@
-"""ChuchenBrain 三模型架构 — ChuchuCNN 本地推理 + Ollama/规则
+"""ChuchenBrain 三模型架构 — ChuchuCNN 本地推理 + 规则
 
 模型加载优先级：
   IntentClassifier  → ChuchuCNN(字符CNN) > Ollama > 规则
   EmotionAnalyzer   → ChuchuCNN(字符CNN) > Ollama > 规则
-  GateDecisionMaker → Ollama Prompt > 规则
+  GateDecisionMaker → 纯规则（策略映射表）
 
 ChuchuCNN 约 500KB，纯 CPU 推理 <5ms，不依赖 transformers/HuggingFace。
 """
@@ -503,67 +503,19 @@ class EmotionAnalyzer:
 # ═══════════════════════════════════════════════════════
 
 class GateDecisionMaker:
-    """门控决策器 — Ollama + 规则兜底。"""
-
-    _GATE_PROMPT = """只输出一行JSON，不要解释。
-{{"tone":"warm/caring/direct/soft/neutral之一","formality":0到1,"response_mode":"soothe/question_first/direct_answer/confirm/auto之一","intimacy":0到1}}
-
-当前: 意图={intent}, 情绪={emotion}"""
+    """门控决策器 — 纯规则（策略映射表，不需模型）。"""
 
     def __init__(self, model_name: Optional[str] = None,
                  ollama_url: str = "http://localhost:11434"):
-        self.model_name = model_name
-        self.ollama_url = ollama_url
-        self._ollama_ok = False
+        # 为兼容 ChuchenBrain 的统一接口保留参数，但不使用
+        pass
 
     def load(self) -> bool:
-        if self._ollama_ok:
-            return True
-        if self.model_name is None:
-            return False
-        try:
-            resp = _requests.get(f"{self.ollama_url}/api/tags", timeout=5)
-            if resp.status_code == 200:
-                models = [m["name"] for m in resp.json().get("models", [])]
-                if self.model_name in models or any(
-                    m.startswith(self.model_name.split(":")[0]) for m in models
-                ):
-                    self._ollama_ok = True
-                    return True
-        except Exception:
-            pass
-        return False
+        return True  # 规则永远可用
 
     def decide(self, intent: str, emotion: str,
                context: dict | None = None) -> GateResult:
-        if self._ollama_ok and self.model_name:
-            return self._llm_decide(intent, emotion, context)
         return self._rule_decide(intent, emotion)
-
-    def _llm_decide(self, intent: str, emotion: str,
-                    context: dict | None = None) -> GateResult:
-        try:
-            prompt = self._GATE_PROMPT.format(intent=intent, emotion=emotion)
-            raw = _ollama_chat(self.model_name, prompt,
-                               ollama_url=self.ollama_url, timeout=15)
-            data = _parse_json_safely(raw)
-            tone = data.get("tone", "warm")
-            if tone not in ("warm", "caring", "direct", "soft", "neutral"):
-                tone = "warm"
-            mode = data.get("response_mode", "auto")
-            if mode not in ("soothe", "question_first", "direct_answer", "confirm", "auto"):
-                mode = "auto"
-            return GateResult(
-                tone=tone,
-                formality=float(data.get("formality", 0.3)),
-                response_mode=mode,
-                intimacy=float(data.get("intimacy", 0.3)),
-                confidence=0.8,
-                source="model",
-            )
-        except Exception as exc:
-            logger.warning("Gate 调用失败 (%s)，回退规则", exc)
-            return self._rule_decide(intent, emotion)
 
     def _rule_decide(self, intent: str, emotion: str) -> GateResult:
         tone = "warm"

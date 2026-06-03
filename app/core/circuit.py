@@ -31,10 +31,11 @@ def get_brain() -> Optional[object]:
         from app.brain.models import ChuchenBrain
         _CHUCHEN_BRAIN = ChuchenBrain(model_name="qwen2.5:3b")
         status = _CHUCHEN_BRAIN.load_all()
+        loaded = [k for k, v in status.items() if v]
         if any(status.values()):
-            logger.info("ChuchenBrain 已加载: %s", status)
+            logger.info("ChuchenBrain 模型已加载: %s", loaded)
         else:
-            logger.info("ChuchenBrain 未连接Ollama，使用纯规则")
+            logger.info("ChuchenBrain 未加载模型，使用纯规则")
         return _CHUCHEN_BRAIN
     except Exception:
         _CHUCHEN_BRAIN = None
