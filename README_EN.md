@@ -18,25 +18,39 @@ Doesn't generate text. Only does memory. First Beat is a standalone cognitive en
 
 ## What Makes It Different
 
-| | Mem0 | MemGPT / Letta | LangGraph | **First Beat (初痕)** |
-|---|---|---|---|---|
-| **Chinese README** | ❌ | ❌ | ❌ | **✅ Chinese + English** |
-| **Chinese docs** | ❌ | ❌ | ❌ | **✅ Bilingual** |
-| **Chinese tokenizer** | ❌ depends on English spaCy | ❌ none | ❌ none | **✅ ChuchuTok (Chinese char-level)** |
-| **Custom Chinese models** | ❌ all GPT-based | ❌ all LLM-based | ❌ none | **✅ 6 ChuchuCNN bilingual, 500KB each** |
-| **Offline capable** | ❌ requires API | ❌ requires API | ❌ requires LLM | **✅ Ollama optional, models run locally** |
-| Architecture | LLM extracts facts → stores in vector DB | LLM manages its own memory | State machine orchestrator | **Engine decides → LLM executes** |
-| Retrieval | Semantic + BM25 + entity | Semantic + self-editing | (not provided) | **8-path parallel + 2-stage rerank** |
-| Personality | ❌ | ❌ | ❌ | **User + AI dual personality, independent evolution** |
-| Autonomous rhythm | ❌ | ❌ | ❌ | **5-source impulse, engine speaks unprompted** |
-| Emotion analysis | ❌ | ❌ | ❌ | **Russell 2D circumplex + ChuchuCNN** |
-| Pattern discovery | ❌ | ❌ | ❌ | **Multi-timescale + auto-tuning** |
-| Background consolidation | ❌ | ❌ | ❌ | **4h/24h dual-cycle + distillation** |
-| Fact-level temporal reasoning | ❌ | ❌ | ❌ | **✅ Dual-path contradiction detection (emotion flip + semantic shift)** |
-| MCP protocol | ❌ | ❌ | ❌ | **✅ Native MCP Server** |
-| Deployment | Cloud / self-host | Managed API | Python library | **pip install → python run.py** |
-| Zero API key start | ❌ | ❌ | ❌ | **✅ Clone and run** |
-| Custom models (not LLM) | ❌ | ❌ | ❌ | **✅ 6 classifiers, 3.5MB total** |
+### Where First Beat stands alone
+
+| Capability | Description |
+|------|------|
+| **Autonomous rhythm** | Background 4h/24h dual-cycle consolidation, 5-source impulse system — engine speaks unprompted |
+| **Personality modeling** | User + AI dual personality, independent evolution from conversation distillation |
+| **Emotion analysis** | Russell 2D circumplex + custom ChuchuCNN, fully local, zero LLM calls |
+| **Fact-level temporal reasoning** | Dual-path contradiction detection |
+| **Pattern discovery** | Multi-timescale pattern recognition + auto-tuning |
+| **Zero API key startup** | Clone and run — all models are local, no external service registration needed |
+| **6 custom CNNs** | Intent/emotion/urgency/negation/topic/fact-domain, 500KB each, CPU <5ms, zero HuggingFace dependency |
+
+### Where others are stronger
+
+| Dimension | First Beat status | Stronger alternative |
+|------|----------|------------|
+| **Benchmark scores** | No LongMemEval/LoCoMo scores | Mem0 / Zep have published benchmarks |
+| **Knowledge graph** | No entity-relation graph | Mem0 / Zep / Cognee |
+| **Community & ecosystem** | Solo project | Mem0 34K+ stars, backed by a company |
+| **Production maturity** | Personal use, no SLA | Mem0 / Zep offer managed SaaS |
+| **Multimodal** | Text only | Some systems support images/audio |
+| **Temporal reasoning depth** | Emotion-driven, no neutral fact tracking | Zep native temporal graph, fact-level conflict tracking |
+
+### Design philosophy
+
+| | Mem0 | Letta (MemGPT) | **First Beat** |
+|---|---|---|---|
+| Approach | LLM extracts facts → stores in vector DB | LLM manages its own memory | **Engine decides → LLM executes** |
+| LLM's role | Owner of memory | Caretaker of memory | Engine's language cortex |
+| Retrieval | Semantic + BM25 + entity | Semantic + self-editing window | **8-path parallel + 2-stage rerank** |
+| Deployment | Cloud SaaS / self-host | Self-hosted agent runtime | **pip install → python run.py** |
+| MCP protocol | ❌ | ❌ | **✅ Native MCP Server** |
+| Chinese native | ❌ | ❌ | **✅ ChuchuTok + full Chinese docs** |
 
 One sentence: other memory systems are passive tools for the LLM. First Beat is **an independent organ with its own heartbeat**. The engine runs consolidation, distillation, and impulse generation in the background — it doesn't wait for user input.
 
