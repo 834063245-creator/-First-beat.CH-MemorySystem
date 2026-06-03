@@ -161,8 +161,13 @@ def run_chat_retrieval(
     user_message: str,
     query_embedding_for_retrieval: list | None,
     ctx_obj,
+    intent: str | None = None,
 ) -> tuple:
-    """同步检索管线：在 ThreadPoolExecutor 中执行，不阻塞事件循环。"""
+    """同步检索管线：在 ThreadPoolExecutor 中执行，不阻塞事件循环。
+
+    Args:
+        intent: 上游小模型计算好的意图。传入则跳过内部 keyword 分类。
+    """
     import math
 
     _ACTUAL_TOP_K = max(
@@ -178,7 +183,7 @@ def run_chat_retrieval(
         _ticks.append((name, time.perf_counter()))
 
     # ── 意图门控 ──
-    route = _resolve_route(_classify_intent(user_message))
+    route = _resolve_route(intent if intent else _classify_intent(user_message))
     sem_n = route["semantic"]
     tag_n = route["tag"]
     entity_n = route["entity"]

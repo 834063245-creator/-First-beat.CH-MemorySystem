@@ -310,6 +310,82 @@ def generate_emotion_data(samples_per_class: int = 500) -> list[tuple[str, str]]
     return data
 
 
+
+
+def generate_urgency_data(samples_per_class: int = 500) -> list[tuple[str, str]]:
+    """生成紧急度训练数据：low / medium / high 三分类。"""
+    data = []
+
+    # ── low（低紧急度）──
+    low_samples = [
+        "你好", "嗯嗯", "好的", "谢谢", "晚安", "哈哈", "今天天气不错",
+        "吃了吗", "没什么事", "好的谢谢", "嗯", "哦", "知道了",
+        "随便聊聊", "今天心情不错", "你叫什么名字", "什么是Python",
+        "好的没问题", "知道了", "我在想一个问题",
+        "嗯好的", "哈哈哈", "没事了", "拜拜", "早上好", "晚安了",
+        "今天天气真好", "还行吧", "都可以", "没什么", "随便",
+        "好吧", "行", "对的", "没错", "谢谢啊",
+    ]
+    for text in low_samples:
+        data.append((text, "low"))
+
+    # ── medium（中紧急度）──
+    mid_templates = [
+        "帮我{verb}一下{obj}",
+        "帮我{verb}{obj}",
+        "请问{kw}",
+        "{kw}是什么意思",
+        "你还记得{kw}吗",
+        "我想问一下{kw}",
+    ]
+    _mid_kw = ["上次我们聊的", "那个方案", "之前那个bug", "我的项目进度"]
+    _mid_verb = ["查", "找", "改", "看看"]
+    _mid_obj = ["代码", "配置", "数据", "文档", "方案"]
+    import random as _r
+    for _ in range(samples_per_class):
+        tmpl = _r.choice(mid_templates)
+        if "{verb}" in tmpl:
+            text = tmpl.replace("{verb}", _r.choice(_mid_verb)).replace("{obj}", _r.choice(_mid_obj))
+        elif "{kw}" in tmpl:
+            text = tmpl.replace("{kw}", _r.choice(_mid_kw))
+        else:
+            text = tmpl
+        data.append((text, "medium"))
+    # 额外 medium 样本
+    extra_mid = [
+        "帮我查一下天气", "帮我看看这个代码", "帮我写一个脚本",
+        "帮我改一下配置", "帮我查一下数据库",
+    ]
+    for text in extra_mid:
+        data.append((text, "medium"))
+
+    # ── high（高紧急度）──
+    high_samples = [
+        "急！服务器崩了！", "马上帮我看看这个bug！", "快快快，出问题了！",
+        "救命，数据库挂了", "立刻帮我处理！", "紧急！项目要延期了！",
+        "快！马上帮我！", "急死了，快点处理", "这个必须马上解决",
+        "快点！！出大事了", "帮我看看为什么报错，很急",
+        "服务器挂了，速救", "生产环境出问题了，快",
+        "紧急！！", "急死我了！", "快点处理！急！",
+        "马上！立刻！", "救命啊出事了", "快帮我看一下这个，非常急",
+        "这个bug必须今天修掉", "项目马上要上线了快", "客户在催了快点",
+        "不行了顶不住了快帮我", "宕机了！紧急！",
+    ]
+    for text in high_samples:
+        data.append((text, "high"))
+
+    # 混入含感叹号的 medium 边界
+    data.append(("帮我写个脚本！", "medium"))
+    data.append(("帮我查一下数据！", "medium"))
+
+    # 含"急"的 high
+    data += [(f"急{t}", "high") for t in ["死我了", "得很", "！快帮我", "，出事了"]]
+
+    print(f"紧急度数据生成: {len(data)} 条")
+    for label, count in Counter(l for _, l in data).most_common():
+        print(f"  {label}: {count}")
+    return data
+
 # ═══════════════════════════════════════════════════════
 # 2. 训练
 # ═══════════════════════════════════════════════════════
@@ -427,10 +503,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--intent", action="store_true", help="只训意图")
     parser.add_argument("--emotion", action="store_true", help="只训情绪")
+    parser.add_argument("--urgency", action="store_true", help="只训紧急度")
     args = parser.parse_args()
 
-    do_intent = args.intent or not args.emotion
-    do_emotion = args.emotion or not args.intent
+    do_intent = args.intent or not (args.emotion or args.urgency)
+    do_emotion = args.emotion or not (args.intent or args.urgency)
+    do_urgency = args.urgency or not (args.intent or args.emotion)
 
     random.seed(42)
     torch.manual_seed(42)
@@ -456,6 +534,16 @@ def main():
             data=data,
             tok=tok,
             save_path=os.path.join(HERE, "model_emotion", "chuchu_cnn.pt"),
+        )
+
+    # 训练紧急度模型
+    if do_urgency:
+        data = generate_urgency_data(samples_per_class=300)
+        train_model(
+            name="urgency",
+            data=data,
+            tok=tok,
+            save_path=os.path.join(HERE, "model_urgency", "chuchu_cnn.pt"),
         )
 
     # 保存 tokenizer

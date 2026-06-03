@@ -188,7 +188,7 @@ def analyze_user_message(user_message: str, chat_history=None,
         return UserMessageAnalysis(intent="casual", emotion="neutral")
 
     text = user_message.strip()
-    urgency = _compute_urgency(text)
+    urgency = _compute_urgency(text, brain=brain)
     topics = _extract_topics(text)
     emotion_intensity = _compute_emotion_intensity(text)
 
@@ -243,7 +243,7 @@ def analyze_user_message(user_message: str, chat_history=None,
     if kw_intent != "casual" and kw_emotion != "neutral":
         kw_confidence = 0.8
 
-    urgency = _compute_urgency(text)
+    urgency = _compute_urgency(text, brain=brain)
     topics = _extract_topics(text)
     emotion_intensity = _compute_emotion_intensity(text)
 
@@ -356,17 +356,21 @@ def _has_explicit_negation(text: str) -> bool:
     return any(re.search(p, text) for p in patterns)
 
 
-def _compute_urgency(text: str) -> float:
+def _compute_urgency(text: str, brain=None) -> float:
+    """计算紧急度。模型优先，规则兜底。"""
+    if brain is not None:
+        try:
+            return brain.classify_urgency(text)
+        except Exception:
+            pass
     urgency = 0.0
     if "!" in text or "！！" in text:
         urgency += 0.3
     if len(text) > 100:
         urgency += 0.2
-    if "急" in text or "马上" in text or "立刻" in text:
+    if "急" in text or "马上" in text or "刻急" in text:
         urgency += 0.4
     return min(urgency, 1.0)
-
-
 def _extract_topics(text: str) -> list:
     try:
         import jieba.analyse
@@ -506,12 +510,6 @@ class CircuitOrchestrator:
         """
         from app.retrieval.pipeline import run_chat_retrieval
 
-        # ② 若调用方未提供检索结果，自动补充（纯兼容）
-        if memories is None:
-            timeline_recent, session_context, personalities, memories = run_chat_retrieval(
-                user_message, query_embedding, ctx_obj)
-        personalities = personalities or []
-        memories = memories or []
         _ticks = [("start", __import__('time').perf_counter())]
         def _log_step(name):
             import time as _t
@@ -521,10 +519,19 @@ class CircuitOrchestrator:
             _ticks.append((name, _t.perf_counter()))
         _log_step('prep')
 
-        # ① 用户消息分析（传入 query_embedding 启用 embedding 路径，传入 brain 启用模型增强）
+        # ① 先跑用户消息分析（ChuchuCNN 优先），拿到小模型意图
         prefrontal = analyze_user_message(user_message, self._chat_history,
                                            query_embedding=query_embedding,
                                            brain=get_brain())
+
+        # ② 若调用方未提供检索结果，自动补充（传 intent 让 pipeline 复用 ChuchuCNN 结果）
+        if memories is None:
+            timeline_recent, session_context, personalities, memories = run_chat_retrieval(
+                user_message, query_embedding, ctx_obj,
+                intent=prefrontal.intent if prefrontal.confidence >= 0.6 else None,
+            )
+        personalities = personalities or []
+        memories = memories or []
 
         _log_step('user_analysis')
         # 行为预测：预测用户下一步行为模式

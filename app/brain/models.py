@@ -441,6 +441,93 @@ class EmotionAnalyzer:
         self._chuchu_tok = None
         self._chuchu_ok = False
 
+
+class UrgencyClassifier:
+    """紧急度分类器 — ChuchuCNN + 规则兜底。
+
+    三分类：low / medium / high
+    映射到浮点值：low=0.0, medium=0.5, high=1.0
+    """
+
+    MODEL_PATH = os.path.join(os.path.dirname(__file__), "model_urgency", "chuchu_cnn.pt")
+    TOK_PATH = os.path.join(os.path.dirname(__file__), "chuchu_tok.json")
+
+    _VALUE_MAP = {"low": 0.0, "medium": 0.5, "high": 1.0}
+
+    def __init__(self):
+        self._chuchu_ok = False
+        self._model = None
+        self._tok = None
+        self._id2label = None
+
+    def _load_local(self) -> bool:
+        if self._chuchu_ok and self._model is not None:
+            return True
+        if not os.path.exists(self.MODEL_PATH):
+            logger.info("Urgency 模型不存在: %s", self.MODEL_PATH)
+            return False
+        try:
+            import torch
+            ckpt = torch.load(self.MODEL_PATH, map_location="cpu", weights_only=False)
+            from app.brain.chuchu_tok import ChuchuTok
+            from app.brain.chuchu_model import ChuchuCNN
+            self._tok = ChuchuTok.load(self.TOK_PATH)
+            self._model = ChuchuCNN(vocab_size=ckpt["vocab_size"], num_classes=ckpt["num_classes"])
+            self._model.load_state_dict(ckpt["model_state_dict"])
+            self._model.eval()
+            self._id2label = {str(k): v for k, v in ckpt["id2label"].items()}
+            self._chuchu_ok = True
+            logger.info("Urgency ChuchuCNN 加载成功 (%s)", self.MODEL_PATH)
+            return True
+        except Exception as exc:
+            logger.warning("Urgency ChuchuCNN 加载失败: %s", exc)
+            self._model = None
+            self._tok = None
+            return False
+
+    def load(self) -> bool:
+        if self._chuchu_ok:
+            return True
+        return self._load_local()
+
+    def predict(self, text: str) -> float:
+        """返回紧急度浮点值 0.0 ~ 1.0。"""
+        import torch
+        if self._chuchu_ok:
+            try:
+                ids = self._tok.encode(text)
+                x = torch.tensor([ids], dtype=torch.long)
+                with torch.no_grad():
+                    logits = self._model(x)
+                    probs = torch.nn.functional.softmax(logits, dim=-1)
+                    confidence, idx = probs.max(dim=-1)
+                label = self._id2label[str(idx.item())]
+                if confidence.item() >= 0.6:
+                    return self._VALUE_MAP.get(label, 0.5)
+            except Exception:
+                pass
+        # 规则兜底
+        return _rule_urgency(text)
+
+    def close(self):
+        self._model = None
+        self._tok = None
+        self._chuchu_ok = False
+
+
+def _rule_urgency(text: str) -> float:
+    """规则兜底：感叹号+急字+长文本。和 circuit.py _compute_urgency 一致。"""
+    urgency = 0.0
+    if "!" in text or "！！" in text:
+        urgency += 0.3
+    if len(text) > 100:
+        urgency += 0.2
+    if "急" in text or "马上" in text or "立刻" in text:
+        urgency += 0.4
+    return min(urgency, 1.0)
+
+
+
 class ChuchenBrain:
     """初痕智能引擎 — 统一管三个模型的加载和调用。"""
 
@@ -453,12 +540,14 @@ class ChuchenBrain:
         from app.core.circuit import GateDecisionMaker
         self.gate_maker = GateDecisionMaker(model_name=model_name,
                                              ollama_url=ollama_url)
+        self.urgency_classifier = UrgencyClassifier()
 
     def load_all(self) -> dict[str, bool]:
         return {
             "intent": self.intent_classifier.load(),
             "emotion": self.emotion_analyzer.load(),
             "gate": self.gate_maker.load(),
+            "urgency": self.urgency_classifier.load(),
         }
 
     def classify_intent(self, text: str) -> IntentResult:
@@ -466,3 +555,6 @@ class ChuchenBrain:
 
     def analyze_emotion(self, text: str) -> EmotionResult:
         return self.emotion_analyzer.analyze(text)
+
+    def classify_urgency(self, text: str) -> float:
+        return self.urgency_classifier.predict(text)
