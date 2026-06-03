@@ -195,10 +195,17 @@ def analyze_user_message(user_message: str, chat_history=None,
     if not user_message:
         return UserMessageAnalysis(intent="casual", emotion="neutral")
 
+    _t0 = __import__('time').perf_counter()
     text = user_message.strip()
+    
     urgency = _compute_urgency(text, brain=brain)
+    _t1 = __import__('time').perf_counter()
+    
     topics = _extract_topics(text)
+    _t2 = __import__('time').perf_counter()
+    
     emotion_intensity = _compute_emotion_intensity(text)
+    _t3 = __import__('time').perf_counter()
 
     # ── 模型路径（ChuchuCNN > Ollama > 规则，自带降级） ─────────
     model_intent = None
@@ -209,6 +216,16 @@ def analyze_user_message(user_message: str, chat_history=None,
             model_emotion = brain.analyze_emotion(text)
         except Exception:
             pass  # 模型异常 → 走原有逻辑
+    _t4 = __import__('time').perf_counter()
+    
+    from app.core import bottleneck as _b
+    logger.debug(
+        "user_analysis 分步耗时: urgency=%.1fms topics=%.1fms intensity=%.1fms models=%.1fms total=%.1fms",
+        (_t1 - _t0) * 1000, (_t2 - _t1) * 1000, (_t3 - _t2) * 1000,
+        (_t4 - _t3) * 1000, (_t4 - _t0) * 1000,
+    )
+    if (_t4 - _t0) * 1000 > 500:
+        _b.record("user_analysis", (_t4 - _t0) * 1000)
 
     if model_intent is not None and model_intent.source == "model":
         # ── 独立置信度检查：各字段各自决策 ──
