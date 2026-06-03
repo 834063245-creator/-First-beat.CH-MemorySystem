@@ -17,23 +17,6 @@ logger = logging.getLogger(__name__)
 _DEFAULT_USER = "admin"
 
 
-def _load_knowledge_mode(data_dir: str = DATA_DIR) -> bool:
-    """读取知识库模式开关。"""
-    path = os.path.join(data_dir, "knowledge_mode.json")
-    try:
-        with open(path) as f:
-            return json.load(f).get("enabled", False)
-    except Exception:
-        return False
-
-
-def _save_knowledge_mode(enabled: bool, data_dir: str = DATA_DIR):
-    """持久化知识库模式开关。"""
-    from app.tools.atomic import atomic_write
-    path = os.path.join(data_dir, "knowledge_mode.json")
-    atomic_write(path, {"enabled": enabled})
-
-
 def get_current_user(
     x_chuhen_user: Optional[str] = Header(None, alias="X-Chuhen-User"),
 ) -> str:

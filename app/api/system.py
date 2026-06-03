@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.deps import (
     AppContext, get_user_context, get_current_user,
-    ctx_manager, _load_knowledge_mode, _save_knowledge_mode,
+    ctx_manager,
     USER_DATA_DIRS,
 )
 

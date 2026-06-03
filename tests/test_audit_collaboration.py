@@ -48,17 +48,15 @@ class TestDegradation:
 
     # 各路在总覆盖中的权重
     _PATH_WEIGHTS = {
-        "semantic": 0.35,
+        "semantic": 0.40,
         "entity": 0.15,
-        "kb": 0.15,
-        "tree": 0.15,
+        "tree": 0.20,
         "attention": 0.10,
-        "time_expand": 0.10,
+        "time_expand": 0.15,
     }
-    # 被禁的路中约 30% 可被其他路的重叠覆盖弥补
     _OVERLAP_RECOVERY = 0.30
 
-    ALL_PATHS = ["entity", "kb", "tree", "attention", "time_expand"]
+    ALL_PATHS = ["entity", "tree", "attention", "time_expand"]
 
     def _run_with_disabled(self, disabled: str) -> float:
         """模拟禁用指定路后的检索结果质量。

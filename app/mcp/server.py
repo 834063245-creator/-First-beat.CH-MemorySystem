@@ -142,21 +142,6 @@ async def _exec_relationship(ctx: AppContext, args: dict) -> dict:
         }
 
 
-async def _exec_search_knowledge(ctx: AppContext, args: dict) -> dict:
-    query = args["query"]
-    top_k = min(args.get("top_k", 5), 10)
-    if not ctx.knowledge_mode_enabled:
-        return {"schema_version": MCP_SCHEMA_VERSION, "results": [], "note": "知识库模式未启用"}
-    if not ctx.kb:
-        return {"schema_version": MCP_SCHEMA_VERSION, "results": [], "note": "知识库未初始化"}
-    try:
-        results = ctx.kb.search(query, top_k=top_k)
-        items = [{"content": r.get("text", "")[:300], "source": r.get("source", ""), "relevance": round(r.get("score", 0) or 0, 3)} for r in results]
-        return {"schema_version": MCP_SCHEMA_VERSION, "results": items}
-    except Exception:
-        logger.exception("知识库检索失败")
-        return {"schema_version": MCP_SCHEMA_VERSION, "results": [], "note": "知识库检索暂时不可用"}
-
 
 async def _exec_memory_stats(ctx: AppContext, args: dict) -> dict:
     try:
@@ -431,7 +416,6 @@ async def _dispatch(name: str, args: dict, ctx: AppContext) -> dict:
         "get_personality_tags": _exec_personality_tags,
         "get_topic_tree": _exec_topic_tree,
         "get_relationship": _exec_relationship,
-        "search_knowledge": _exec_search_knowledge,
         "get_memory_stats": _exec_memory_stats,
         "get_pattern_observations": _exec_pattern_observations,
         "run_engine": _exec_run_engine,

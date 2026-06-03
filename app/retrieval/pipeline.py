@@ -29,11 +29,11 @@ logger = logging.getLogger(__name__)
 # 配额含义是 ChromaDB query 的 n_results（不是截断上限）。
 # 截断统一由 MAX_MEMORIES_IN_PROMPT 管理。
 _INTENT_ROUTES = {
-    "casual":             {"semantic": 10, "tag": 5,  "entity": 0, "kb": 0, "time_expand": 0},
-    "recall":             {"semantic": 20, "tag": 8,  "entity": 5, "kb": 0, "time_expand": 5},
-    "ask_fact":           {"semantic": 25, "tag": 10, "entity": 5, "kb": 5, "time_expand": 0},
-    "emotional_sharing":  {"semantic": 12, "tag": 5,  "entity": 0, "kb": 0, "time_expand": 3},
-    "conflict":           {"semantic": 25, "tag": 10, "entity": 5, "kb": 0, "time_expand": 5},
+    "casual":             {"semantic": 10, "tag": 5,  "entity": 0, "time_expand": 0},
+    "recall":             {"semantic": 20, "tag": 8,  "entity": 5, "time_expand": 5},
+    "ask_fact":           {"semantic": 25, "tag": 10, "entity": 5, "time_expand": 0},
+    "emotional_sharing":  {"semantic": 12, "tag": 5,  "entity": 0, "time_expand": 3},
+    "conflict":           {"semantic": 25, "tag": 10, "entity": 5, "time_expand": 5},
 }
 
 
@@ -187,7 +187,6 @@ def run_chat_retrieval(
     sem_n = route["semantic"]
     tag_n = route["tag"]
     entity_n = route["entity"]
-    kb_n = route["kb"]
 
     _log_step('intent_gate')
     # ── 时间线近端历史 ──
@@ -574,17 +573,8 @@ def run_chat_retrieval(
         if "score" not in m or m.get("score") is None:
             m["score"] = 0.0
 
-    _log_step('entity_retrieval')
-    # ── 知识库模式 ──
-    if ctx_obj.knowledge_mode_enabled and kb_n > 0:
-        try:
-            for kb in ctx_obj.kb.retrieve(user_message, top_k=5):
-                kb["source"] = "knowledge"
-                kb["display_source"] = "[知识库]"
-                memories.append(kb)
-        except Exception:
-            pass
 
+    _log_step('entity_retrieval')
     # ── 兜底 ──
     if not memories:
         logger.warning("检索全部为空，回退到工作记忆兜底")

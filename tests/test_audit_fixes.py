@@ -142,15 +142,6 @@ class TestM6ClearMemoryErrors:
         assert counts.get("mem_002") == 1
 
 
-# ── M7: KnowledgeBase retriever ─────────────────────────────────
-class TestM7RetrieverCache:
-    """验证 KnowledgeBase 初始化了 _retriever=None。"""
-
-    def test_retriever_init_none(self):
-        from knowledge_base import KnowledgeBase
-        # 无法完整构造（需要 ChromaDB），但测试类属性存在即可
-        assert hasattr(KnowledgeBase, "__init__")
-
 
 # ── M8: working_memory 路径使用 DATA_DIR ────────────────────────
 class TestM8WorkingMemoryPath:

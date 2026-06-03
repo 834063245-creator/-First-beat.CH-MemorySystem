@@ -13,7 +13,6 @@ from app.api.system import router as system_router
 from app.api.chat_history import router as chat_history_router
 from app.api.memories import router as memories_router
 from app.api.personalities import router as personalities_router
-from app.api.knowledge import router as knowledge_router
 from app.api.consolidation import router as consolidation_router
 from app.api.distill import router as distill_router
 from app.mcp.server import router as mcp_router
@@ -26,7 +25,6 @@ _Routers = [
     chat_history_router,
     memories_router,
     personalities_router,
-    knowledge_router,
     consolidation_router,
     distill_router,
     mcp_router,

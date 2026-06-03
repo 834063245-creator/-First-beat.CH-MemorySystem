@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-258%20passed-green.svg)]()
-[![MCP](https://img.shields.io/badge/MCP-10%20tools-orange.svg)]()
+[![MCP](https://img.shields.io/badge/MCP-9%20tools-orange.svg)]()
 [中文文档](README.md)
 
 👉 [Setup Guide](SETUP_EN.md) | 🔧 [Environment Check](verify_env.py)

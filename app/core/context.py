@@ -54,7 +54,7 @@ def _get_topic_classifier():
 
 from app.config.settings import (                  # noqa: E402
     CHROMA_PERSIST_DIR, DATA_DIR, DEFAULT_TOP_K, MAX_MEMORIES_IN_PROMPT,
-    KNOWLEDGE_COLLECTION, TIMELINE_RECENT_COUNT, WORK_MEMORY_TOKEN_BUDGET,
+    TIMELINE_RECENT_COUNT, WORK_MEMORY_TOKEN_BUDGET,
     CHAT_HISTORY_PATH, CHAT_HISTORY_MAX_MEMORY, DEBUG_INCLUDE_PROMPT,
     STORE_FAILURES_PATH, BEHAVIOR_CHROMA_DIR, BEHAVIOR_COLLECTION,
     CONSOLIDATION_SHALLOW_INTERVAL, CONSOLIDATION_DEEP_INTERVAL,
@@ -74,7 +74,6 @@ from inverted_index import InvertedIndex             # noqa: E402
 from topic_affinity import TopicAffinity             # noqa: E402
 from temporal_pattern import TemporalPatternIndex    # noqa: E402
 from distill import DistillEngine                    # noqa: E402
-from knowledge_base import KnowledgeBase             # noqa: E402
 from app.analysis.predictor import BehaviorPredictor  # noqa: E402
 from app.analysis.pattern_discovery import PatternDiscovery  # noqa: E402
 from app.tools.atomic import atomic_write             # noqa: E402
@@ -199,12 +198,6 @@ class AppContext:
         if hasattr(self, 'deepseek_llm'):
             self.deepseek_llm.set_pattern_discovery(self._pattern_discovery)
 
-        self.kb = KnowledgeBase(
-            chroma_dir=f"{data_dir}/chroma",
-            collection_name=KNOWLEDGE_COLLECTION,
-            state_path=f"{data_dir}/knowledge_state.json",
-        )
-        self.knowledge_mode_enabled = _load_knowledge_mode(data_dir=data_dir)
         if not (IS_LITE and LITE_DISABLE_IMPULSE):
             from impulse import ImpulseScheduler
             self.impulse_scheduler = ImpulseScheduler(
@@ -736,28 +729,6 @@ class AppContext:
                 loop.run_until_complete(_impulse_httpx.aclose())
         except Exception:
             pass
-        try:
-            self.kb._index = None
-        except Exception:
-            pass
-
-
-# ── 知识库模式 ────────────────────────────────────────────────
-
-def _load_knowledge_mode(data_dir: str = DATA_DIR) -> bool:
-    """读取知识库模式开关。"""
-    path = os.path.join(data_dir, "knowledge_mode.json")
-    try:
-        with open(path) as f:
-            return json.load(f).get("enabled", False)
-    except Exception:
-        return False
-
-
-def _save_knowledge_mode(enabled: bool, data_dir: str = DATA_DIR):
-    """持久化知识库模式开关。"""
-    path = os.path.join(data_dir, "knowledge_mode.json")
-    atomic_write(path, {"enabled": enabled})
 
 
 # ── ctx_manager 导出 ──────────────────────────────────────────

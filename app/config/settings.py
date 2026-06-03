@@ -175,10 +175,6 @@ STORE_FAILURES_PATH = os.path.join(DATA_DIR, "store_failures.jsonl")
 DEBUG_INCLUDE_PROMPT = os.getenv("DEBUG_INCLUDE_PROMPT", "false").lower() == "true"
 
 # ============================================================
-# 知识库
-# ============================================================
-KNOWLEDGE_COLLECTION = "knowledge"
-
 # ============================================================
 # 后台空闲处理（替代原 DMN 命名）
 # ============================================================

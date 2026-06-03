@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-258%20passed-green.svg)]()
-[![MCP](https://img.shields.io/badge/MCP-10%20tools-orange.svg)]()
+[![MCP](https://img.shields.io/badge/MCP-9%20tools-orange.svg)]()
 [English](README_EN.md)
 
 👉 [快速安装](SETUP.md) | 🔧 [环境诊断](verify_env.py)
@@ -156,7 +156,6 @@ python verify_env.py                        # 一键诊断
 | **`get_personality_tags`** | source (user/ai) | 人格标签列表 |
 | **`get_topic_tree`** | — | 话题树结构 |
 | **`get_relationship`** | — | 熟悉度/信任度/亲密度/交互模式 |
-| **`search_knowledge`** | 查询文本 | 知识库检索 |
 | **`get_pattern_observations`** | — | 模式发现 + 自动调参记录 |
 
 ### `run_engine` 返回示例
@@ -249,7 +248,7 @@ app/
 │   └── model_fact/       # 事实域判断 (二分类，494KB)
 ├── config/        # 中央配置
 ├── models/        # Pydantic schemas
-└── knowledge/     # 知识库管理
+└── models/        # Pydantic schemas
 
 backend/           # 旧模块桥接层（逐步迁移至 app/）
 tests/             # 320+ 测试，5 层覆盖

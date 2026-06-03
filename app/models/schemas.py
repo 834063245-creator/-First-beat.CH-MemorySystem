@@ -169,8 +169,6 @@ class StoreTurnOutput(BaseModel):
     memory_id: str = ""
 
 
-class SearchKnowledgeOutput(BaseModel):
-    """MCP search_knowledge 返回结构。"""
-    schema_version: str = MCP_SCHEMA_VERSION
-    query: str = ""
-    results: list[dict] = Field(default_factory=list)
+
+
+

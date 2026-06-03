@@ -114,29 +114,6 @@ TOOLS: list[dict] = [
         },
     },
     {
-        "name": "search_knowledge",
-        "description": (
-            "从知识库中搜索相关文档片段。需要在知识库模式下才有效。"
-            " / Search the knowledge base for relevant document chunks. Requires knowledge mode to be enabled."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "搜索查询 / Search query"},
-                "top_k": {"type": "integer", "description": "最多返回条数，默认 5", "default": 5},
-            },
-            "required": ["query"],
-        },
-        "outputSchema": {
-            "type": "object",
-            "properties": {
-                "schema_version": _SCHEMA,
-                "query": {"type": "string"},
-                "results": {"type": "array"},
-            },
-        },
-    },
-    {
         "name": "get_memory_stats",
         "description": (
             "返回记忆库统计数据：总记忆数、热度分布（hot/warm/cool）、情绪分布（positive/negative/neutral/intimate）。"

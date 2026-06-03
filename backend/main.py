@@ -26,7 +26,8 @@ from models import ChatRequest, ChatResponse, DebugInfo, TraceItem, PromptBody, 
 
 
 from entity_extractor import extract_entities
-from knowledge_base import KnowledgeBase
+
+
 from llm import DeepSeekLLM, now_hint, parse_dsml_tool_calls, strip_dsml
 from local_embed import local_embed, local_embed_async, local_embed_batch
 from openai_adapter import parse_openai_messages, format_openai_chunk, format_openai_response
@@ -37,7 +38,7 @@ from workspace import read_file, list_files, grep_files
 from retrieval import CoOccurrenceTracker
 from app.memory.entity_pair import EntityPairTracker
 from metadata import build_memory_metadata
-from config import CHROMA_PERSIST_DIR, DATA_DIR, DEFAULT_TOP_K, MAX_MEMORIES_IN_PROMPT, KNOWLEDGE_COLLECTION
+from config import CHROMA_PERSIST_DIR, DATA_DIR, DEFAULT_TOP_K, MAX_MEMORIES_IN_PROMPT
 from config import TIMELINE_RECENT_COUNT, WORK_MEMORY_TOKEN_BUDGET, CHAT_HISTORY_PATH, CHAT_HISTORY_MAX_MEMORY, DEBUG_INCLUDE_PROMPT, STORE_FAILURES_PATH
 from config import BEHAVIOR_CHROMA_DIR, BEHAVIOR_COLLECTION
 from config import CONSOLIDATION_SHALLOW_INTERVAL, CONSOLIDATION_DEEP_INTERVAL
@@ -231,22 +232,6 @@ GLOB_TOOL = {
     },
 }
 
-# ------------------------------------------------------------
-# 知识库模式（前置定义，AppContext 初始化需要）
-# ------------------------------------------------------------
-def _load_knowledge_mode(data_dir: str = DATA_DIR) -> bool:
-    path = os.path.join(data_dir, "knowledge_mode.json")
-    try:
-        with open(path) as f:
-            return json.load(f).get("enabled", False)
-    except Exception:
-        return False
-
-
-def _save_knowledge_mode(enabled: bool, data_dir: str = DATA_DIR):
-    path = os.path.join(data_dir, "knowledge_mode.json")
-    atomic_write(path, {"enabled": enabled})
-
 
 # ------------------------------------------------------------
 # 应用上下文 — 所有服务实例的容器
@@ -327,12 +312,6 @@ class AppContext:
         self._pattern_discovery.load_cache()
         if hasattr(self, 'deepseek_llm'):
             self.deepseek_llm.set_pattern_discovery(self._pattern_discovery)
-        self.kb = KnowledgeBase(
-            chroma_dir=f"{data_dir}/chroma",
-            collection_name=KNOWLEDGE_COLLECTION,
-            state_path=f"{data_dir}/knowledge_state.json",
-        )
-        self.knowledge_mode_enabled = _load_knowledge_mode(data_dir=data_dir)
         if not (IS_LITE and LITE_DISABLE_IMPULSE):
             from impulse import ImpulseScheduler
             self.impulse_scheduler = ImpulseScheduler(state_path=f"{data_dir}/impulse_state.json",
@@ -1052,10 +1031,6 @@ async def memories_page():
 async def personalities_page():
     return FileResponse("personalities.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
-
-@app.get("/knowledge")
-async def knowledge_page():
-    return FileResponse("index.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 
 @app.get("/health")
@@ -1803,79 +1778,7 @@ def api_memories(
     return {"memories": items, "total": result["total"], "page": result["page"], "per_page": result["per_page"]}
 
 
-@app.get("/api/knowledge/list")
-def api_knowledge_list(
-    page: int = 1,
-    per_page: int = 20,
-    ctx: AppContext = Depends(get_user_context),
-):
-    """返回知识库条目列表。"""
-    return ctx.kb.list_entries(page=page, per_page=per_page)
 
-
-@app.post("/api/knowledge/import")
-async def api_knowledge_import(body: dict, ctx: AppContext = Depends(get_user_context)):
-    """导入文档到知识库（异步执行，防止卡住）。"""
-    path = body.get("path", "")
-    if not path:
-        return {"status": "error", "error": "path required"}
-    if not os.path.exists(path):
-        return {"status": "error", "error": f"路径不存在: {path}"}
-
-    def _do_import():
-        return ctx.kb.import_file(path, force=body.get("force", False))
-
-    try:
-        ids = await asyncio.wait_for(
-            asyncio.get_running_loop().run_in_executor(ctx.storage_executor, _do_import),
-            timeout=120,
-        )
-        return {"status": "ok", "count": len(ids)}
-    except asyncio.TimeoutError:
-        return {"status": "error", "error": "导入超时（>120秒），请检查文件大小或 Ollama 状态"}
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
-
-
-@app.get("/api/knowledge/mode")
-def api_knowledge_mode_get(ctx: AppContext = Depends(get_user_context)):
-    """获取知识库模式状态。"""
-    return {"enabled": ctx.knowledge_mode_enabled}
-
-
-@app.post("/api/knowledge/mode")
-def api_knowledge_mode_set(body: dict, ctx: AppContext = Depends(get_user_context)):
-    """设置知识库模式。"""
-    ctx.knowledge_mode_enabled = body.get("enabled", False)
-    _save_knowledge_mode(ctx.knowledge_mode_enabled, data_dir=ctx.data_dir)
-    return {"status": "ok", "enabled": ctx.knowledge_mode_enabled}
-
-
-@app.post("/api/knowledge/clean-orphans")
-def api_knowledge_clean(ctx: AppContext = Depends(get_user_context)):
-    """清理知识库中的孤立条目。"""
-    try:
-        deleted = ctx.kb.clean_orphans()
-        return {"status": "ok", "deleted": deleted}
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
-
-
-@app.get("/api/knowledge/{entry_id}")
-def api_knowledge_detail(entry_id: str, ctx: AppContext = Depends(get_user_context)):
-    """获取单条知识库条目详情。"""
-    detail = ctx.kb.get_detail(entry_id)
-    if detail is None:
-        raise HTTPException(status_code=404, detail="知识条目未找到")
-    return detail
-
-
-@app.delete("/api/knowledge/{entry_id}")
-def api_knowledge_delete(entry_id: str, ctx: AppContext = Depends(get_user_context)):
-    """删除单条知识库条目。"""
-    ok = ctx.kb.delete_entry(entry_id)
-    if not ok:
-        raise HTTPException(status_code=404, detail="删除失败或条目不存在")
     return {"status": "ok", "id": entry_id}
 
 

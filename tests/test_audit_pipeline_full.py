@@ -218,8 +218,6 @@ class _TestPipelineContext:
         self._topic_tree = None
         self.co_tracker = MagicMock()
         self.storage_executor = MagicMock()
-        self.knowledge_mode_enabled = False
-        self.kb = MagicMock()
         self.entity_pair_tracker = MagicMock()
 
     def __getattr__(self, name):
