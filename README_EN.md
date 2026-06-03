@@ -23,7 +23,7 @@ Doesn't generate text. Only does memory. First Beat is a standalone cognitive en
 | **Chinese README** | ❌ | ❌ | ❌ | **✅ Chinese + English** |
 | **Chinese docs** | ❌ | ❌ | ❌ | **✅ Bilingual** |
 | **Chinese tokenizer** | ❌ depends on English spaCy | ❌ none | ❌ none | **✅ ChuchuTok (Chinese char-level)** |
-| **Custom Chinese models** | ❌ all GPT-based | ❌ all LLM-based | ❌ none | **✅ 4 ChuchuCNN models, 500KB each** |
+| **Custom Chinese models** | ❌ all GPT-based | ❌ all LLM-based | ❌ none | **✅ 4 ChuchuCNN bilingual, 500KB each** |
 | **Offline capable** | ❌ requires API | ❌ requires API | ❌ requires LLM | **✅ Ollama optional, models run locally** |
 | Architecture | LLM extracts facts → stores in vector DB | LLM manages its own memory | State machine orchestrator | **Engine decides → LLM executes** |
 | Retrieval | Semantic + BM25 + entity | Semantic + self-editing | (not provided) | **8-path parallel + 2-stage rerank** |
