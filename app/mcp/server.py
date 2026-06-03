@@ -1,14 +1,6 @@
-"""MCP Server — JSON-RPC 协议实现，暴露 8 个只读记忆工具。
+"""MCP Server — JSON-RPC 协议实现，暴露 10 个记忆引擎工具。
 
-用法：
-    from app.mcp.server import router as mcp_router
-    app.include_router(mcp_router)
-
-端点：
-    POST /mcp/jsonrpc  — JSON-RPC 请求
-    GET  /mcp/sse      — SSE 流（可选）
-
-所有工具只读不写，不暴露内部 memory_id。
+返回结构均带 schema_version 字段，客户端可据此做兼容性校验。
 """
 
 import json
@@ -18,6 +10,7 @@ from collections import Counter
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Request
+from app.models.schemas import MCP_SCHEMA_VERSION
 
 from app.api.deps import AppContext, get_user_context
 from app.mcp.tools import TOOLS
@@ -36,7 +29,7 @@ async def _exec_query_memories(ctx: AppContext, args: dict) -> dict:
     top_k = min(args.get("top_k", 10), 20)
     emb = await asyncio.to_thread(local_embed, query)
     if not emb:
-        return {"memories": [], "error": "embedding 不可用"}
+        return {"schema_version": MCP_SCHEMA_VERSION, "memories": [], "error": "embedding 不可用"}
     _, _, _, memories = run_chat_retrieval(query, emb, ctx)
     items = []
     for m in memories[:top_k]:
@@ -48,7 +41,7 @@ async def _exec_query_memories(ctx: AppContext, args: dict) -> dict:
             "time": _rel_time(meta.get("timestamp", 0)),
             "emotion": meta.get("emotion_valence_bin", "") or meta.get("emotion_valence", ""),
         })
-    return {"memories": items, "total": len(items)}
+    return {"schema_version": MCP_SCHEMA_VERSION, "memories": items, "total": len(items)}
 
 
 async def _exec_recent_history(ctx: AppContext, args: dict) -> dict:
@@ -62,7 +55,7 @@ async def _exec_recent_history(ctx: AppContext, args: dict) -> dict:
         else:
             items.append({"role": "user", "content": u, "time": _ts_display(r.get("timestamp", ""))})
             items.append({"role": "assistant", "content": r.get("llm_reply", ""), "time": _ts_display(r.get("timestamp", ""))})
-    return {"items": items}
+    return {"schema_version": MCP_SCHEMA_VERSION, "items": items, "count": len(items)}
 
 
 async def _exec_personality_tags(ctx: AppContext, args: dict) -> dict:
@@ -76,14 +69,14 @@ async def _exec_personality_tags(ctx: AppContext, args: dict) -> dict:
             items = [{"content": t.get("content", ""), "hit_count": t.get("hit_count", 0) or 0} for t in tags]
         except Exception:
             pass
-    return {"tags": items}
+    return {"schema_version": MCP_SCHEMA_VERSION, "tags": items}
 
 
 async def _exec_topic_tree(ctx: AppContext, args: dict) -> dict:
     tree = ctx.topic_tree  # 使用公开属性而非 _topic_tree
     if tree is None:
-        return {"tree": None, "note": "话题树尚未构建"}
-    return {"tree": tree._tree if hasattr(tree, "_tree") else None}
+        return {"schema_version": MCP_SCHEMA_VERSION, "tree": None, "note": "话题树尚未构建"}
+    return {"schema_version": MCP_SCHEMA_VERSION, "tree": tree._tree if hasattr(tree, "_tree") else None}
 
 
 async def _exec_relationship(ctx: AppContext, args: dict) -> dict:
@@ -123,12 +116,14 @@ async def _exec_relationship(ctx: AppContext, args: dict) -> dict:
                 else:
                     interaction_mode = "casual"
                 return {
+                    "schema_version": MCP_SCHEMA_VERSION,
                     "familiarity": round(familiarity, 3),
                     "trust": round(trust, 3),
                     "closeness": round(closeness, 3),
                     "interaction_mode": interaction_mode,
                 }
         return {
+            "schema_version": MCP_SCHEMA_VERSION,
             "familiarity": 0.0,
             "trust": 0.5,
             "closeness": 0.0,
@@ -138,6 +133,7 @@ async def _exec_relationship(ctx: AppContext, args: dict) -> dict:
     except Exception:
         logger.exception("计算关系维度失败")
         return {
+            "schema_version": MCP_SCHEMA_VERSION,
             "familiarity": 0.0,
             "trust": 0.5,
             "closeness": 0.0,
@@ -150,16 +146,16 @@ async def _exec_search_knowledge(ctx: AppContext, args: dict) -> dict:
     query = args["query"]
     top_k = min(args.get("top_k", 5), 10)
     if not ctx.knowledge_mode_enabled:
-        return {"results": [], "note": "知识库模式未启用"}
+        return {"schema_version": MCP_SCHEMA_VERSION, "results": [], "note": "知识库模式未启用"}
     if not ctx.kb:
-        return {"results": [], "note": "知识库未初始化"}
+        return {"schema_version": MCP_SCHEMA_VERSION, "results": [], "note": "知识库未初始化"}
     try:
         results = ctx.kb.search(query, top_k=top_k)
         items = [{"content": r.get("text", "")[:300], "source": r.get("source", ""), "relevance": round(r.get("score", 0) or 0, 3)} for r in results]
-        return {"results": items}
+        return {"schema_version": MCP_SCHEMA_VERSION, "results": items}
     except Exception:
         logger.exception("知识库检索失败")
-        return {"results": [], "note": "知识库检索暂时不可用"}
+        return {"schema_version": MCP_SCHEMA_VERSION, "results": [], "note": "知识库检索暂时不可用"}
 
 
 async def _exec_memory_stats(ctx: AppContext, args: dict) -> dict:
@@ -172,12 +168,13 @@ async def _exec_memory_stats(ctx: AppContext, args: dict) -> dict:
             heat[meta.get("heat", "warm")] += 1
             emotion[meta.get("emotion_valence_bin", "neutral") or "neutral"] += 1
         return {
+            "schema_version": MCP_SCHEMA_VERSION,
             "total_memories": len(all_mems),
             "heat_distribution": dict(heat),
             "emotion_distribution": dict(emotion),
         }
     except Exception:
-        return {"error": "统计失败"}
+        return {"schema_version": MCP_SCHEMA_VERSION, "error": "统计失败"}
 
 
 async def _exec_pattern_observations(ctx: AppContext, args: dict) -> dict:
@@ -185,14 +182,15 @@ async def _exec_pattern_observations(ctx: AppContext, args: dict) -> dict:
     if pd is None and hasattr(ctx, "deepseek_llm"):
         pd = getattr(ctx.deepseek_llm, "_pattern_discovery", None)
     if pd is None:
-        return {"observations": [], "tuning": {}, "note": "模式发现未初始化"}
+        return {"schema_version": MCP_SCHEMA_VERSION, "observations": [], "tuning": {}, "note": "模式发现未初始化"}
     try:
         return {
+            "schema_version": MCP_SCHEMA_VERSION,
             "observations": pd.get_observations(),
             "tuning": pd.get_tuning(),
         }
     except Exception:
-        return {"observations": [], "tuning": {}}
+        return {"schema_version": MCP_SCHEMA_VERSION, "observations": [], "tuning": {}}
 
 
 async def _exec_store_turn(ctx: AppContext, args: dict) -> dict:
@@ -217,7 +215,7 @@ async def _exec_store_turn(ctx: AppContext, args: dict) -> dict:
         user_message, ai_message, timestamp,
     )
     logger.info("store_turn 已提交入库: %s → %s", user_message[:40], ai_message[:40])
-    return {"ok": True, "timestamp": timestamp}
+    return {"schema_version": MCP_SCHEMA_VERSION, "ok": True, "timestamp": timestamp}
 
 
 async def _exec_run_engine(ctx: AppContext, args: dict) -> dict:
@@ -346,6 +344,7 @@ async def _exec_run_engine(ctx: AppContext, args: dict) -> dict:
         memories_parsed = []
 
     return {
+        "schema_version": MCP_SCHEMA_VERSION,
         "execute": execute,
         "personality": {"user": user_tags, "ai": ai_tags},
         "memories": memories_parsed,
