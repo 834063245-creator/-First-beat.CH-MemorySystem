@@ -56,29 +56,6 @@
 
 ---
 
-### 接入外部知识库/图谱
-
-初痕没有知识库，没有知识图谱。如果需要，接外部系统。
-
-`run_engine` 的 `external_context` 参数负责这件事：
-
-```json
-// 调 run_engine 时传:
-{
-  "message": "用户说了什么",
-  "external_context": [
-    {"source": "obsidian", "title": "架构方案.md", "content": "..."},
-    {"source": "neo4j", "entities": [...]}
-  ]
-}
-
-// 返回里原样带回，Agent 自己合并
-```
-
-可接入的外部系统：Obsidian、Neo4j、Cognee、Mem0 等。
-
----
-
 ### 为什么没有 LongMemEval / LoCoMo 跑分
 
 你可能注意到 Mem0 等系统会晒 LongMemEval、LoCoMo 等 benchmark 分数。初痕没有，原因很简单：
@@ -235,6 +212,27 @@ curl -X POST http://localhost:8082/mcp/jsonrpc \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"get_memory_stats","arguments":{}},"id":"1"}'
 ```
+
+### 接入外部知识库/图谱
+
+初痕没有知识库，没有知识图谱。如果需要，接外部系统。
+
+`run_engine` 的 `external_context` 参数负责这件事：
+
+```json
+// 调 run_engine 时传:
+{
+  "message": "用户说了什么",
+  "external_context": [
+    {"source": "obsidian", "title": "架构方案.md", "content": "..."},
+    {"source": "neo4j", "entities": [...]}
+  ]
+}
+
+// 返回里原样带回，Agent 自己合并
+```
+
+可接入的外部系统：Obsidian、Neo4j、Cognee、Mem0 等。
 
 ---
 
