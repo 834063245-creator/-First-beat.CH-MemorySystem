@@ -56,24 +56,6 @@ One sentence: other memory systems are passive tools for the LLM. First Beat is 
 
 ---
 
-### Connecting external knowledge bases / graphs
-
-First Beat has no built-in knowledge base or graph. Connect external systems instead.
-
-Pass results through `run_engine`'s `external_context`:
-
-```json
-{
-  "message": "user message",
-  "external_context": [
-    {"source": "obsidian", "title": "architecture.md", "content": "..."},
-    {"source": "neo4j", "entities": [...]}
-  ]
-}
-```
-
-Compatible with: Obsidian, Neo4j, Cognee, Mem0, etc.
-
 ---
 
 
@@ -234,6 +216,24 @@ curl -X POST http://localhost:8082/mcp/jsonrpc \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"get_memory_stats","arguments":{}},"id":"1"}'
 ```
+
+### Connecting external knowledge bases / graphs
+
+First Beat has no built-in knowledge base or graph. Connect external systems instead.
+
+Pass results through `run_engine`'s `external_context`:
+
+```json
+{
+  "message": "user message",
+  "external_context": [
+    {"source": "obsidian", "title": "architecture.md", "content": "..."},
+    {"source": "neo4j", "entities": [...]}
+  ]
+}
+```
+
+Compatible with: Obsidian, Neo4j, Cognee, Mem0, etc.
 
 ---
 
