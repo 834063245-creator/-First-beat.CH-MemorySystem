@@ -111,7 +111,7 @@ core_deps = {
     "chromadb": ("向量数据库", "pip install chromadb"),
     "httpx": ("HTTP 客户端", "pip install httpx"),
     "numpy": ("数值计算", "pip install numpy"),
-    "jieba": ("中文分词", "pip install jieba"),
+    "jieba": ("中文分词 (降级兜底)", "pip install jieba"),
 }
 for pkg, (desc, install_cmd) in core_deps.items():
     try:

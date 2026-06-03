@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-320%20passed-green.svg)]()
+[![Tests](https://img.shields.io/badge/tests-258%20passed-green.svg)]()
 [![MCP](https://img.shields.io/badge/MCP-10%20tools-orange.svg)]()
 [中文文档](README.md)
 
@@ -23,7 +23,7 @@ Doesn't generate text. Only does memory. First Beat is a standalone cognitive en
 | **Chinese README** | ❌ | ❌ | ❌ | **✅ Chinese + English** |
 | **Chinese docs** | ❌ | ❌ | ❌ | **✅ Bilingual** |
 | **Chinese tokenizer** | ❌ depends on English spaCy | ❌ none | ❌ none | **✅ ChuchuTok (Chinese char-level)** |
-| **Custom Chinese models** | ❌ all GPT-based | ❌ all LLM-based | ❌ none | **✅ 4 ChuchuCNN bilingual, 500KB each** |
+| **Custom Chinese models** | ❌ all GPT-based | ❌ all LLM-based | ❌ none | **✅ 6 ChuchuCNN bilingual, 500KB each** |
 | **Offline capable** | ❌ requires API | ❌ requires API | ❌ requires LLM | **✅ Ollama optional, models run locally** |
 | Architecture | LLM extracts facts → stores in vector DB | LLM manages its own memory | State machine orchestrator | **Engine decides → LLM executes** |
 | Retrieval | Semantic + BM25 + entity | Semantic + self-editing | (not provided) | **8-path parallel + 2-stage rerank** |
@@ -32,10 +32,11 @@ Doesn't generate text. Only does memory. First Beat is a standalone cognitive en
 | Emotion analysis | ❌ | ❌ | ❌ | **Russell 2D circumplex + ChuchuCNN** |
 | Pattern discovery | ❌ | ❌ | ❌ | **Multi-timescale + auto-tuning** |
 | Background consolidation | ❌ | ❌ | ❌ | **4h/24h dual-cycle + distillation** |
+| Fact-level temporal reasoning | ❌ | ❌ | ❌ | **✅ Dual-path contradiction detection (emotion flip + semantic shift)** |
 | MCP protocol | ❌ | ❌ | ❌ | **✅ Native MCP Server** |
 | Deployment | Cloud / self-host | Managed API | Python library | **pip install → python run.py** |
 | Zero API key start | ❌ | ❌ | ❌ | **✅ Clone and run** |
-| Custom models (not LLM) | ❌ | ❌ | ❌ | **✅ 4 classifiers, 2MB total** |
+| Custom models (not LLM) | ❌ | ❌ | ❌ | **✅ 6 classifiers, 3.5MB total** |
 
 One sentence: other memory systems are passive tools for the LLM. First Beat is **an independent organ with its own heartbeat**. The engine runs consolidation, distillation, and impulse generation in the background — it doesn't wait for user input.
 
@@ -229,7 +230,9 @@ app/
 │   ├── model_intent/     # Intent classification (7 classes, 500KB)
 │   ├── model_emotion/    # Emotion classification (5 classes, 500KB)
 │   ├── model_urgency/    # Urgency 3-class (500KB)
-│   └── model_negation/   # Negation detection (500KB)
+│   ├── model_negation/   # Negation detection (500KB)
+│   ├── model_topic/      # Topic classification (50-class, 567KB)
+│   └── model_fact/       # Fact domain binary classifier (494KB)
 ├── config/        # Central config
 ├── models/        # Pydantic schemas
 └── knowledge/     # Knowledge base management

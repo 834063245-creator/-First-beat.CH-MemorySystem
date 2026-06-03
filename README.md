@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-320%20passed-green.svg)]()
+[![Tests](https://img.shields.io/badge/tests-258%20passed-green.svg)]()
 [![MCP](https://img.shields.io/badge/MCP-10%20tools-orange.svg)]()
 [English](README_EN.md)
 
@@ -23,7 +23,7 @@
 | **中文文档** | ❌ | ❌ | ❌ | **✅ 中英双语** |
 | **中文 README** | ❌ | ❌ | ❌ | **✅ 中英双版** |
 | **中文分词/Tokenizer** | ❌ 依赖英文 spaCy | ❌ 无原生分词 | ❌ 无 | **✅ 汉字级 ChuchuTok** |
-| **自有中文小模型** | ❌ 全调 GPT | ❌ 全调 LLM | ❌ 无 | **✅ 4 个 ChuchuCNN 中英双语, 500KB/个** |
+| **自有中文小模型** | ❌ 全调 GPT | ❌ 全调 LLM | ❌ 无 | **✅ 6 个 ChuchuCNN 中英双语, 500KB/个** |
 | **离线可用** | ❌ 必须调 API | ❌ 必须调 API | ❌ 必须调 LLM | **✅ Ollama 可选，模型本地跑** |
 | **架构** | LLM 提取事实 → 存向量库 | LLM 管理自身记忆 | 状态机编排 | **引擎决策 → LLM 执行** |
 | **记忆检索** | 语义 + BM25 + 实体 | 语义 + 自编辑窗口 | (框架不提供) | **8 路并行检索 + 两级精排** |
@@ -32,10 +32,11 @@
 | **情绪分析** | ❌ | ❌ | ❌ | **Russell 二维情绪环 + ChuchuCNN** |
 | **模式发现** | ❌ | ❌ | ❌ | **多时间尺度模式 + 自动调参** |
 | **后台巩固** | ❌ | ❌ | ❌ | **4h/24h 双周期 + 蒸馏** |
+| **事实时序推理** | ❌ | ❌ | ❌ | **✅ 双路径冲突检测 (情绪翻转 + 语义位移)** |
 | **MCP 协议** | ❌ | ❌ | ❌ | **✅ 原生 MCP Server** |
 | **部署方式** | 托管服务 / 自建 | 托管 API | Python 库 | **pip install → python run.py** |
 | **零 API Key 启动** | ❌ | ❌ | ❌ | **✅ Clone 即跑** |
-| **自研模型 (非调 LLM)** | ❌ | ❌ | ❌ | **✅ 4 分类器，2MB 总大小** |
+| **自研模型 (非调 LLM)** | ❌ | ❌ | ❌ | **✅ 6 分类器，3.5MB 总大小** |
 
 核心差异就一句话：别人的记忆系统是 LLM 的被动工具，初痕是**有自己节律的独立器官**。引擎在后台自己跑巩固、蒸馏、冲动，不需要等用户发消息。
 
@@ -225,11 +226,13 @@ app/
 ├── llm/           # 本地 embedding (bge-m3) + DeepSeek/本地 LLM
 ├── api/           # REST 管理端点
 ├── tools/         # 原子写入 · 工具分发
-├── brain/         # ChuchuCNN 自研字符级 CNN 模型
+├── brain/         # 6 个 ChuchuCNN 自研字符级 CNN (共 3.5MB)
 │   ├── model_intent/     # 意图分类 (7类，500KB)
 │   ├── model_emotion/    # 情绪分类 (5类，500KB)
 │   ├── model_urgency/    # 紧急度三分类 (500KB)
-│   └── model_negation/   # 否定检测二分类 (500KB)
+│   ├── model_negation/   # 否定检测二分类 (500KB)
+│   ├── model_topic/      # 话题分类 (50类，567KB)
+│   └── model_fact/       # 事实域判断 (二分类，494KB)
 ├── config/        # 中央配置
 ├── models/        # Pydantic schemas
 └── knowledge/     # 知识库管理

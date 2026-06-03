@@ -253,6 +253,52 @@ class ChromaService:
                         )
 
     # ------------------------------------------------------------------
+    # 事实时序：取代标记
+    # ------------------------------------------------------------------
+
+    def supersede_memory(self, old_id: str, new_id: str, reason: str = ""):
+        """标记旧记忆被新记忆取代（事实冲突/更新）。
+
+        stale=True, superseded_by=new_id, 附加理由和时间。
+        """
+        from datetime import datetime as _dt
+        with self._lock:
+            self._write_collection.update(
+                ids=[old_id],
+                metadatas=[{
+                    "stale": True,
+                    "superseded_by": new_id,
+                    "supersede_reason": reason,
+                    "superseded_at": _dt.now().isoformat(),
+                }],
+            )
+        logger.info(
+            "事实取代: %s → %s reason=%s",
+            old_id[:8], new_id[:8], reason[:60] if reason else "-",
+        )
+
+    def get_memories_by_timerange(
+        self, since_ts: float = 0, until_ts: float | None = None, limit: int = 200,
+    ) -> list[dict]:
+        """按时间范围获取记忆列表（含 metadata），用于巩固分析。
+
+        since_ts: 起始时间戳（含）
+        until_ts: 结束时间戳（含），None 表示不设上限
+        """
+        all_items = self.list_all()
+        result = []
+        for m in all_items:
+            ts = (m.get("metadata") or {}).get("timestamp", 0)
+            if ts < since_ts:
+                continue
+            if until_ts is not None and ts > until_ts:
+                continue
+            result.append(m)
+            if len(result) >= limit:
+                break
+        return result
+
+    # ------------------------------------------------------------------
     # 记忆管理（列表 / 详情 / 删除 / 统计）
     # ------------------------------------------------------------------
 
