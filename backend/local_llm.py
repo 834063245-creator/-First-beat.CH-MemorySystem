@@ -1,20 +1,5 @@
-"""本地 LLM 已移除 — 开源版不包含文本生成。"""
-import logging
+"""[SHIM] 本地 LLM — 桥接到 app/llm/local.py。
 
-logger = logging.getLogger(__name__)
-
-
-class LocalLLM:
-    def __init__(self, *args, **kwargs):
-        pass
-
-    def summarize(self, text: str) -> str:
-        logger.debug("local_llm.summarize 不可用（开源版），返回截断摘要")
-        return text[:50] + "..." if len(text) > 50 else text
-
-
-# 兼容旧函数式调用
-def summarize(text: str) -> str:
-    logger.debug("local_llm.summarize 不可用（开源版），返回截断摘要")
-    return text[:50] + "..." if len(text) > 50 else text
-
+开源版的 summarize() 尝试调 DeepSeek API 生成摘要，不可用时回退到关键词提取。
+"""
+from app.llm.local import LocalLLM  # noqa: F401

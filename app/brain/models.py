@@ -19,8 +19,8 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Ollama 客户端（简单 requests 封装，零额外依赖）
-import requests as _requests
+# Ollama 客户端（httpx 同步，与项目其余部分一致）
+import httpx as _httpx
 
 # ChuchuCNN 自研模型
 from app.brain.chuchu_model import ChuchuCNN
@@ -31,18 +31,18 @@ from app.brain.chuchu_tok import ChuchuTok
 def _ollama_chat(model: str, prompt: str, ollama_url: str = "http://localhost:11434",
                  timeout: int = 30) -> str:
     """调用 Ollama chat API，返回模型回复文本。
-    NOTE: 同步阻塞，调用方必须在线程池中执行（circuit.py 已通过 run_in_executor 处理）。
+    使用 httpx 同步客户端，与项目其余 HTTP 调用保持一致。
     """
-    resp = _requests.post(
-        f"{ollama_url}/api/chat",
-        json={
-            "model": model,
-            "messages": [{"role": "user", "content": prompt}],
-            "stream": False,
-            "options": {"temperature": 0.1, "num_predict": 256},
-        },
-        timeout=timeout,
-    )
+    with _httpx.Client(timeout=_httpx.Timeout(timeout)) as client:
+        resp = client.post(
+            f"{ollama_url}/api/chat",
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+                "options": {"temperature": 0.1, "num_predict": 256},
+            },
+        )
     resp.raise_for_status()
     return resp.json()["message"]["content"]
 
@@ -184,7 +184,8 @@ class IntentClassifier:
         if self.model_name is None:
             return False
         try:
-            resp = _requests.get(f"{self.ollama_url}/api/tags", timeout=5)
+            with _httpx.Client(timeout=_httpx.Timeout(5)) as _cli:
+                resp = _cli.get(f"{self.ollama_url}/api/tags")
             if resp.status_code == 200:
                 models = [m["name"] for m in resp.json().get("models", [])]
                 if self.model_name in models or any(
@@ -353,7 +354,8 @@ class EmotionAnalyzer:
         if self.model_name is None:
             return False
         try:
-            resp = _requests.get(f"{self.ollama_url}/api/tags", timeout=5)
+            with _httpx.Client(timeout=_httpx.Timeout(5)) as _cli:
+                resp = _cli.get(f"{self.ollama_url}/api/tags")
             if resp.status_code == 200:
                 models = [m["name"] for m in resp.json().get("models", [])]
                 if self.model_name in models or any(

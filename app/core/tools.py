@@ -179,19 +179,19 @@ async def handle_tool_call(tc: dict, extra_msgs: list, ctx: AppContext, *,
         extra_msgs.append({"role": "tool", "tool_call_id": tc["id"], "content": search_text})
 
     elif name == "read_file":
-        from backend.workspace import read_file
+        from app.tools.workspace import read_file
         file_content = read_file(args.get("path", ""))
         extra_msgs.append(asst_msg)
         extra_msgs.append({"role": "tool", "tool_call_id": tc["id"], "content": file_content})
 
     elif name == "list_files":
-        from backend.workspace import list_files
+        from app.tools.workspace import list_files
         listing = list_files(args.get("pattern", ""))
         extra_msgs.append(asst_msg)
         extra_msgs.append({"role": "tool", "tool_call_id": tc["id"], "content": listing})
 
     elif name == "grep_files":
-        from backend.workspace import grep_files
+        from app.tools.workspace import grep_files
         matched = grep_files(args.get("pattern", ""), args.get("glob_pattern", "**/*.py"))
         extra_msgs.append(asst_msg)
         extra_msgs.append({"role": "tool", "tool_call_id": tc["id"], "content": matched})

@@ -545,4 +545,12 @@ class ChromaService:
     def _get_embedding_cached(self, memory_id: str) -> list | None:
         return self._emb_cache.get(memory_id)
 
+    def close(self):
+        """释放 ChromaDB PersistentClient 资源。"""
+        # ChromaDB PersistentClient 没有显式 close()，
+        # 但删除引用可以让 GC 回收 SQLite 连接。
+        self._read_client = None
+        self._write_client = None
+        self._read_collection = None
+        self._write_collection = None
 
