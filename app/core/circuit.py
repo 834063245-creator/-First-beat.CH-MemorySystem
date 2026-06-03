@@ -22,7 +22,7 @@ _CHUCHEN_BRAIN = None
 _CHUCHEN_BRAIN_LOADED = False
 
 def get_brain() -> Optional[object]:
-    """获取 ChuchenBrain 实例（惰性初始化，失败返回 None）。"""
+    """获取 ChuchenBrain 实例（ChuchuCNN > Ollama > 规则，失败返回 None）。"""
     global _CHUCHEN_BRAIN, _CHUCHEN_BRAIN_LOADED
     if _CHUCHEN_BRAIN_LOADED:
         return _CHUCHEN_BRAIN
@@ -201,35 +201,57 @@ def analyze_user_message(user_message: str, chat_history=None,
                          brain: Optional[object] = None) -> UserMessageAnalysis:
     """分析用户消息的意图和情绪。
 
-    决策优先级：模型 > embedding > keyword
-      - brain 参数传入时：先走小模型（qwen2.5:3b），失败自动回退
-      - 无 brain 时：保持原有双路策略不变
+    决策优先级：ChuchuCNN(字符CNN) > Ollama > 关键词规则
+    - brain 参数传入时：先走小模型，intent 和 emotion 独立控制置信度
+    - 模型结果中任一字段置信度不足时，该字段降级到关键词兜底
+    - 模型完全不可用时（brain=None/异常），走原有 keyword+embedding 双路
     """
     if not user_message:
         return UserMessageAnalysis(intent="casual", emotion="neutral")
 
     text = user_message.strip()
+    urgency = _compute_urgency(text)
+    topics = _extract_topics(text)
+    emotion_intensity = _compute_emotion_intensity(text)
 
-    # ── 小模型路径（新增） ────────────────────────────────
+    # ── 模型路径（ChuchuCNN > Ollama > 规则，自带降级） ─────────
+    model_intent = None
+    model_emotion = None
     if brain is not None:
         try:
             model_intent = brain.classify_intent(text)
             model_emotion = brain.analyze_emotion(text)
-            if (model_intent.source == "model"
-                    and model_intent.confidence >= 0.6):
-                urgency = _compute_urgency(text)
-                topics = _extract_topics(text)
-                emotion_intensity = model_emotion.intensity
-                return UserMessageAnalysis(
-                    intent=model_intent.intent, emotion=model_emotion.primary,
-                    urgency=urgency, topics=topics, raw_text=text,
-                    confidence=model_intent.confidence,
-                    emotion_intensity=emotion_intensity,
-                )
         except Exception:
-            pass  # 模型失败 → 继续走原有逻辑
+            pass  # 模型异常 → 走原有逻辑
 
-    # ── keyword 路径 ──────────────────────────────────────
+    if model_intent is not None and model_intent.source == "model":
+        # ── 独立置信度检查：各字段各自决策 ──
+        intent_ok = model_intent.confidence >= 0.6
+        emotion_ok = (model_emotion is not None
+                      and model_emotion.source == "model"
+                      and model_emotion.confidence >= 0.5)
+
+        if intent_ok or emotion_ok:
+            final_intent = model_intent.intent if intent_ok else _keyword_intent(text)
+            final_emotion = model_emotion.primary if emotion_ok else _keyword_emotion(text)
+            final_confidence = model_intent.confidence if intent_ok else 0.4
+
+            # 情绪否定检测
+            if final_emotion != "neutral":
+                target_words = _EMOTION_WORDS.get(final_emotion, [])
+                if _detect_negation(text, target_words):
+                    final_emotion = "neutral"
+            if _has_explicit_negation(text) and final_emotion != "neutral":
+                final_emotion = "neutral"
+
+            return UserMessageAnalysis(
+                intent=final_intent, emotion=final_emotion,
+                urgency=urgency, topics=topics, raw_text=text,
+                confidence=final_confidence,
+                emotion_intensity=emotion_intensity,
+            )
+
+    # ── 原有 keyword + embedding 双路（完整兜底） ──────────
     kw_intent = _keyword_intent(text)
     kw_emotion = _keyword_emotion(text)
     if kw_emotion != "neutral":
