@@ -59,6 +59,10 @@ None of these can be measured by a "ask a fact, answer a fact" benchmark.
 
 More directly: if First Beat's goal were to score high on LongMemEval, I could write a specialized retriever for that task. But then it wouldn't be First Beat — it would just be another vector database, not the "get to know you" engine I set out to build.
 
+In fact, I already did. An early experiment called **Jarvis** (still sitting on my D drive) used SQLite + FAISS vector search + LLM fact extraction — cold injection, fact recall, knowledge graphs. It would score decently on benchmarks. But it was fundamentally "store and retrieve," with no autonomous rhythm, no personality modeling, no impulse system. It had a good memory, but it didn't know you.
+
+First Beat was built from scratch after rejecting that entire approach.
+
 **If you're interested in helping with benchmarks, you're very welcome.** The engine exposes a standard MCP interface — any evaluation tool can call it directly. Open an issue or PR and I'll help however I can. Thank you.
 
 > The repo also includes an audit suite (`scripts/audit.py`) I built for my own use — it covers 8 categories of regression tests (semantic retrieval, keyword search, temporal, ranking, etc.). It's not an industry-standard benchmark like LongMemEval, but it provides comprehensive functional verification of the entire system. Feel free to use it as a reference.
