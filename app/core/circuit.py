@@ -134,14 +134,21 @@ def _get_proto_embeddings() -> dict[str, list[float]]:
         return _PROTO_EMBEDDINGS
 
 
-def _detect_negation(text: str, emotion_words: list[str]) -> bool:
-    """检测情感词前是否出现否定词。"""
+def _detect_negation(text: str, emotion_words: list[str], brain=None) -> bool:
+    """检测情感词前是否出现否定词。
+
+    模型优先（ChuchuCNN），规则兜底。
+    """
+    if brain is not None:
+        try:
+            return brain.detect_negation(text)
+        except Exception:
+            pass
     import re
     for ew in emotion_words:
         idx = text.find(ew)
         if idx < 0:
             continue
-        # 取情感词前最多 6 个字符
         before = text[max(0, idx - 6):idx]
         for neg in _NEGATION_WORDS:
             if neg in before:
@@ -217,10 +224,8 @@ def analyze_user_message(user_message: str, chat_history=None,
             # 情绪否定检测
             if final_emotion != "neutral":
                 target_words = _EMOTION_WORDS.get(final_emotion, [])
-                if _detect_negation(text, target_words):
+                if _detect_negation(text, target_words, brain=brain):
                     final_emotion = "neutral"
-            if _has_explicit_negation(text) and final_emotion != "neutral":
-                final_emotion = "neutral"
 
             return UserMessageAnalysis(
                 intent=final_intent, emotion=final_emotion,
@@ -234,7 +239,7 @@ def analyze_user_message(user_message: str, chat_history=None,
     kw_emotion = _keyword_emotion(text)
     if kw_emotion != "neutral":
         target_words = _EMOTION_WORDS.get(kw_emotion, [])
-        if _detect_negation(text, target_words):
+        if _detect_negation(text, target_words, brain=brain):
             kw_emotion = "neutral"
 
     kw_confidence = 0.3
@@ -277,7 +282,7 @@ def analyze_user_message(user_message: str, chat_history=None,
         final_emotion = kw_emotion if kw_emotion != "neutral" else _keyword_emotion(text)
         if final_emotion != "neutral":
             target_words = _EMOTION_WORDS.get(final_emotion, [])
-            if _detect_negation(text, target_words):
+            if _detect_negation(text, target_words, brain=brain):
                 final_emotion = "neutral"
         if _has_explicit_negation(text) and final_emotion != "neutral":
             final_emotion = "neutral"

@@ -528,6 +528,85 @@ def _rule_urgency(text: str) -> float:
 
 
 
+
+class NegationClassifier:
+    """否定检测二分类 — ChuchuCNN + 规则兜底。
+
+    判断文本是否包含真正否定语义。
+    "不太开心"含"不"但不是否定 → not_negated
+    "我不开心"含"不"且确实否定 → negated
+    """
+
+    MODEL_PATH = os.path.join(os.path.dirname(__file__), "model_negation", "chuchu_cnn.pt")
+    TOK_PATH = os.path.join(os.path.dirname(__file__), "chuchu_tok.json")
+
+    _NEGATION_WORDS = {"不", "没", "别", "不要", "没有", "不用", "不会", "不是"}
+
+    def __init__(self):
+        self._chuchu_ok = False
+        self._model = None
+        self._tok = None
+        self._id2label = None
+
+    def _load_local(self) -> bool:
+        if self._chuchu_ok and self._model is not None:
+            return True
+        if not os.path.exists(self.MODEL_PATH):
+            logger.info("Negation 模型不存在: %s", self.MODEL_PATH)
+            return False
+        try:
+            import torch
+            ckpt = torch.load(self.MODEL_PATH, map_location="cpu", weights_only=False)
+            from app.brain.chuchu_tok import ChuchuTok
+            from app.brain.chuchu_model import ChuchuCNN
+            self._tok = ChuchuTok.load(self.TOK_PATH)
+            self._model = ChuchuCNN(vocab_size=ckpt["vocab_size"], num_classes=ckpt["num_classes"])
+            self._model.load_state_dict(ckpt["model_state_dict"])
+            self._model.eval()
+            self._id2label = {str(k): v for k, v in ckpt["id2label"].items()}
+            self._chuchu_ok = True
+            logger.info("Negation ChuchuCNN 加载成功 (%s)", self.MODEL_PATH)
+            return True
+        except Exception as exc:
+            logger.warning("Negation ChuchuCNN 加载失败: %s", exc)
+            self._model = None
+            self._tok = None
+            return False
+
+    def load(self) -> bool:
+        if self._chuchu_ok:
+            return True
+        return self._load_local()
+
+    def predict(self, text: str) -> bool:
+        """返回 True=negated（有否定），False=not_negated（无否定）。"""
+        import torch
+        if self._chuchu_ok:
+            try:
+                ids = self._tok.encode(text)
+                x = torch.tensor([ids], dtype=torch.long)
+                with torch.no_grad():
+                    logits = self._model(x)
+                    probs = torch.nn.functional.softmax(logits, dim=-1)
+                    confidence, idx = probs.max(dim=-1)
+                label = self._id2label[str(idx.item())]
+                if confidence.item() >= 0.6:
+                    return label == "negated"
+            except Exception:
+                pass
+        # 规则兜底：检查否定词是否出现在文本中
+        for neg in self._NEGATION_WORDS:
+            if neg in text:
+                return True
+        return False
+
+    def close(self):
+        self._model = None
+        self._tok = None
+        self._chuchu_ok = False
+
+
+
 class ChuchenBrain:
     """初痕智能引擎 — 统一管三个模型的加载和调用。"""
 
@@ -541,6 +620,7 @@ class ChuchenBrain:
         self.gate_maker = GateDecisionMaker(model_name=model_name,
                                              ollama_url=ollama_url)
         self.urgency_classifier = UrgencyClassifier()
+        self.negation_classifier = NegationClassifier()
 
     def load_all(self) -> dict[str, bool]:
         return {
@@ -548,6 +628,7 @@ class ChuchenBrain:
             "emotion": self.emotion_analyzer.load(),
             "gate": self.gate_maker.load(),
             "urgency": self.urgency_classifier.load(),
+            "negation": self.negation_classifier.load(),
         }
 
     def classify_intent(self, text: str) -> IntentResult:
@@ -558,3 +639,6 @@ class ChuchenBrain:
 
     def classify_urgency(self, text: str) -> float:
         return self.urgency_classifier.predict(text)
+
+    def detect_negation(self, text: str) -> bool:
+        return self.negation_classifier.predict(text)

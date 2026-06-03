@@ -386,6 +386,109 @@ def generate_urgency_data(samples_per_class: int = 500) -> list[tuple[str, str]]
         print(f"  {label}: {count}")
     return data
 
+
+
+def generate_negation_data(samples_per_class: int = 400) -> list[tuple[str, str]]:
+    """生成否定检测训练数据：not_negated / negated 二分类。"""
+    data = []
+
+    # ── not_negated ──
+    not_negated = [
+        # 无否定词
+        "你好", "今天天气不错", "太开心了", "好难过", "烦死了",
+        "帮我写代码", "什么是Python", "还记得上次吗", "你是谁",
+        "谢谢", "晚安", "好的", "嗯嗯", "早上好", "哈哈",
+        "今天天气真好", "吃了吗", "随便聊聊", "好的谢谢",
+        "帮我查一下天气", "请问这个怎么用", "你叫什么名字",
+        "帮我查一下数据库", "帮我写个脚本", "帮我改一下配置",
+        "太棒了", "好开心", "好累啊", "心情不错", "烦死了无语",
+        "抱抱", "想你", "爱", "太感动了",
+        "什么是Docker", "Python怎么用",
+        "好的没问题", "你说的对", "说的没错",
+        # 含"不"但不是否定
+        "还不错", "不赖", "不简单", "不一般",
+        "说不上喜欢", "说不上讨厌", "说不上好", "说不上差",
+        "说不上来", "说不上为什么",
+        "不怎么样", "不怎么好", "不怎么想", "不怎么吃",
+        "不至于吧", "不至于这样", "不至于生气",
+        "吃不下", "睡不着", "放不下", "停不下来", "受不了",
+        "挡不住", "忍不住", "跑不掉", "看不够",
+        "说不完", "做不完", "忙不完",
+        "没什么", "没关系", "没事", "没问题",
+        "没什么好说的", "没什么问题",
+        "特别好", "特别开心", "特别棒",
+        "不太好说啊", "不太好处理", "不太好解决",
+        "不怎么样嘛", "不怎么熟练",
+        "撑不住就休息", "忍不住想笑",
+        "停不下来的节奏", "说不完的话题",
+        # 双重否定 → not_negated
+        "不是不开心", "不是不愿意", "不是不能做",
+        "没有不好的", "不会不同意",
+        "不能不去", "不得不做",
+        # 日常固定搭配
+        "了不起", "不得了", "说不定", "差不多",
+        "不由得", "不由得想", "不由得觉得",
+        "好不好", "要不要", "行不行", "能不能",
+    ]
+    for text in not_negated:
+        data.append((text, "not_negated"))
+
+    # ── 边界："不太X" → 削弱正面含义，算 negated ──
+    not_ta = [
+        "不太开心", "不太好", "不太行", "不太方便", "不太清楚",
+        "不太舒服", "不太好说", "不太确定",
+        "不太满意", "不太理想", "不太合适",
+    ]
+    for text in not_ta:
+        data.append((text, "negated"))
+
+    # ── negated ──
+    negated_samples = [
+        # 不 + 情绪
+        "我不开心", "我不高兴", "我不喜欢", "我不满意",
+        "我不好", "我不舒服", "我不快乐",
+        "我不想去", "我不想做", "我不想要",
+        "不开心", "不高兴", "不舒服", "不喜欢",
+        # 没有
+        "我没有生气", "我没有难过", "没有特别开心",
+        "没有你说的那么好", "没有这个意思",
+        "没有去过", "没有做过", "没有看过",
+        "没有时间", "没有精力", "没有兴趣",
+        # 不是
+        "不是这样的", "不是这个意思", "不是你说的那样",
+        "不是故意的", "不是想要的结果",
+        "不是的", "不是那个",
+        # 别
+        "别说了", "别担心", "别生气", "别难过",
+        "别管我", "别这样", "别闹",
+        "别走", "别急", "别怕",
+        # 不用/不要
+        "不用了", "不用麻烦", "不用回复",
+        "不要这样", "不要担心", "不要难过",
+        # 没 + 动词
+        "我没听懂", "我没看明白", "我没收到",
+        "他没来", "我没去过", "没做错",
+        "没看到", "没听到", "没找到",
+        "没记住", "没想到",
+        # 不会
+        "不会吧", "不会这样", "不会做的",
+        "不会同意", "不会答应",
+        # 再也不
+        "再也不去了", "再也不做了",
+        "再也不想看到了",
+        # 长句
+        "我没有让你这样做", "这不关我的事",
+        "我没有说过这种话", "不是你想的那样",
+        "不会有人同意的", "没有这个必要",
+    ]
+    for text in negated_samples:
+        data.append((text, "negated"))
+
+    print(f"否定检测数据生成: {len(data)} 条")
+    for label, count in Counter(l for _, l in data).most_common():
+        print(f"  {label}: {count}")
+    return data
+
 # ═══════════════════════════════════════════════════════
 # 2. 训练
 # ═══════════════════════════════════════════════════════
@@ -504,11 +607,13 @@ def main():
     parser.add_argument("--intent", action="store_true", help="只训意图")
     parser.add_argument("--emotion", action="store_true", help="只训情绪")
     parser.add_argument("--urgency", action="store_true", help="只训紧急度")
+    parser.add_argument("--negation", action="store_true", help="只训否定检测")
     args = parser.parse_args()
 
-    do_intent = args.intent or not (args.emotion or args.urgency)
-    do_emotion = args.emotion or not (args.intent or args.urgency)
-    do_urgency = args.urgency or not (args.intent or args.emotion)
+    do_intent = args.intent or not (args.emotion or args.urgency or args.negation)
+    do_emotion = args.emotion or not (args.intent or args.urgency or args.negation)
+    do_urgency = args.urgency or not (args.intent or args.emotion or args.negation)
+    do_negation = args.negation or not (args.intent or args.emotion or args.urgency)
 
     random.seed(42)
     torch.manual_seed(42)
@@ -544,6 +649,16 @@ def main():
             data=data,
             tok=tok,
             save_path=os.path.join(HERE, "model_urgency", "chuchu_cnn.pt"),
+        )
+
+    # 训练否定检测模型
+    if do_negation:
+        data = generate_negation_data(samples_per_class=400)
+        train_model(
+            name="negation",
+            data=data,
+            tok=tok,
+            save_path=os.path.join(HERE, "model_negation", "chuchu_cnn.pt"),
         )
 
     # 保存 tokenizer
