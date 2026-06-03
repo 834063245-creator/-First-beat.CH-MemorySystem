@@ -52,12 +52,17 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def startup():
         logger.info("初痕记忆引擎启动中...")
-        threading.Thread(target=_startup_warmup, daemon=True,
-                         name="startup_warmup").start()
+        t = threading.Thread(target=_startup_warmup, daemon=True,
+                             name="startup_warmup")
+        t.start()
+        startup._warmup_thread = t
 
     @app.on_event("shutdown")
     async def shutdown():
         logger.info("正在停止...")
+        t = getattr(startup, "_warmup_thread", None)
+        if t and t.is_alive():
+            t.join(timeout=5)
         from app.api.deps import ctx_manager
         if ctx_manager:
             ctx_manager.close_all()

@@ -29,11 +29,12 @@ router = APIRouter(tags=["mcp"], prefix="/mcp")
 # ── 工具执行器 ────────────────────────────────────────────────
 
 async def _exec_query_memories(ctx: AppContext, args: dict) -> dict:
+    import asyncio
     from app.retrieval.pipeline import run_chat_retrieval
     from app.llm.embed import local_embed
     query = args["query"]
     top_k = min(args.get("top_k", 10), 20)
-    emb = local_embed(query)
+    emb = await asyncio.to_thread(local_embed, query)
     if not emb:
         return {"memories": [], "error": "embedding 不可用"}
     _, _, _, memories = run_chat_retrieval(query, emb, ctx)

@@ -544,7 +544,8 @@ class AppContext:
                 try:
                     self.inverted_index.add(memory_id, summary)
                     if embedding is not None:
-                        self.chroma_service._emb_cache[memory_id] = embedding
+                        with self.chroma_service._emb_cache_lock:
+                            self.chroma_service._emb_cache[memory_id] = embedding
                 except Exception:
                     pass
                 return

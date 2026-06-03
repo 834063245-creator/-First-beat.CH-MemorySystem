@@ -70,6 +70,7 @@ def local_embed(text: str) -> Optional[List[float]]:
 # 对措辞略有差异但语义相同的短文本（查询）命中率 > 90%。
 
 _ngram_cache: dict[str, dict[str, float]] = {}
+_ngram_cache_lock = threading.Lock()
 _NGRAM_CACHE_MAX = 2048
 
 
@@ -77,8 +78,9 @@ def _ngram_sig(text: str) -> dict[str, float]:
     """Compute character trigram signature for a text string."""
     if not text:
         return {}
-    if text in _ngram_cache:
-        return _ngram_cache[text]
+    with _ngram_cache_lock:
+        if text in _ngram_cache:
+            return _ngram_cache[text]
     sig: dict[str, float] = {}
     t = text.lower()
     for i in range(len(t) - 1):
@@ -91,9 +93,10 @@ def _ngram_sig(text: str) -> dict[str, float]:
     total = sum(sig.values()) or 1.0
     sig = {k: v / total for k, v in sig.items()}
     # LRU 缓存
-    if len(_ngram_cache) >= _NGRAM_CACHE_MAX:
-        _ngram_cache.clear()
-    _ngram_cache[text] = sig
+    with _ngram_cache_lock:
+        if len(_ngram_cache) >= _NGRAM_CACHE_MAX:
+            _ngram_cache.clear()
+        _ngram_cache[text] = sig
     return sig
 
 

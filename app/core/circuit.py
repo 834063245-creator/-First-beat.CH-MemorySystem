@@ -20,26 +20,30 @@ logger = logging.getLogger(__name__)
 
 _CHUCHEN_BRAIN = None
 _CHUCHEN_BRAIN_LOADED = False
+_BRAIN_LOCK = threading.Lock()
 
 def get_brain() -> Optional[object]:
     """获取 ChuchenBrain 实例（ChuchuCNN > Ollama > 规则，失败返回 None）。"""
     global _CHUCHEN_BRAIN, _CHUCHEN_BRAIN_LOADED
     if _CHUCHEN_BRAIN_LOADED:
         return _CHUCHEN_BRAIN
-    _CHUCHEN_BRAIN_LOADED = True
-    try:
-        from app.brain.models import ChuchenBrain
-        _CHUCHEN_BRAIN = ChuchenBrain(model_name="qwen2.5:3b")
-        status = _CHUCHEN_BRAIN.load_all()
-        loaded = [k for k, v in status.items() if v]
-        if any(status.values()):
-            logger.info("ChuchenBrain 模型已加载: %s", loaded)
-        else:
-            logger.info("ChuchenBrain 未加载模型，使用纯规则")
-        return _CHUCHEN_BRAIN
-    except Exception:
-        _CHUCHEN_BRAIN = None
-        return None
+    with _BRAIN_LOCK:
+        if _CHUCHEN_BRAIN_LOADED:
+            return _CHUCHEN_BRAIN
+        _CHUCHEN_BRAIN_LOADED = True
+        try:
+            from app.brain.models import ChuchenBrain
+            _CHUCHEN_BRAIN = ChuchenBrain(model_name="qwen2.5:3b")
+            status = _CHUCHEN_BRAIN.load_all()
+            loaded = [k for k, v in status.items() if v]
+            if any(status.values()):
+                logger.info("ChuchenBrain 模型已加载: %s", loaded)
+            else:
+                logger.info("ChuchenBrain 未加载模型，使用纯规则")
+            return _CHUCHEN_BRAIN
+        except Exception:
+            _CHUCHEN_BRAIN = None
+            return None
 
 
 # ── 回路①：用户消息分析 ────────────────────────────

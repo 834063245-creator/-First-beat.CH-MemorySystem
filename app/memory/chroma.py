@@ -44,6 +44,7 @@ class ChromaService:
         self._desensitization_counter = 0
         # Embedding 缓存（attention 位移因子用）
         self._emb_cache: dict[str, list] = {}
+        self._emb_cache_lock = threading.Lock()
 
         coll_name = collection_name or EMBED_MODELS[DEFAULT_EMBED_MODEL]["collection"]
         self._read_collection = self._read_client.get_or_create_collection(

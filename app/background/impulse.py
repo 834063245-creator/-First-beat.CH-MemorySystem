@@ -335,12 +335,13 @@ class ImpulseScheduler:
     def _get_all_mems(self, chroma_service):
         """各冲动源共享的全量记忆缓存，60s TTL。"""
         now = time.time()
-        if (self._all_mems_cache is not None
-                and now - self._all_mems_cache_time < self._ALL_MEMS_CACHE_TTL):
+        with self._lock:
+            if (self._all_mems_cache is not None
+                    and now - self._all_mems_cache_time < self._ALL_MEMS_CACHE_TTL):
+                return self._all_mems_cache
+            self._all_mems_cache = chroma_service.list_all()
+            self._all_mems_cache_time = now
             return self._all_mems_cache
-        self._all_mems_cache = chroma_service.list_all()
-        self._all_mems_cache_time = now
-        return self._all_mems_cache
 
     def _load_state(self):
         state = _load_state(self._state_path)
@@ -522,10 +523,11 @@ class ImpulseScheduler:
                 result = source_fn(**clean_kwargs)
                 if result is not None:
                     content, priority = result
-                    last_fp = self._last_fingerprints.get(name)
-                    if content == last_fp:
-                        continue
-                    self._last_fingerprints[name] = content
+                    with self._lock:
+                        last_fp = self._last_fingerprints.get(name)
+                        if content == last_fp:
+                            continue
+                        self._last_fingerprints[name] = content
                     self.feed_impulse(content, priority, name)
                     logger.info("冲动源 '%s' 产出: %s (优先级=%s)", name, content[:40], priority)
             except Exception as exc:

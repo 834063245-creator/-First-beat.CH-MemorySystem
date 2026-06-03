@@ -22,6 +22,7 @@ class InvertedIndex:
     def __init__(self):
         self._index: dict[str, set[str]] = {}
         self._exact_entities: dict[str, set[str]] = {}
+        self._tag_index: dict[str, set[str]] = {}
         self._lock = threading.Lock()
 
     def _tokenize(self, text: str) -> list[str]:
@@ -97,7 +98,6 @@ class InvertedIndex:
                 self._exact_entities[w].add(memory_id)
 
     # ── Tag 倒排索引（独立于 summary 索引，用于替代 $contains 扫描） ──
-    _tag_index: dict[str, set[str]] = {}
 
     def build_tags(self, tag_entries: list[tuple[str, str]]):
         """从 [(memory_id, tags_str), ...] 构建标签索引。"""

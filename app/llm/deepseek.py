@@ -837,7 +837,7 @@ def parse_dsml_tool_calls(text: str) -> list:
         args = {}
         for pm in _PARAM_RE.finditer(params_body):
             pname = pm.group(1)
-            pvalue = pm.group(3).strip()
+            pvalue = pm.group(2).strip()
             args[pname] = pvalue
         calls.append({
             "id": _next_tool_id(),
