@@ -268,6 +268,17 @@ def generate_intent_data(samples_per_class: int = 500) -> list[tuple[str, str]]:
         text = random.choice(_INTENT_TEMPLATES["casual"])
         data.append((text, "casual"))
 
+    # 稀释 conflict 中的 "对" 字 — 给 casual 加含 "对" 的样本
+    for _ in range(samples_per_class // 2):
+        text = random.choice(["你说得对", "说得对", "对的", "没错", "对呀", "对", "就是这样"])
+        data.append((text, "casual"))
+
+    # 稀释 meta 中的 "你" 字 — 给 emotional_sharing 加含 "你" 的样本
+    for _ in range(samples_per_class // 3):
+        text = random.choice(["我想你", "好想你", "我在想你",
+                               "你真好", "有你真好", "想你了"])
+        data.append((text, "emotional_sharing"))
+
     # 加一些混搭
     es_kws = _INTENT_KEYWORDS["emotional_sharing"]
     for _ in range(samples_per_class // 3):
@@ -296,6 +307,18 @@ def generate_emotion_data(samples_per_class: int = 500) -> list[tuple[str, str]]
     for _ in range(samples_per_class):
         text = random.choice(_EMOTION_TEMPLATES["neutral"])
         data.append((text, "neutral"))
+
+    # 稀释 negative 中的 "好" 字偏差 — 给 positive 加含 "心情" 的样本
+    for _ in range(samples_per_class // 3):
+        text = random.choice(["今天心情真好", "心情不错", "心情愉快",
+                               "心情好", "心情特别好", "心情美美的"])
+        data.append((text, "positive"))
+
+    # 让 intimate 类更丰富 — 加入更多含 "你" 的亲密表达
+    for _ in range(samples_per_class // 4):
+        text = random.choice(["我想你", "好想你", "想你了",
+                               "你真好", "有你真好"])
+        data.append((text, "intimate"))
 
     print(f"情绪数据生成: {len(data)} 条")
     for label, count in Counter(l for _, l in data).most_common():
