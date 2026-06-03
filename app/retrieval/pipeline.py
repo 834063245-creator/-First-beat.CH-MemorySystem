@@ -61,27 +61,7 @@ def _resolve_route(intent: str) -> dict:
     return route
 
 
-# ── JSONL 缓存（给 _load_error_counts / _load_correction_boosts 用） ──
-_jsonl_cache: dict[str, tuple[float, object]] = {}
-_JSONL_CACHE_TTL = 30
-
-
-def _load_jsonl_cached(path: str, parser: callable) -> object:
-    """带缓存的 JSONL 读取，30 秒 TTL + 文件 mtime 变化时自动刷新。"""
-    key = path
-    now = time.time()
-    try:
-        mtime = os.path.getmtime(path)
-    except OSError:
-        mtime = 0
-    cached = _jsonl_cache.get(key)
-    if cached is not None:
-        cache_time, cache_mtime, cache_value = cached
-        if now - cache_time < _JSONL_CACHE_TTL and cache_mtime == mtime:
-            return cache_value
-    value = parser()
-    _jsonl_cache[key] = (time.time(), mtime, value)
-    return value
+from app.core.helpers import _load_jsonl_cached  # 共享版本，线程安全
 
 
 def _load_error_counts(data_dir: str) -> dict[str, int]:

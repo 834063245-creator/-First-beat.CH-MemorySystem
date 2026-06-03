@@ -5,6 +5,7 @@
 import json
 import logging
 import os
+import threading
 import time
 
 from app.config.settings import DATA_DIR
@@ -90,6 +91,7 @@ def build_debug_info(memories: list, personalities: list, timeline_recent: list,
 
 _jsonl_cache: dict[str, tuple[float, object]] = {}
 _JSONL_CACHE_TTL = 30
+_jsonl_cache_lock = threading.Lock()
 
 
 def _load_jsonl_cached(path: str, parser: callable) -> object:
@@ -100,14 +102,16 @@ def _load_jsonl_cached(path: str, parser: callable) -> object:
         mtime = os.path.getmtime(path)
     except OSError:
         mtime = 0
-    cached = _jsonl_cache.get(key)
-    if cached is not None:
-        cache_time, cache_mtime, cache_value = cached
-        if now - cache_time < _JSONL_CACHE_TTL and cache_mtime == mtime:
-            return cache_value
-    # 缓存未命中或过期，重新读取
+    with _jsonl_cache_lock:
+        cached = _jsonl_cache.get(key)
+        if cached is not None:
+            cache_time, cache_mtime, cache_value = cached
+            if now - cache_time < _JSONL_CACHE_TTL and cache_mtime == mtime:
+                return cache_value
+    # 缓存未命中或过期，重新读取（锁外读取，锁内写入）
     value = parser()
-    _jsonl_cache[key] = (time.time(), mtime, value)
+    with _jsonl_cache_lock:
+        _jsonl_cache[key] = (time.time(), mtime, value)
     return value
 
 

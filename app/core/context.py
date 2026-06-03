@@ -33,22 +33,26 @@ import jieba.posseg as pseg  # 降级兜底
 # 话题 CNN 分类器（惰性单例）
 _TOPIC_CLASSIFIER = None
 _TC_INIT_ATTEMPTED = False
+_TC_LOCK = threading.Lock()
 
 
 def _get_topic_classifier():
-    """惰性获取话题分类器，失败返回 None。"""
+    """惰性获取话题分类器，失败返回 None（线程安全）。"""
     global _TOPIC_CLASSIFIER, _TC_INIT_ATTEMPTED
     if _TC_INIT_ATTEMPTED:
         return _TOPIC_CLASSIFIER
-    _TC_INIT_ATTEMPTED = True
-    try:
-        from app.brain.topic_classifier import get_topic_classifier
-        _TOPIC_CLASSIFIER = get_topic_classifier()
-        if _TOPIC_CLASSIFIER and _TOPIC_CLASSIFIER.available:
-            print("[TopicCNN] 话题分类器已启用（替代 jieba）")
+    with _TC_LOCK:
+        if _TC_INIT_ATTEMPTED:
             return _TOPIC_CLASSIFIER
-    except Exception:
-        logger.debug("话题分类器加载失败，降级为 jieba", exc_info=True)
+        _TC_INIT_ATTEMPTED = True
+        try:
+            from app.brain.topic_classifier import get_topic_classifier
+            _TOPIC_CLASSIFIER = get_topic_classifier()
+            if _TOPIC_CLASSIFIER and _TOPIC_CLASSIFIER.available:
+                print("[TopicCNN] 话题分类器已启用（替代 jieba）")
+                return _TOPIC_CLASSIFIER
+        except Exception:
+            logger.debug("话题分类器加载失败，降级为 jieba", exc_info=True)
     return None
 
 

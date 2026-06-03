@@ -387,7 +387,7 @@ def _compute_urgency(text: str, brain=None) -> float:
         urgency += 0.3
     if len(text) > 100:
         urgency += 0.2
-    if "急" in text or "马上" in text or "刻急" in text:
+    if "急" in text or "马上" in text or "立刻" in text:
         urgency += 0.4
     return min(urgency, 1.0)
 def _extract_topics(text: str) -> list:

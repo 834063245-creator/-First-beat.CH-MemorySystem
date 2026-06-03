@@ -106,13 +106,11 @@ CO_OCCURRENCE_MAX_PAIRS = 10000    # 超过此数量触发淘汰
 CO_OCCURRENCE_CLEANUP_RATIO = 0.2  # 淘汰时移除最旧的 20%
 CO_OCCURRENCE_MIN_COUNT = 2        # count >= 此值的活跃关系在淘汰中受保护
 TIME_TRIGGERED_MAX = 5       # 时间触发上限
-CONTEXT_WINDOW_SIZE = 10
 CONTEXT_ROUNDS = 10       # 动态上下文读取轮数
 
 # ============================================================
 # 语义重排序参数
 # ============================================================
-RERANK_BETA = 0.5               # 后向兼容，维护旧代码
 RERANK_LN_MAX = math.log(501)   # ≈ 6.217 — ln(501)，hit_count 封顶值
 RERANK_SEMANTIC_WEIGHT = 0.7    # 语义权重（与 app/config/settings.py 一致）
 RERANK_ATTENTION_WEIGHT = 0.0   # 调用方按需传入注意力偏移量
@@ -178,10 +176,6 @@ STORE_FAILURES_PATH = os.path.join(DATA_DIR, "store_failures.jsonl")
 # ============================================================
 DEBUG_INCLUDE_PROMPT = os.getenv("DEBUG_INCLUDE_PROMPT", "false").lower() == "true"
 
-# ============================================================
-# 知识库
-# ============================================================
-KNOWLEDGE_COLLECTION = "knowledge"
 # ============================================================
 # 后台空闲处理
 # ============================================================
