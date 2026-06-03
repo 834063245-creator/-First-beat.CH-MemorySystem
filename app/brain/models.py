@@ -1,8 +1,8 @@
-"""ChuchenBrain 三模型架构 — ChuchuCNN 本地推理 + MiniLM/Ollama/规则
+"""ChuchenBrain 三模型架构 — ChuchuCNN 本地推理 + Ollama/规则
 
 模型加载优先级：
-  IntentClassifier  → ChuchuCNN(字符CNN) > MiniLM > Ollama > 规则
-  EmotionAnalyzer   → ChuchuCNN(字符CNN) > MiniLM > Ollama > 规则
+  IntentClassifier  → ChuchuCNN(字符CNN) > Ollama > 规则
+  EmotionAnalyzer   → ChuchuCNN(字符CNN) > Ollama > 规则
   GateDecisionMaker → Ollama Prompt > 规则
 
 ChuchuCNN 约 500KB，纯 CPU 推理 <5ms，不依赖 transformers/HuggingFace。
@@ -138,15 +138,14 @@ class ShadowResult:
 # ═══════════════════════════════════════════════════════
 
 class IntentClassifier:
-    """意图分类器 — ChuchuCNN + MiniLM + Ollama + 规则四层兜底。
+    """意图分类器 — ChuchuCNN + Ollama + 规则三层兜底。
 
-    优先级：ChuchuCNN(字符CNN, 500KB) > MiniLM(90MB) > Ollama > 规则
+    优先级：ChuchuCNN(字符CNN, 500KB) > Ollama > 规则
     """
 
     _BRAIN_DIR = os.path.dirname(__file__)
     CHUCHU_PATH = os.path.join(_BRAIN_DIR, "model_intent", "chuchu_cnn.pt")
     CHUCHU_TOK = os.path.join(_BRAIN_DIR, "chuchu_tok.json")
-    MINILM_PATH = os.path.join(_BRAIN_DIR, "model_intent")  # MiniLM 目录
 
     LABELS = [
         "recall", "emotional_sharing", "conflict",
@@ -187,12 +186,7 @@ class IntentClassifier:
         self.ollama_url = ollama_url
         self._ollama_ok = False
 
-        # MiniLM（旧的）
-        self._local_ok = False
-        self._model = None
-        self._tokenizer = None
-
-        # ChuchuCNN（新的）
+        # ChuchuCNN
         self._chuchu_ok = False
         self._chuchu_model = None
         self._chuchu_tok = None
@@ -226,34 +220,11 @@ class IntentClassifier:
             self._chuchu_tok = None
             return False
 
-    def _load_minilm(self) -> bool:
-        if self._local_ok and self._model is not None:
-            return True
-        if not os.path.exists(os.path.join(self.MINILM_PATH, "config.json")):
-            return False
-        try:
-            from transformers import AutoTokenizer, AutoModelForSequenceClassification
-            self._tokenizer = AutoTokenizer.from_pretrained(self.MINILM_PATH)
-            self._model = AutoModelForSequenceClassification.from_pretrained(self.MINILM_PATH)
-            self._model.eval()
-            self._local_ok = True
-            logger.info("MiniLM 加载成功 (%s)", self.MINILM_PATH)
-            return True
-        except Exception as exc:
-            logger.warning("MiniLM 加载失败: %s", exc)
-            self._model = None
-            self._tokenizer = None
-            return False
-
     def load(self) -> bool:
-        """加载模型：ChuchuCNN > MiniLM > Ollama。任一成功即可。"""
+        """加载模型：ChuchuCNN > Ollama。任一成功即可。"""
         if self._chuchu_ok:
             return True
         if self._load_chuchu():
-            return True
-        if self._local_ok:
-            return True
-        if self._load_minilm():
             return True
         # Ollama 兜底
         if self._ollama_ok:
@@ -276,11 +247,9 @@ class IntentClassifier:
     # ── 推理 ──
 
     def predict(self, text: str) -> IntentResult:
-        """分类：ChuchuCNN > MiniLM > Ollama > 规则。"""
+        """分类：ChuchuCNN > Ollama > 规则。"""
         if self._chuchu_ok:
             return self._chuchu_predict(text)
-        if self._local_ok:
-            return self._minilm_predict(text)
         if self._ollama_ok and self.model_name:
             return self._prompt_classify(text)
         return IntentResult(
@@ -310,28 +279,6 @@ class IntentClassifier:
                 confidence=0.6, source="rule",
             )
 
-    def _minilm_predict(self, text: str) -> IntentResult:
-        import torch
-        try:
-            inputs = self._tokenizer(
-                text, return_tensors="pt", truncation=True, max_length=64)
-            with torch.no_grad():
-                outputs = self._model(**inputs)
-                probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
-                confidence, idx = probs.max(dim=-1)
-            id2label = self._model.config.id2label
-            label = id2label[idx.item()]
-            return IntentResult(
-                intent=label,
-                confidence=round(confidence.item(), 4),
-                source="model",
-            )
-        except Exception as exc:
-            logger.warning("MiniLM 推理失败 (%s)，回退规则", exc)
-            return IntentResult(
-                intent=self._rule_classify(text),
-                confidence=0.6, source="rule",
-            )
 
     def _prompt_classify(self, text: str) -> IntentResult:
         try:
@@ -363,9 +310,6 @@ class IntentClassifier:
         self._chuchu_model = None
         self._chuchu_tok = None
         self._chuchu_ok = False
-        self._model = None
-        self._tokenizer = None
-        self._local_ok = False
 
 
 # ═══════════════════════════════════════════════════════
