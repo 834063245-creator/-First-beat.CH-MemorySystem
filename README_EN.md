@@ -41,6 +41,28 @@ One sentence: other memory systems are passive tools for the LLM. First Beat is 
 
 ---
 
+### Why no LongMemEval / LoCoMo scores?
+
+You may notice systems like Mem0 publish LongMemEval, LoCoMo, and other benchmark scores. First Beat doesn't. The reason is straightforward:
+
+**These benchmarks measure fact recall — not a cognitive engine.**
+
+Their methodology: cold-inject a large set of facts → ask questions → measure recall rate. This effectively tests **a key-value store's retrieval accuracy**, not the capability of **an autonomous cognitive engine**.
+
+First Beat's design goals are not "store more, retrieve faster":
+- Accumulate cognition naturally through conversation (not cold injection)
+- Understand the user's personality and emotional shifts
+- Consolidate, distill, and discover patterns autonomously in the background
+- Speak unprompted when the timing is right
+
+None of these can be measured by a "ask a fact, answer a fact" benchmark.
+
+More directly: if First Beat's goal were to score high on LongMemEval, I could write a specialized retriever for that task. But then it wouldn't be First Beat — it would just be another vector database, not the "get to know you" engine I set out to build.
+
+**If you're interested in helping with benchmarks, you're very welcome.** The engine exposes a standard MCP interface — any evaluation tool can call it directly. Open an issue or PR and I'll help however I can. Thank you.
+
+---
+
 ## How It Works
 
 ```
