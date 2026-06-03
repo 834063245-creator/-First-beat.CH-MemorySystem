@@ -218,6 +218,8 @@ def generate_intent_data(samples_per_class: int = 500) -> list[tuple[str, str]]:
     """生成意图训练数据。"""
     data = []
     for label, kws in _INTENT_KEYWORDS.items():
+        if label == "request_verbs":
+            continue
         templates = _INTENT_TEMPLATES[label]
         for _ in range(samples_per_class):
             kw = random.choice(kws)

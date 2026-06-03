@@ -1,6 +1,6 @@
-"""Chuchu Tokenizer — 基于汉字的词表，零依赖。
+"""Chuchu Tokenizer — 汉字 + ASCII 双语词表，零依赖。
 
-把文本转成汉字 ID 序列，只保留中文字符 + 常见标点。
+把文本转成字符 ID 序列，支持中文汉字和英文 ASCII。
 纯 Python，不需要 transformers/huggingface。
 """
 
@@ -77,7 +77,13 @@ for words in _EMOTION_KEYWORDS.values():
         _KEYWORD_CHARS.update(w)
 
 _ALL_CHARS = _COMMON_CHARS | _KEYWORD_CHARS
-_ALL_CHARS = sorted(_ALL_CHARS - {"", " "})
+# 加入 ASCII 半角字符（支持英文输入）
+_ASCII_PRINTABLE = set(
+    " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`"
+    "abcdefghijklmnopqrstuvwxyz{|}~"
+)
+_ALL_CHARS = _ALL_CHARS | _ASCII_PRINTABLE
+_ALL_CHARS = sorted(_ALL_CHARS - {""})
 
 # 特殊 token
 PAD = 0
