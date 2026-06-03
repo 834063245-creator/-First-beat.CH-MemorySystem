@@ -11,7 +11,6 @@
 import logging
 import threading
 from dataclasses import dataclass, field
-from dataclasses import dataclass, field
 from typing import Optional
 
 from app.core.state import UserMessageAnalysis, GatingDecision, UtteranceSpec
