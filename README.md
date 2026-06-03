@@ -49,7 +49,12 @@ ollama pull bge-m3
 # 2. 克隆 & 安装
 git clone https://github.com/834063245-creator/-First-beat.CH-MemorySystem.git
 cd chuchen
+
+# 完整版（含 torch/transformers，适合纯本地运行）
 pip install -r requirements.txt
+
+# 轻量版（不含 torch/transformers，适合纯 MCP 服务模式）
+# pip install -r requirements-lite.txt
 
 # 3. 启动引擎
 python run.py
@@ -67,6 +72,51 @@ python verify_env.py
 ```
 
 > 安装遇到问题？查阅 [SETUP.md](SETUP.md) 详细排查指南。
+
+---
+
+## Docker 部署
+
+### 一键启动（推荐）
+
+```bash
+docker compose up -d
+# → Ollama (11434) + 初痕引擎 (8082) 同时启动
+```
+
+### 单独构建
+
+```bash
+docker build -t chuchen .
+docker run -d -p 8082:8082 -v chuchen_data:/app/data chuchen
+```
+
+### docker-compose.yml
+
+```yaml
+services:
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+
+  chuchen:
+    build: .
+    ports:
+      - "8082:8082"
+    environment:
+      - LOCAL_LLM_OLLAMA_URL=http://ollama:11434
+      - OLLAMA_EMBED_MODEL=bge-m3
+    volumes:
+      - chuchen_data:/app/data
+    depends_on:
+      ollama:
+        condition: service_started
+```
+
+> 首次启动后需进入 Ollama 容器拉取模型：`docker exec chuchen-ollama ollama pull bge-m3`
 
 ---
 
@@ -170,11 +220,18 @@ chuchen/
 │   ├── analysis/      # Russell 情绪环 · 实体提取 · 模式发现 · 人格对称性
 │   ├── personality/   # 双人格系统（用户+AI 独立演化）
 │   ├── mcp/           # MCP JSON-RPC 服务
-│   ├── llm/           # 本地 embedding (bge-m3) + 格式器
+│   ├── llm/           # 本地 embedding (bge-m3) + DeepSeek/本地 LLM 客户端
 │   ├── api/           # REST 管理端点
-│   └── tools/         # 原子写入 · 工具分发
+│   ├── tools/         # 原子写入 · 工具分发
+│   ├── brain/         # ML 模型增强 — IntentClassifier / EmotionAnalyzer / GateDecisionMaker
+│   ├── config/        # 中央配置 · 环境变量默认值 · 路径工具
+│   ├── models/        # Pydantic schemas（ChatRequest, ChatResponse 等）
+│   └── knowledge/     # 知识库管理
 ├── backend/           # 旧模块桥接层（逐步迁移至 app/）
-├── tests/             # 85 个单测，本地可全部通过
+├── tests/             # 214+ 单测，本地可全部通过
+├── scripts/           # 审计套件 · 报告对比
+├── Dockerfile         # 容器化构建
+├── docker-compose.yml # Ollama + 引擎一键部署
 └── run.py             # 启动入口
 ```
 
@@ -214,13 +271,23 @@ python scripts/compare_reports.py audit/report_before.json audit/report_after.js
 ## 环境变量
 
 | 变量 | 必填 | 说明 |
-|------|------|------|
+|------|:----:|------|
 | `OLLAMA_EMBED_MODEL` | 是 | Embedding 模型名，默认 `bge-m3` |
+| `OLLAMA_NUM_THREADS` | 否 | CPU 线程数，默认 `4` |
 | `LOCAL_LLM_OLLAMA_URL` | 是 | Ollama 地址，默认 `http://localhost:11434` |
 | `DEEPSEEK_API_KEY` | 否 | DeepSeek API Key，用于工作记忆摘要增强 |
-| `DEEPSEEK_BASE_URL` | 否 | DeepSeek API 地址 |
+| `DEEPSEEK_BASE_URL` | 否 | DeepSeek API 地址，默认 `https://api.deepseek.com` |
+| `DEEPSEEK_MODEL` | 否 | DeepSeek 模型名，默认 `deepseek-chat` |
+| `LOCAL_LLM_ENABLED` | 否 | 启用本地 LLM（Ollama 摘要生成），默认 `false` |
+| `LOCAL_LLM_MODEL` | 否 | 本地 LLM 模型名，默认 `qwen2.5:7b` |
+| `LOCAL_LLM_TIMEOUT` | 否 | 本地 LLM 超时秒数，默认 `30` |
+| `BOCHA_API_KEY` | 否 | 博查搜索 API Key，用于联网搜索 |
 | `DATA_DIR` | 否 | 数据目录，默认 `./data` |
 | `DEPLOY_MODE` | 否 | `full` / `lite` |
+| `USERS` | 否 | 多用户认证（JSON 格式），如 `{"admin":"changeme"}` |
+| `DEBUG_INCLUDE_PROMPT` | 否 | Debug 时是否包含 Prompt，默认 `false` |
+| `IMPULSE_ACTIVE_PATH_B` | 否 | 冲动系统开关（主动开口），默认 `true` |
+| `OLLAMA_MODELS` | 否 | Docker 专用：Ollama 模型挂载路径 |
 
 详见 `.env.example`。
 
