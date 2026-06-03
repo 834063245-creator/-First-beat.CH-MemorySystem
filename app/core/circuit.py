@@ -13,6 +13,8 @@ import threading
 from dataclasses import dataclass, field
 from typing import Optional
 
+import jieba.analyse
+
 from app.core.state import UserMessageAnalysis, GatingDecision, UtteranceSpec
 from app.brain.keywords import (
     INTENT_KEYWORDS, EMOTION_KEYWORDS,
@@ -247,10 +249,6 @@ def analyze_user_message(user_message: str, chat_history=None,
     if kw_intent != "casual" and kw_emotion != "neutral":
         kw_confidence = 0.8
 
-    urgency = _compute_urgency(text, brain=brain)
-    topics = _extract_topics(text)
-    emotion_intensity = _compute_emotion_intensity(text)
-
     # ── embedding 路径 ────────────────────────────────────
     emb_intent = None
     emb_confidence = 0.0
@@ -377,7 +375,6 @@ def _compute_urgency(text: str, brain=None) -> float:
     return min(urgency, 1.0)
 def _extract_topics(text: str) -> list:
     try:
-        import jieba.analyse
         return jieba.analyse.extract_tags(text, topK=5)
     except Exception:
         return []
