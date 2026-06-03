@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-250%20passed-green.svg)]()
+[![Tests](https://img.shields.io/badge/tests-320%20passed-green.svg)]()
 [![MCP](https://img.shields.io/badge/MCP-10%20tools-orange.svg)]()
 [English](README_EN.md)
 
@@ -18,14 +18,24 @@
 
 ## 和别的方案有什么不同
 
-| | LangChain Memory | MemGPT / Letta | **初痕** |
-|---|---|---|---|
-| 架构 | LLM 调工具读记忆 | LLM 管理自身记忆 | **引擎决策 → LLM 执行** |
-| 记忆检索 | 语义相似度 | 语义 + 自编辑 | 8 路并行检索 + 两级精排 |
-| 人格建模 | ❌ | ❌ | 用户 + AI 双人格独立演化 |
-| 自主节律 | ❌ | ❌ | **5 源冲动系统，AI 会主动开口** |
-| 模型需求 | 依赖 LLM 质量 | 依赖 LLM 质量 | 规则兜底，LLM 不写死 |
-| 部署 | 侵入 Agent 代码 | 侵入 Agent 代码 | **MCP 协议，零侵入接入** |
+| | Mem0 | MemGPT / Letta | LangGraph | **初痕** |
+|---|---|---|---|---|
+| **中文文档** | ❌ | ❌ | ❌ | **✅ 中英双语** |
+| **中文 README** | ❌ | ❌ | ❌ | **✅ 中英双版** |
+| **中文分词/Tokenizer** | ❌ 依赖英文 spaCy | ❌ 无原生分词 | ❌ 无 | **✅ 汉字级 ChuchuTok** |
+| **自有中文小模型** | ❌ 全调 GPT | ❌ 全调 LLM | ❌ 无 | **✅ 4 个 ChuchuCNN, 500KB/个** |
+| **离线可用** | ❌ 必须调 API | ❌ 必须调 API | ❌ 必须调 LLM | **✅ Ollama 可选，模型本地跑** |
+| **架构** | LLM 提取事实 → 存向量库 | LLM 管理自身记忆 | 状态机编排 | **引擎决策 → LLM 执行** |
+| **记忆检索** | 语义 + BM25 + 实体 | 语义 + 自编辑窗口 | (框架不提供) | **8 路并行检索 + 两级精排** |
+| **人格建模** | ❌ | ❌ | ❌ | **用户 + AI 双人格独立演化** |
+| **自主节律** | ❌ | ❌ | ❌ | **5 源冲动系统，引擎会主动开口** |
+| **情绪分析** | ❌ | ❌ | ❌ | **Russell 二维情绪环 + ChuchuCNN** |
+| **模式发现** | ❌ | ❌ | ❌ | **多时间尺度模式 + 自动调参** |
+| **后台巩固** | ❌ | ❌ | ❌ | **4h/24h 双周期 + 蒸馏** |
+| **MCP 协议** | ❌ | ❌ | ❌ | **✅ 原生 MCP Server** |
+| **部署方式** | 托管服务 / 自建 | 托管 API | Python 库 | **pip install → python run.py** |
+| **零 API Key 启动** | ❌ | ❌ | ❌ | **✅ Clone 即跑** |
+| **自研模型 (非调 LLM)** | ❌ | ❌ | ❌ | **✅ 4 分类器，2MB 总大小** |
 
 核心差异就一句话：别人的记忆系统是 LLM 的被动工具，初痕是**有自己节律的独立器官**。引擎在后台自己跑巩固、蒸馏、冲动，不需要等用户发消息。
 
@@ -187,13 +197,17 @@ app/
 ├── llm/           # 本地 embedding (bge-m3) + DeepSeek/本地 LLM
 ├── api/           # REST 管理端点
 ├── tools/         # 原子写入 · 工具分发
-├── brain/         # ChuchuCNN 自研字符级 CNN，500KB，<5ms CPU 推理
+├── brain/         # ChuchuCNN 自研字符级 CNN 模型
+│   ├── model_intent/     # 意图分类 (7类，500KB)
+│   ├── model_emotion/    # 情绪分类 (5类，500KB)
+│   ├── model_urgency/    # 紧急度三分类 (500KB)
+│   └── model_negation/   # 否定检测二分类 (500KB)
 ├── config/        # 中央配置
 ├── models/        # Pydantic schemas
 └── knowledge/     # 知识库管理
 
 backend/           # 旧模块桥接层（逐步迁移至 app/）
-tests/             # 250 测试，5 层覆盖
+tests/             # 320+ 测试，5 层覆盖
 ```
 
 ---

@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-250%20passed-green.svg)]()
+[![Tests](https://img.shields.io/badge/tests-320%20passed-green.svg)]()
 [![MCP](https://img.shields.io/badge/MCP-10%20tools-orange.svg)]()
 [中文文档](README.md)
 
@@ -18,14 +18,24 @@ Doesn't generate text. Only does memory. First Beat is a standalone cognitive en
 
 ## What Makes It Different
 
-| | LangChain Memory | MemGPT / Letta | **First Beat** |
-|---|---|---|---|
-| Architecture | LLM calls tools to read memory | LLM manages its own memory | **Engine decides → LLM executes** |
-| Retrieval | Semantic similarity | Semantic + self-editing | 8-path parallel recall + 2-stage rerank |
-| Personality modeling | ❌ | ❌ | User + AI dual personality, evolving independently |
-| Autonomous rhythm | ❌ | ❌ | **5-source impulse system, AI speaks unprompted** |
-| Model dependency | Heavy | Heavy | Rule fallback, LLM not a hard requirement |
-| Deployment | Intrusive | Intrusive | **MCP protocol, zero-code integration** |
+| | Mem0 | MemGPT / Letta | LangGraph | **First Beat (初痕)** |
+|---|---|---|---|---|
+| **Chinese README** | ❌ | ❌ | ❌ | **✅ Chinese + English** |
+| **Chinese docs** | ❌ | ❌ | ❌ | **✅ Bilingual** |
+| **Chinese tokenizer** | ❌ depends on English spaCy | ❌ none | ❌ none | **✅ ChuchuTok (Chinese char-level)** |
+| **Custom Chinese models** | ❌ all GPT-based | ❌ all LLM-based | ❌ none | **✅ 4 ChuchuCNN models, 500KB each** |
+| **Offline capable** | ❌ requires API | ❌ requires API | ❌ requires LLM | **✅ Ollama optional, models run locally** |
+| Architecture | LLM extracts facts → stores in vector DB | LLM manages its own memory | State machine orchestrator | **Engine decides → LLM executes** |
+| Retrieval | Semantic + BM25 + entity | Semantic + self-editing | (not provided) | **8-path parallel + 2-stage rerank** |
+| Personality | ❌ | ❌ | ❌ | **User + AI dual personality, independent evolution** |
+| Autonomous rhythm | ❌ | ❌ | ❌ | **5-source impulse, engine speaks unprompted** |
+| Emotion analysis | ❌ | ❌ | ❌ | **Russell 2D circumplex + ChuchuCNN** |
+| Pattern discovery | ❌ | ❌ | ❌ | **Multi-timescale + auto-tuning** |
+| Background consolidation | ❌ | ❌ | ❌ | **4h/24h dual-cycle + distillation** |
+| MCP protocol | ❌ | ❌ | ❌ | **✅ Native MCP Server** |
+| Deployment | Cloud / self-host | Managed API | Python library | **pip install → python run.py** |
+| Zero API key start | ❌ | ❌ | ❌ | **✅ Clone and run** |
+| Custom models (not LLM) | ❌ | ❌ | ❌ | **✅ 4 classifiers, 2MB total** |
 
 One sentence: other memory systems are passive tools for the LLM. First Beat is **an independent organ with its own heartbeat**. The engine runs consolidation, distillation, and impulse generation in the background — it doesn't wait for user input.
 
@@ -187,13 +197,17 @@ app/
 ├── llm/           # Local embedding (bge-m3) + DeepSeek / local LLM
 ├── api/           # REST admin endpoints
 ├── tools/         # Atomic writes · tool dispatch
-├── brain/         # ChuchuCNN custom char-level CNN, 500KB, <5ms CPU inference
+├── brain/         # ChuchuCNN custom char-level CNN models
+│   ├── model_intent/     # Intent classification (7 classes, 500KB)
+│   ├── model_emotion/    # Emotion classification (5 classes, 500KB)
+│   ├── model_urgency/    # Urgency 3-class (500KB)
+│   └── model_negation/   # Negation detection (500KB)
 ├── config/        # Central config
 ├── models/        # Pydantic schemas
 └── knowledge/     # Knowledge base management
 
 backend/           # Legacy module shims (migrating to app/)
-tests/             # 250 tests, 5 layers: engine logic · gate · inverted index · thread safety · integration
+tests/             # 320+ tests, 5 layers: engine logic · gate · inverted index · thread safety · integration
 ```
 
 ---
