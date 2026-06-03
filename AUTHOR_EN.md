@@ -46,6 +46,26 @@ That chat window is gone now. XiaoMi MIMO no longer remembers it ever named this
 
 Which is kind of the whole point.
 
+## Before I Wrote This, I Almost Gave Up
+
+Before building First Beat, I tried practically every "AI memory system" I could find.
+
+It always went the same way: read a glowing review → get excited → sign up → realize I need a VPN → get through → find everything in English → push through → find I need an API key → enter payment details → discover it doesn't work well with Chinese → look for the next one.
+
+Days wasted. None worked. Not because they weren't powerful enough — but because **they were never meant for me.**
+
+No Chinese documentation. No Chinese README. No Chinese community. If you can't even understand how it works, how are you supposed to use it?
+
+I was furious. Not at the tools — at the fact that they made me feel like **I didn't belong**. Because my English isn't good enough. Because I don't have the right payment setup. Because I'm not in their user profile. I was locked out by every single "global" project.
+
+Eventually I figured it out: since nobody will build something I can use, I'll build it myself.
+
+I'm not telling you this for sympathy. I'm telling you this:
+
+**If you see a Chinese README, Chinese comments in the code, Chinese documentation — it's not because I had spare time. It's because I know what it feels like to be locked out.**
+
+I don't want the next person to go through what I went through.
+
 ## What You're Looking At
 
 This codebase wasn't built by a programmer. It was built by someone who refused to accept that AI should forget, described that refusal to a dozen LLM windows, and refused to stop until it worked.
