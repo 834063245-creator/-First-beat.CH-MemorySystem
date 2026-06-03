@@ -56,6 +56,24 @@ One sentence: other memory systems are passive tools for the LLM. First Beat is 
 
 ---
 
+### Knowledge Bases & Graphs: We don't build them, but you can connect them
+
+First Beat does not include a built-in knowledge base or knowledge graph. If you need these, connect external systems instead.
+
+`run_engine` supports an optional `external_context` parameter. Results from any external system — Obsidian vaults, Neo4j queries, Mem0 knowledge bases — flow through this field unchanged:
+
+```
+Agent workflow:
+  ├── Call 初痕 run_engine (memory context)
+  ├── Call Obsidian / Neo4j / Cognee (knowledge context)
+  └── Merge → LLM generates response
+       external_context is passed through verbatim
+```
+
+See [Design Principle #5](#design-philosophy): the engine doesn't own non-memory data, and doesn't make decisions for the LLM. External systems do their job; First Beat does one thing — remembering who you are.
+
+---
+
 ### Why no LongMemEval / LoCoMo scores?
 
 You may notice systems like Mem0 publish LongMemEval, LoCoMo, and other benchmark scores. First Beat doesn't. The reason is straightforward:
