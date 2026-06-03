@@ -56,21 +56,26 @@
 
 ---
 
-### 知识库与知识图谱：我们不自建，但你可以接
+### 接入外部知识库/图谱
 
-初痕不内置知识库或知识图谱。如果你需要这些能力，不需要等我们——你可以接外部系统。
+初痕没有知识库，没有知识图谱。如果需要，接外部系统。
 
-`run_engine` 工具支持 `external_context` 可选参数，任何外部系统的检索结果（Obsidian 笔记、Neo4j 图查询、Mem0 知识库等）都可以通过这个字段透传进引擎上下文：
+`run_engine` 的 `external_context` 参数负责这件事：
 
+```json
+// 调 run_engine 时传:
+{
+  "message": "用户说了什么",
+  "external_context": [
+    {"source": "obsidian", "title": "架构方案.md", "content": "..."},
+    {"source": "neo4j", "entities": [...]}
+  ]
+}
+
+// 返回里原样带回，Agent 自己合并
 ```
-Agent 工作流:
-  ├── 调初痕 run_engine（记忆上下文）
-  ├── 调 Obsidian / Neo4j / Cognee（知识上下文）
-  └── 合并 → LLM 生成回复
-       external_context 原样带回，不做加工
-```
 
-详见 [设计原则 #5](#设计哲学)：引擎不拥有记忆以外的数据，不替 LLM 做判断。外部知识系统各司其职，初痕只负责"认识你"。
+Agent 自己决定连什么外部系统（Obsidian、Neo4j、Cognee 等），初痕不过问。
 
 ---
 
