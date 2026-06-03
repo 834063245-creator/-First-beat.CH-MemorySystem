@@ -2,8 +2,6 @@
 
 扩展：增加 get_brain() 竞态条件测试和 _emb_cache 并发写测试。
 """
-import sys
-sys.path.insert(0, ".")
 import threading
 import time
 

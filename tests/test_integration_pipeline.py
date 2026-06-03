@@ -2,9 +2,6 @@
 
 通过 mock 外部依赖（ChromaDB、DeepSeek、embedding），验证整条管线不崩溃。
 """
-import sys
-sys.path.insert(0, ".")
-
 import pytest
 
 from app.core.circuit import CircuitOrchestrator, analyze_user_message, basal_ganglia_gate

@@ -2,9 +2,6 @@
 
 覆盖：各意图/情绪组合的语气、响应模式、情绪压制、亲密值。
 """
-import sys
-sys.path.insert(0, ".")
-
 import pytest
 from app.core.state import UserMessageAnalysis, GatingDecision, ImpulseDirective
 from app.core.circuit import basal_ganglia_gate, analyze_user_message

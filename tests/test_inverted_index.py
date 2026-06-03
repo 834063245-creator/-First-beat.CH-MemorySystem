@@ -2,9 +2,6 @@
 
 覆盖：构建、查询、增量更新、OR退化、删除、标签索引、多线程并发。
 """
-import sys
-sys.path.insert(0, ".")
-
 import threading
 import pytest
 from app.memory.inverted import InvertedIndex

@@ -2,9 +2,6 @@
 
 覆盖：意图/情绪分析、紧急度、否定检测、brain=None 退化路径。
 """
-import sys
-sys.path.insert(0, ".")
-
 import pytest
 from app.core.state import UserMessageAnalysis
 from app.core.circuit import analyze_user_message, _compute_urgency, _keyword_intent, _keyword_emotion
