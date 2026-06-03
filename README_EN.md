@@ -229,7 +229,7 @@ chuchen/
 │   ├── llm/           # Local embedding (bge-m3) + DeepSeek/local LLM clients
 │   ├── api/           # REST admin endpoints
 │   ├── tools/         # Atomic writes · tool dispatch
-│   ├── brain/         # ML model enhancement — IntentClassifier / EmotionAnalyzer / GateDecisionMaker
+│   ├── brain/         # ChuchuCNN custom char-level CNN — intent/emotion classification, 500KB, <5ms
 │   ├── config/        # Central config · env defaults · path utils
 │   ├── models/        # Pydantic schemas (ChatRequest, ChatResponse, etc.)
 │   └── knowledge/     # Knowledge base management

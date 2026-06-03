@@ -223,7 +223,7 @@ chuchen/
 │   ├── llm/           # 本地 embedding (bge-m3) + DeepSeek/本地 LLM 客户端
 │   ├── api/           # REST 管理端点
 │   ├── tools/         # 原子写入 · 工具分发
-│   ├── brain/         # ML 模型增强 — IntentClassifier / EmotionAnalyzer / GateDecisionMaker
+│   ├── brain/         # ChuchuCNN 自研字符级 CNN 模型 — 意图分类/情绪分析，500KB，<5ms
 │   ├── config/        # 中央配置 · 环境变量默认值 · 路径工具
 │   ├── models/        # Pydantic schemas（ChatRequest, ChatResponse 等）
 │   └── knowledge/     # 知识库管理
