@@ -186,6 +186,7 @@ class AppContext:
 
         # 话题树（DMN 浅巩固时重建，pipeline 检索时使用）
         self._topic_tree = getattr(self.dmn, '_topic_tree', None)
+        self._tag_index = getattr(self.dmn, '_tag_index', None)
 
         # 模式发现层（零 LLM 调用，纯统计缓存）
         self._pattern_discovery = PatternDiscovery(

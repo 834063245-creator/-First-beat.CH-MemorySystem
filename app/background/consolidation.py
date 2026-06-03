@@ -98,6 +98,7 @@ class ConsolidationEngine:
         self._temporal_index = temporal_pattern_index
         self._topic_affinity = topic_affinity
         self._topic_tree = None
+        self._tag_index = None
         self._preheat_cache: dict[str, list[dict]] = {}
         self._cache_lock = threading.Lock()
         self._state_lock = threading.Lock()
@@ -469,8 +470,19 @@ class ConsolidationEngine:
                                 self._topic_affinity.update(tags)
                     if self._temporal_index is not None:
                         self._temporal_index.update(new_mems)
+                    # 标签嵌入索引：收集全库标签 → 嵌入新标签（替代话题树共现依赖）
+                    if self._tag_index is not None and self._tag_index._embed_fn is not None:
+                        all_tags: set[str] = set()
+                        for m in new_mems:
+                            tags_str = (m.get("metadata") or {}).get("tags", "") or ""
+                            for t in tags_str.split(","):
+                                t = t.strip()
+                                if len(t) >= 2:
+                                    all_tags.add(t)
+                        if all_tags:
+                            self._tag_index.update(list(all_tags))
             except Exception as exc:
-                logger.debug("话题亲和图/时间模式更新跳过: %s", exc)
+                logger.debug("话题亲和图/时间模式/标签嵌入更新跳过: %s", exc)
 
             # 检测语义重复：cosine > 0.95 且共享 tags 的记忆
             merged = 0
@@ -539,6 +551,31 @@ class ConsolidationEngine:
                     self._topic_tree = topic_tree
             except Exception:
                 logger.debug("话题树重建异常")
+
+            # 标签嵌入索引初始化/更新（替代话题树的冷启动依赖）
+            try:
+                if self._tag_index is None:
+                    from app.memory.tag_index import TagEmbeddingIndex
+                    data_dir = os.path.dirname(self._state_path)
+                    self._tag_index = TagEmbeddingIndex(data_dir)
+                    # 惰性注入 embed_fn（避免循环导入）
+                    if self._tag_index._embed_fn is None:
+                        from app.llm.embed import local_embed_batch
+                        self._tag_index.set_embed_fn(local_embed_batch)
+                # 首次启动时全量嵌入所有已知标签
+                if self._tag_index.size() == 0:
+                    all_tags: set[str] = set()
+                    for m in all_mems:
+                        tags_str = (m.get("metadata") or {}).get("tags", "") or ""
+                        for t in tags_str.split(","):
+                            t = t.strip()
+                            if len(t) >= 2:
+                                all_tags.add(t)
+                    if all_tags:
+                        logger.info("标签嵌入索引首次构建: %d 个标签", len(all_tags))
+                        self._tag_index.update(list(all_tags))
+            except Exception:
+                logger.debug("标签嵌入索引初始化异常", exc_info=True)
 
             # 事实冲突检测（话题树重建之后，利用新鲜的分支信息）
             try:

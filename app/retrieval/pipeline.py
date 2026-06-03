@@ -318,10 +318,11 @@ def run_chat_retrieval(
             except Exception:
                 pass
 
-        # ── 话题树扩展（第七路：沿树扩展用户查询标签） ──
+        # ── 标签嵌入最近邻扩展（替代话题树：embedding cosine 相似度找近邻标签） ──
         try:
-            if hasattr(ctx_obj, '_topic_tree') and ctx_obj._topic_tree:
-                topic_expanded = ctx_obj._topic_tree.expand(_cached_q_tags)
+            tag_index = getattr(ctx_obj, '_tag_index', None)
+            if tag_index is not None and tag_index.size() > 0:
+                topic_expanded = tag_index.nearest(_cached_q_tags, top_k=5)
                 if topic_expanded:
                     _cached_q_tags.extend(
                         [t for t in topic_expanded if t not in _cached_q_tags]
