@@ -30,7 +30,9 @@ from app.brain.chuchu_tok import ChuchuTok
 
 def _ollama_chat(model: str, prompt: str, ollama_url: str = "http://localhost:11434",
                  timeout: int = 30) -> str:
-    """调用 Ollama chat API，返回模型回复文本。"""
+    """调用 Ollama chat API，返回模型回复文本。
+    NOTE: 同步阻塞，调用方必须在线程池中执行（circuit.py 已通过 run_in_executor 处理）。
+    """
     resp = _requests.post(
         f"{ollama_url}/api/chat",
         json={

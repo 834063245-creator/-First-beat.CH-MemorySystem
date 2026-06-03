@@ -544,13 +544,17 @@ def count_memories(collection) -> dict:
 # ===================================================================
 _query_explore_init_lock = threading.Lock()
 _query_explore_clients: dict[str, object] = {}  # path → PersistentClient
+_QUERY_EXPLORE_MAX_CLIENTS = 10  # LRU 上限，防止无限增长
 
 def _get_chroma_collection(path: str, name: str = "memories"):
-    """缓存 ChromaDB PersistentClient，避免每次查询新建。"""
+    """缓存 ChromaDB PersistentClient，避免每次查询新建。LRU 淘汰。"""
     import chromadb
     if path not in _query_explore_clients:
         with _query_explore_init_lock:
             if path not in _query_explore_clients:
+                if len(_query_explore_clients) >= _QUERY_EXPLORE_MAX_CLIENTS:
+                    oldest = next(iter(_query_explore_clients))
+                    del _query_explore_clients[oldest]
                 _query_explore_clients[path] = chromadb.PersistentClient(path=path)
     return _query_explore_clients[path].get_or_create_collection(name, embedding_function=None)
 

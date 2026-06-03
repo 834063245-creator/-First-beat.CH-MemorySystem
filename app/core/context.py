@@ -717,20 +717,24 @@ class AppContext:
         # 关闭 DeepSeekLLM 的 httpx 客户端
         if hasattr(self, 'deepseek_llm') and self.deepseek_llm:
             try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    loop.create_task(self.deepseek_llm.aclose())
-                elif not loop.is_closed():
-                    loop.run_until_complete(self.deepseek_llm.aclose())
+                _loop = asyncio.get_running_loop()
+                _loop.create_task(self.deepseek_llm.aclose())
+            except RuntimeError:
+                try:
+                    asyncio.run(self.deepseek_llm.aclose())
+                except Exception:
+                    pass
             except Exception:
                 pass
         # 关闭 impulse_httpx 客户端
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                loop.create_task(_impulse_httpx.aclose())
-            elif not loop.is_closed():
-                loop.run_until_complete(_impulse_httpx.aclose())
+            _loop = asyncio.get_running_loop()
+            _loop.create_task(_impulse_httpx.aclose())
+        except RuntimeError:
+            try:
+                asyncio.run(_impulse_httpx.aclose())
+            except Exception:
+                pass
         except Exception:
             pass
 
