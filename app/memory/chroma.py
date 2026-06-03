@@ -54,6 +54,15 @@ class ChromaService:
             name=coll_name, embedding_function=None,
         )
 
+    def close(self):
+        """释放 ChromaDB 客户端资源。"""
+        with self._lock:
+            self._read_client = None
+            self._write_client = None
+            self._read_collection = None
+            self._write_collection = None
+            self._emb_cache = {}
+
     # ------------------------------------------------------------------
     # 记忆写入
     # ------------------------------------------------------------------

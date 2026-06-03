@@ -142,6 +142,8 @@ class AppContext:
         self.deepseek_llm = DeepSeekLLM()
         self.storage_executor = ThreadPoolExecutor(max_workers=5)
         self.retrieval_executor = ThreadPoolExecutor(max_workers=3)
+        import atexit
+        atexit.register(self._cleanup_executors)
         self.co_tracker = CoOccurrenceTracker(file_path=f"{data_dir}/co_occurrence.json")
         self.ai_co_tracker = CoOccurrenceTracker(file_path=f"{data_dir}/ai_co_occurrence.json")
         self.entity_pair_tracker = EntityPairTracker(file_path=f"{data_dir}/entity_pairs.json")
@@ -698,6 +700,19 @@ class AppContext:
             pass
 
     # ── 关闭 ─────────────────────────────────────────────────
+
+    def _cleanup_executors(self):
+        """atexit 兜底 — 确保线程池在 crash 时也被关闭。"""
+        try:
+            if hasattr(self, 'retrieval_executor'):
+                self.retrieval_executor.shutdown(wait=False)
+        except Exception:
+            pass
+        try:
+            if hasattr(self, 'storage_executor'):
+                self.storage_executor.shutdown(wait=False)
+        except Exception:
+            pass
 
     def close(self):
         """释放所有资源。"""
