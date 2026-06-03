@@ -147,7 +147,7 @@ python verify_env.py                        # One-click diagnostics
 
 ---
 
-## 10 MCP Tools
+## 9 MCP Tools
 
 | Tool | Input | Output |
 |------|-------|--------|
