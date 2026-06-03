@@ -72,7 +72,7 @@ Pass results through `run_engine`'s `external_context`:
 }
 ```
 
-The field is passed through unchanged. Your Agent decides which external systems to connect.
+Compatible with: Obsidian, Neo4j, Cognee, Mem0, etc.
 
 ---
 

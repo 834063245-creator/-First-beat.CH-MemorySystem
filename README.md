@@ -75,7 +75,7 @@
 // 返回里原样带回，Agent 自己合并
 ```
 
-Agent 自己决定连什么外部系统（Obsidian、Neo4j、Cognee 等），初痕不过问。
+可接入的外部系统：Obsidian、Neo4j、Cognee、Mem0 等。
 
 ---
 
