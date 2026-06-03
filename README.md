@@ -228,7 +228,7 @@ chuchen/
 │   ├── models/        # Pydantic schemas（ChatRequest, ChatResponse 等）
 │   └── knowledge/     # 知识库管理
 ├── backend/           # 旧模块桥接层（逐步迁移至 app/）
-├── tests/             # 214+ 单测，本地可全部通过
+├── tests/             # 320+ 单测，5 层覆盖：引擎逻辑 · 门控 · 倒排索引 · 线程安全 · 集成
 ├── scripts/           # 审计套件 · 报告对比
 ├── Dockerfile         # 容器化构建
 ├── docker-compose.yml # Ollama + 引擎一键部署

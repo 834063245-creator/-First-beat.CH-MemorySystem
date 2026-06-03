@@ -234,7 +234,7 @@ chuchen/
 │   ├── models/        # Pydantic schemas (ChatRequest, ChatResponse, etc.)
 │   └── knowledge/     # Knowledge base management
 ├── backend/           # Legacy module shims (migrating to app/)
-├── tests/             # 214+ unit tests, all passing locally
+├── tests/             # 320+ unit tests, 5 layers: engine logic · gate · inverted index · thread safety · integration
 ├── scripts/           # Audit suite · report comparison
 ├── Dockerfile         # Container build
 ├── docker-compose.yml # Ollama + Engine one-click deployment
