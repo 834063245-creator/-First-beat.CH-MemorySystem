@@ -102,8 +102,6 @@ class EmotionResult:
     source: str = "rule"
 
 
-from app.core.circuit import GateResult, GateDecisionMaker
-
 class IntentClassifier:
     """意图分类器 — ChuchuCNN + Ollama + 规则三层兜底。
 
@@ -452,6 +450,7 @@ class ChuchenBrain:
                                                    ollama_url=ollama_url)
         self.emotion_analyzer = EmotionAnalyzer(model_name=model_name,
                                                  ollama_url=ollama_url)
+        from app.core.circuit import GateDecisionMaker
         self.gate_maker = GateDecisionMaker(model_name=model_name,
                                              ollama_url=ollama_url)
 

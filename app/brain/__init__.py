@@ -11,13 +11,11 @@
 from app.brain.models import (
     IntentClassifier,
     EmotionAnalyzer,
-    GateDecisionMaker,
     ChuchenBrain,
 )
 
 __all__ = [
     "IntentClassifier",
     "EmotionAnalyzer",
-    "GateDecisionMaker",
     "ChuchenBrain",
 ]
