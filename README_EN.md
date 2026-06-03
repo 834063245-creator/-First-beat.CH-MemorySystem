@@ -6,7 +6,7 @@
 [![MCP](https://img.shields.io/badge/MCP-10%20tools-orange.svg)]()
 [中文文档](README.md)
 
-👉 [Setup Guide](SETUP.md) | 🔧 [Environment Check](verify_env.py)
+👉 [Setup Guide](SETUP_EN.md) | 🔧 [Environment Check](verify_env.py)
 
 ---
 
@@ -125,7 +125,7 @@ curl http://localhost:8082/health          # → {"status":"ok"}
 python verify_env.py                        # One-click diagnostics
 ```
 
-> Troubleshooting? See [SETUP.md](SETUP.md).
+> Troubleshooting? See [SETUP_EN.md](SETUP_EN.md).
 
 ---
 
