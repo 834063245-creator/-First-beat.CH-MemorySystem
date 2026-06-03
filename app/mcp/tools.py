@@ -162,6 +162,12 @@ TOOLS: list[dict] = [
             "properties": {
                 "message": {"type": "string", "description": "用户消息 / User message"},
                 "include_impulses": {"type": "boolean", "description": "是否包含冲动/浮现念头，默认 true", "default": True},
+                "external_context": {
+                    "type": "array",
+                    "description": "可选外部上下文（知识库/图谱检索结果）。引擎不处理，原样带回。"
+                    " / Optional external context from knowledge bases or graph systems. Passed through unchanged.",
+                    "default": [],
+                },
             },
             "required": ["message"],
         },
@@ -178,6 +184,7 @@ TOOLS: list[dict] = [
                 "relationship": {"type": "object"},
                 "session_context": {"type": "string"},
                 "mirror_prediction": {"type": "object"},
+                "external_context": {"type": "array", "description": "外部上下文，原样带回"},
             },
         },
     },

@@ -35,7 +35,7 @@ Doesn't generate text. Only does memory. First Beat is a standalone cognitive en
 | Dimension | First Beat status | Stronger alternative |
 |------|----------|------------|
 | **Benchmark scores** | No LongMemEval/LoCoMo scores | Mem0 / Zep have published benchmarks |
-| **Knowledge graph** | No entity-relation graph | Mem0 / Zep / Cognee |
+| **Knowledge graph** | MCP-compatible with external systems | Obsidian / Mem0 / Zep / Cognee |
 | **Community & ecosystem** | Solo project | Mem0 34K+ stars, backed by a company |
 | **Production maturity** | Personal use, no SLA | Mem0 / Zep offer managed SaaS |
 | **Multimodal** | Text only | Some systems support images/audio |

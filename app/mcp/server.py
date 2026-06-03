@@ -216,6 +216,7 @@ async def _exec_run_engine(ctx: AppContext, args: dict) -> dict:
 
     user_message = args["message"].strip()
     include_impulses = args.get("include_impulses", True)
+    external_context = args.get("external_context", [])
 
     if not user_message:
         return {"error": "message 不能为空 / message is required"}
@@ -339,6 +340,7 @@ async def _exec_run_engine(ctx: AppContext, args: dict) -> dict:
         "relationship": relationship,
         "session_context": session_context or "",
         "mirror_prediction": mirror,
+        "external_context": external_context,
     }
 
 

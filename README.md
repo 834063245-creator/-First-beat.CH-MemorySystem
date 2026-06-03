@@ -35,7 +35,7 @@
 | 维度 | 初痕现状 | 更强的方案 |
 |------|----------|------------|
 | **Benchmark 跑分** | 无 LongMemEval/LoCoMo 分数 | Mem0 / Zep 有公开 benchmark 背书 |
-| **知识图谱** | 无实体关系图 | Mem0 / Zep / Cognee |
+| **知识图谱** | 不自建，通过 MCP 兼容外部系统 | Obsidian / Mem0 / Zep / Cognee |
 | **社区生态** | 个人项目 | Mem0 34K+ star，有商业公司维护 |
 | **生产成熟度** | 自用为主 | Mem0 / Zep 提供 SaaS 托管 |
 | **多模态** | 文本为主 | 部分方案支持图片/音频 |
