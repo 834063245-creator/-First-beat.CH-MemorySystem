@@ -10,6 +10,8 @@
 
 import logging
 import threading
+from dataclasses import dataclass, field
+from dataclasses import dataclass, field
 from typing import Optional
 
 from app.core.state import UserMessageAnalysis, GatingDecision, UtteranceSpec
@@ -704,4 +706,138 @@ class CircuitOrchestrator:
             mirror_prediction=mirror_prediction or {},
             topic_notes=topic_notes,
             relationship=rs,
+        )
+
+
+@dataclass
+class GateResult:
+    """门控决策输出。"""
+    tone: str = "warm"
+    formality: float = 0.3
+    response_mode: str = "auto"
+    intimacy: float = 0.0
+    suppression_reasons: list[str] = field(default_factory=list)
+    confidence: float = 0.0
+    source: str = "rule"
+
+
+class GateDecisionMaker:
+    """门控决策器 — 纯规则（策略映射表，不需模型）。"""
+
+    def __init__(self, model_name: Optional[str] = None,
+                 ollama_url: str = "http://localhost:11434"):
+        pass
+
+    def load(self) -> bool:
+        return True
+
+    def decide(self, intent: str, emotion: str,
+               context: dict | None = None) -> GateResult:
+        return self._rule_decide(intent, emotion)
+
+    def _rule_decide(self, intent: str, emotion: str) -> GateResult:
+        tone = "warm"
+        formality = 0.3
+        response_mode = "auto"
+        intimacy = 0.3
+
+        if intent == "emotional_sharing":
+            if emotion in ("negative", "intimate", "frustrated"):
+                tone = "caring"
+                formality = 0.1
+                response_mode = "soothe"
+                intimacy = 0.6
+            else:
+                tone = "warm"
+                response_mode = "question_first"
+        elif intent == "conflict":
+            tone = "soft"
+            formality = 0.5
+            response_mode = "confirm"
+            intimacy = 0.1
+        elif intent == "recall":
+            tone = "direct" if emotion == "neutral" else "warm"
+            response_mode = "auto"
+        elif intent in ("ask_fact", "meta"):
+            tone = "direct"
+            formality = 0.4
+            response_mode = "direct_answer"
+        elif intent == "request":
+            tone = "direct"
+            formality = 0.3
+            response_mode = "direct_answer"
+
+        if emotion == "intimate":
+            intimacy = max(intimacy, 0.7)
+
+        return GateResult(
+            tone=tone, formality=formality, response_mode=response_mode,
+            intimacy=intimacy, confidence=0.8, source="rule",
+        )
+
+
+@dataclass
+class GateResult:
+    """门控决策输出。"""
+    tone: str = "warm"
+    formality: float = 0.3
+    response_mode: str = "auto"
+    intimacy: float = 0.0
+    suppression_reasons: list[str] = field(default_factory=list)
+    confidence: float = 0.0
+    source: str = "rule"
+
+
+class GateDecisionMaker:
+    """门控决策器 — 纯规则（策略映射表，不需模型）。"""
+
+    def __init__(self, model_name: Optional[str] = None,
+                 ollama_url: str = "http://localhost:11434"):
+        pass
+
+    def load(self) -> bool:
+        return True
+
+    def decide(self, intent: str, emotion: str,
+               context: dict | None = None) -> GateResult:
+        return self._rule_decide(intent, emotion)
+
+    def _rule_decide(self, intent: str, emotion: str) -> GateResult:
+        tone = "warm"
+        formality = 0.3
+        response_mode = "auto"
+        intimacy = 0.3
+
+        if intent == "emotional_sharing":
+            if emotion in ("negative", "intimate", "frustrated"):
+                tone = "caring"
+                formality = 0.1
+                response_mode = "soothe"
+                intimacy = 0.6
+            else:
+                tone = "warm"
+                response_mode = "question_first"
+        elif intent == "conflict":
+            tone = "soft"
+            formality = 0.5
+            response_mode = "confirm"
+            intimacy = 0.1
+        elif intent == "recall":
+            tone = "direct" if emotion == "neutral" else "warm"
+            response_mode = "auto"
+        elif intent in ("ask_fact", "meta"):
+            tone = "direct"
+            formality = 0.4
+            response_mode = "direct_answer"
+        elif intent == "request":
+            tone = "direct"
+            formality = 0.3
+            response_mode = "direct_answer"
+
+        if emotion == "intimate":
+            intimacy = max(intimacy, 0.7)
+
+        return GateResult(
+            tone=tone, formality=formality, response_mode=response_mode,
+            intimacy=intimacy, confidence=0.8, source="rule",
         )

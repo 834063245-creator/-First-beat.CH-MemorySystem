@@ -14,7 +14,7 @@ import json
 import logging
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -102,16 +102,8 @@ class EmotionResult:
     source: str = "rule"
 
 
-@dataclass
-class GateResult:
-    """门控决策输出。"""
-    tone: str = "warm"
-    formality: float = 0.3
-    response_mode: str = "auto"
-    intimacy: float = 0.0
-    suppression_reasons: list[str] = field(default_factory=list)
-    confidence: float = 0.0
-    source: str = "rule"
+from app.core.circuit import GateResult, GateDecisionMaker
+
 class IntentClassifier:
     """意图分类器 — ChuchuCNN + Ollama + 规则三层兜底。
 
@@ -450,71 +442,6 @@ class EmotionAnalyzer:
         self._chuchu_model = None
         self._chuchu_tok = None
         self._chuchu_ok = False
-
-
-# ═══════════════════════════════════════════════════════
-# 门控决策器
-# ═══════════════════════════════════════════════════════
-
-class GateDecisionMaker:
-    """门控决策器 — 纯规则（策略映射表，不需模型）。"""
-
-    def __init__(self, model_name: Optional[str] = None,
-                 ollama_url: str = "http://localhost:11434"):
-        # 为兼容 ChuchenBrain 的统一接口保留参数，但不使用
-        pass
-
-    def load(self) -> bool:
-        return True  # 规则永远可用
-
-    def decide(self, intent: str, emotion: str,
-               context: dict | None = None) -> GateResult:
-        return self._rule_decide(intent, emotion)
-
-    def _rule_decide(self, intent: str, emotion: str) -> GateResult:
-        tone = "warm"
-        formality = 0.3
-        response_mode = "auto"
-        intimacy = 0.3
-
-        if intent == "emotional_sharing":
-            if emotion in ("negative", "intimate", "frustrated"):
-                tone = "caring"
-                formality = 0.1
-                response_mode = "soothe"
-                intimacy = 0.6
-            else:
-                tone = "warm"
-                response_mode = "question_first"
-        elif intent == "conflict":
-            tone = "soft"
-            formality = 0.5
-            response_mode = "confirm"
-            intimacy = 0.1
-        elif intent == "recall":
-            tone = "direct" if emotion == "neutral" else "warm"
-            response_mode = "auto"
-        elif intent in ("ask_fact", "meta"):
-            tone = "direct"
-            formality = 0.4
-            response_mode = "direct_answer"
-        elif intent == "request":
-            tone = "direct"
-            formality = 0.3
-            response_mode = "direct_answer"
-
-        if emotion == "intimate":
-            intimacy = max(intimacy, 0.7)
-
-        return GateResult(
-            tone=tone, formality=formality, response_mode=response_mode,
-            intimacy=intimacy, confidence=0.8, source="rule",
-        )
-
-
-# ═══════════════════════════════════════════════════════
-# 统一入口
-# ═══════════════════════════════════════════════════════
 
 class ChuchenBrain:
     """初痕智能引擎 — 统一管三个模型的加载和调用。"""

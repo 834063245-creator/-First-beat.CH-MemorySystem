@@ -29,7 +29,7 @@ if _backend_dir not in sys.path:
 # ── 底层模块导入（后续逐步迁移到 app/） ──────────────────────
 import jieba.posseg as pseg
 
-from config import (                              # noqa: E402
+from app.config.settings import (                  # noqa: E402
     CHROMA_PERSIST_DIR, DATA_DIR, DEFAULT_TOP_K, MAX_MEMORIES_IN_PROMPT,
     KNOWLEDGE_COLLECTION, TIMELINE_RECENT_COUNT, WORK_MEMORY_TOKEN_BUDGET,
     CHAT_HISTORY_PATH, CHAT_HISTORY_MAX_MEMORY, DEBUG_INCLUDE_PROMPT,
@@ -37,7 +37,7 @@ from config import (                              # noqa: E402
     CONSOLIDATION_SHALLOW_INTERVAL, CONSOLIDATION_DEEP_INTERVAL,
     AI_CHROMA_DIR, AI_COLLECTION, AI_DISTILL_STATE_PATH,
     IS_LITE, LITE_DISABLE_BACKGROUND_TASKS, LITE_DISABLE_IMPULSE,
-    LITE_WORK_MEMORY_BUDGET, USER_DATA_DIRS,
+    LITE_WORK_MEMORY_BUDGET, USER_DATA_DIRS, AUTH_TOKEN_PATH,
     STOP_WORDS as _STOP_WORDS,
 )
 from memory import ChromaService                   # noqa: E402
@@ -188,7 +188,7 @@ class AppContext:
         # 每个用户的存储队列路径
         self._store_queue_path = f"{data_dir}/store_queue.jsonl"
         self._store_queue_lock = threading.Lock()
-        self._store_queue_event = threading.Event()
+        self._store_queue: queue.Queue = queue.Queue()
         self._stop_event = threading.Event()
 
         # 启动用户专属后台线程
@@ -262,11 +262,19 @@ class AppContext:
                             pass
                         continue
 
-                    self._store_queue_event.clear()
-                    self._store_queue_event.wait(timeout=1)
+                    try:
+                        task = self._store_queue.get(timeout=1)
+                        self._store_conversation(
+                            task["user_message"], task["ai_message"], task["timestamp"]
+                        )
+                    except queue.Empty:
+                        pass
                 except Exception as e:
                     logger.error("队列 worker 循环异常: %s", e)
-                    self._store_queue_event.wait(timeout=1)
+                    try:
+                        self._store_queue.get(timeout=1)
+                    except queue.Empty:
+                        pass
 
         t = threading.Thread(target=_worker, daemon=True, name=f"store_queue_{self.data_dir}")
         t.start()
@@ -587,19 +595,21 @@ class AppContext:
     # ── 入队 ─────────────────────────────────────────────────
 
     def _enqueue_store_task(self, user_message: str, ai_message: str, timestamp: str):
-        """同步写入队列文件，微秒级，不卡顿。"""
+        """写入队列（内存 Queue + 文件持久化兜底）。"""
         task = {
             "user_message": user_message,
             "ai_message": ai_message,
             "timestamp": timestamp,
         }
+        # 先入内存队列（即时唤醒 worker）
+        self._store_queue.put(task)
+        # 再写文件（crash recovery 兜底）
         with self._store_queue_lock:
             qdir = os.path.dirname(self._store_queue_path)
             if qdir:
                 os.makedirs(qdir, exist_ok=True)
             with open(self._store_queue_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(task, ensure_ascii=False) + "\n")
-        self._store_queue_event.set()
 
     # ── AI 巩固 worker ───────────────────────────────────────
 

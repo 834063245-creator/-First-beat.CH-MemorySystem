@@ -208,6 +208,10 @@ IMPULSE_ACTIVE_PATH_B = os.getenv("IMPULSE_ACTIVE_PATH_B", "true").lower() == "t
 # ============================================================
 DEPLOY_MODE = os.getenv("DEPLOY_MODE", "full")
 IS_LITE = DEPLOY_MODE == "lite"
+
+# 轻量版功能开关
+LITE_DISABLE_BACKGROUND_TASKS = True        # 禁用后台巩固 + 空闲回顾
+LITE_DISABLE_IMPULSE = True                 # 禁用冲动调度器 + 独立开口
 LITE_WORK_MEMORY_BUDGET = 5000 if IS_LITE else 50000
 
 # ============================================================
