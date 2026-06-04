@@ -305,15 +305,15 @@ class CircuitOrchestrator:
                     "kw_match": 0.65, "tag_match": 0.6, "keyword_expand": 0.55,
                     "text_match": 0.6, "time_rhythm": 0.4, "co_occurrence": 0.35,
                 }.get(source, 0.5)
-            certainty = 0.5 * semantic_conf + 0.25 * hit_conf + 0.25 * source_weight
-            certainty = max(0.0, min(1.0, certainty))
+                certainty = 0.5 * semantic_conf + 0.25 * hit_conf + 0.25 * source_weight
+                certainty = max(0.0, min(1.0, certainty))
 
-            if certainty >= 0.6:
-                temp.add_fact(mem, certainty=certainty)
-            elif certainty >= 0.35:
-                temp.add_reference(mem, certainty=certainty)
-            else:
-                temp.add_background(mem)
+                if certainty >= 0.6:
+                    temp.add_fact(mem, certainty=certainty)
+                elif certainty >= 0.35:
+                    temp.add_reference(mem, certainty=certainty)
+                else:
+                    temp.add_background(mem)
 
         for p in personalities:
             if isinstance(p, dict):

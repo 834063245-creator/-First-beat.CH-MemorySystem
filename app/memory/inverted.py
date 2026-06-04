@@ -111,17 +111,19 @@ class InvertedIndex:
                     if tag not in new_idx:
                         new_idx[tag] = set()
                     new_idx[tag].add(mid)
-        self._tag_index = new_idx
+        with self._lock:
+            self._tag_index = new_idx
 
     def query_tags(self, tags: list[str]) -> set[str]:
         """标签精确匹配：返回包含 ≥1 个标签的记忆 ID。"""
         if not tags:
             return set()
-        result: set[str] = set()
-        for t in tags:
-            ids = self._tag_index.get(t, set())
-            result.update(ids)
-        return result
+        with self._lock:
+            result: set[str] = set()
+            for t in tags:
+                ids = self._tag_index.get(t, set())
+                result.update(ids)
+            return result
 
     def remove(self, memory_id: str):
         """删除记忆时同步清理。"""

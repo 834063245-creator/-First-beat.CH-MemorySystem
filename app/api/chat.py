@@ -329,6 +329,24 @@ async def chat(req: ChatRequest, user_ctx = Depends(get_user_context)):
     return ChatResponse(response=ai_response, debug=debug_info, trace=_build_trace(memories), debug_info=debug_info)
 
 
+# ── GET /v1/models (OpenAI 兼容) ──────────────────────────────
+
+@router.get("/v1/models")
+async def openai_list_models():
+    """OpenAI 兼容：返回可用模型列表。NextChat 启动时需要。"""
+    from app.config.settings import LLM_MODEL
+    return {
+        "object": "list",
+        "data": [
+            {
+                "id": LLM_MODEL,
+                "object": "model",
+                "owned_by": "初痕",
+            }
+        ],
+    }
+
+
 # ── POST /v1/chat/completions (OpenAI 兼容) ───────────────────
 
 @router.post("/v1/chat/completions")

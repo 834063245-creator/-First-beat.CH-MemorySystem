@@ -1,13 +1,13 @@
 """单用户上下文。
 
-通过 X-Chuhen-User 请求头在配置的可用库之间切换。
+通过 X-Chuhen-User 请求头或 chuhen_user cookie 切换数据目录。
 """
 import json
 import logging
 import os
 from typing import Optional
 
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Cookie, Request
 
 from app.config.settings import DATA_DIR, USER_DATA_DIRS
 from app.core.context import ctx_manager
@@ -18,11 +18,17 @@ _DEFAULT_USER = "admin"
 
 
 def get_current_user(
+    request: Request,
     x_chuhen_user: Optional[str] = Header(None, alias="X-Chuhen-User"),
 ) -> str:
-    """返回当前用户。可通过 X-Chuhen-User 请求头切库。"""
+    """返回当前用户。优先级：Header > Cookie > 默认 admin。"""
+    # 1) X-Chuhen-User 请求头
     if x_chuhen_user and x_chuhen_user in USER_DATA_DIRS:
         return x_chuhen_user
+    # 2) chuhen_user cookie
+    cookie_user = request.cookies.get("chuhen_user")
+    if cookie_user and cookie_user in USER_DATA_DIRS:
+        return cookie_user
     return _DEFAULT_USER
 
 

@@ -56,9 +56,20 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 AUTH_TOKEN_PATH = os.path.join(DATA_DIR, "auth_tokens.json")
 
 # 用户 → 数据目录映射
-USER_DATA_DIRS: dict[str, str] = {
-    "admin": DATA_DIR,
-}
+_USER_DIRS_RAW = os.getenv("USER_DATA_DIRS")
+try:
+    USER_DATA_DIRS: dict[str, str] = json.loads(_USER_DIRS_RAW) if _USER_DIRS_RAW else {}
+except (json.JSONDecodeError, TypeError):
+    USER_DATA_DIRS = {}
+if not USER_DATA_DIRS:
+    USER_DATA_DIRS["admin"] = DATA_DIR
+    # 自动发现 data/users/ 下的子目录
+    _users_dir = os.path.join(DATA_DIR, "users")
+    if os.path.isdir(_users_dir):
+        for _u in os.listdir(_users_dir):
+            _up = os.path.join(_users_dir, _u)
+            if os.path.isdir(_up) and _u not in USER_DATA_DIRS:
+                USER_DATA_DIRS[_u] = _up
 
 # ============================================================
 # 本地 LLM（Ollama 摘要生成）

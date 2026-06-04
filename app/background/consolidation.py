@@ -483,28 +483,63 @@ class ConsolidationEngine:
             except Exception as exc:
                 logger.debug("话题亲和图/时间模式/标签嵌入更新跳过: %s", exc)
 
-            # 检测语义重复：cosine > 0.95 且共享 tags 的记忆
+            # 检测语义重复：利用 ChromaDB 内建 hnsw 索引逐条近邻查询。
+            # 替代旧的双层 for 循环 O(n²)，每条记忆只查 top-3 近邻，O(n log n)。
             merged = 0
-            for i, m in enumerate(all_mems):
-                if i >= len(all_mems) - 1:
-                    break
-                for j in range(i + 1, min(i + 20, len(all_mems))):
-                    try:
-                        mi = all_mems[i]
-                        mj = all_mems[j]
-                        ei = mi.get("metadata", {}).get("embedding") or \
-                             self._chroma._emb_cache.get(mi.get("id", ""))
-                        ej = mj.get("metadata", {}).get("embedding") or \
-                             self._chroma._emb_cache.get(mj.get("id", ""))
-                        if ei and ej and len(ei) == len(ej):
-                            dot = sum(a * b for a, b in zip(ei, ej))
-                            n1 = sum(a * a for a in ei) ** 0.5
-                            n2 = sum(b * b for b in ej) ** 0.5
-                            sim = dot / (n1 * n2 + 1e-10) if n1 and n2 else 0
-                            if sim > 0.95:
-                                merged += 1
-                    except Exception:
+            try:
+                seen_dupes: set[str] = set()
+                collection = self._chroma._read_collection
+                # 只查最近 30 天入库的记忆（旧记忆重复已在之前的浅巩固中处理）
+                recent_cutoff = _time.time() - 86400 * 30
+                recent_mems = [
+                    m for m in all_mems
+                    if (m.get("metadata") or {}).get("timestamp", 0) >= recent_cutoff
+                    and not (m.get("metadata") or {}).get("stale", False)
+                ]
+                # 批量查询：每批 100 条，利用 ChromaDB 内部批处理
+                BATCH_SIZE = 100
+                for batch_start in range(0, len(recent_mems), BATCH_SIZE):
+                    batch = recent_mems[batch_start:batch_start + BATCH_SIZE]
+                    batch_embs = []
+                    batch_ids = []
+                    for m in batch:
+                        emb = (m.get("metadata") or {}).get("embedding") or \
+                              self._chroma._emb_cache.get(m.get("id", ""))
+                        if emb:
+                            batch_embs.append(emb)
+                            batch_ids.append(m["id"])
+                    if not batch_embs:
                         continue
+                    # ChromaDB query：每条找 top-3 近邻
+                    results = collection.query(
+                        query_embeddings=batch_embs,
+                        n_results=3,
+                        include=["metadatas", "distances"],
+                    )
+                    for i, mid in enumerate(batch_ids):
+                        if mid in seen_dupes:
+                            continue
+                        neighbor_ids = results.get("ids", [[]])[i] if i < len(results.get("ids", [[]])) else []
+                        distances = results.get("distances", [[]])[i] if i < len(results.get("distances", [[]])) else []
+                        for j, nid in enumerate(neighbor_ids):
+                            if nid == mid:
+                                continue  # 跳过自己
+                            dist = distances[j] if j < len(distances) else 1.0
+                            # ChromaDB 返回 L2 或 cosine distance；阈值 0.05 = cosine sim ~0.95
+                            if dist < 0.05:
+                                # 额外校验：共享 tag
+                                mi_meta = (next((mm.get("metadata") for mm in batch if mm["id"] == mid), None) or {})
+                                mi_tags = set((mi_meta.get("tags", "") or "").split(","))
+                                nj_meta = results.get("metadatas", [[]])[i][j] if j < len(results.get("metadatas", [[]])[i]) else {}
+                                nj_tags = set((nj_meta.get("tags", "") or "").split(","))
+                                if not (mi_tags & nj_tags):
+                                    continue
+                                merged += 1
+                                seen_dupes.add(mid)
+                                seen_dupes.add(nid)
+                                break  # 每条记忆最多标记一次
+            except Exception as exc:
+                logger.debug("语义重复检测异常（回退跳过）: %s", exc)
 
             # 更新话题簇最后活跃时间（已有追踪，无需额外数据）
             state["last_shallow_consolidation"] = _time.time()
@@ -616,16 +651,13 @@ class ConsolidationEngine:
     def _detect_fact_contradictions(self) -> int:
         """事实冲突检测：语义相关+情绪翻转 → 标记旧记忆被取代。
 
-        两层漏斗：
-        1. 话题树分支粗筛 — 同一话题簇下的记忆才比较
+        三层漏斗（由粗到细，控制 O(n²) 扩散）：
+        1. tag 交集粗筛 — 新旧记忆共享至少 1 个 tag 才进入下一层
         2. embedding 语义精筛 — sim ∈ [0.75, 0.95] 确认"说同一件事但细节不同"
-        3. 情绪翻转判定 — 同一事实域下情绪反转则标记冲突
+        3. 情绪翻转 / 事实位移判定 — 标记者超旧记忆
 
         返回标记数。
         """
-        if self._topic_tree is None:
-            return 0
-
         try:
             all_mems = self._chroma.list_all()
             now_ts = _time.time()
@@ -651,38 +683,48 @@ class ConsolidationEngine:
             if not self._chroma._emb_cache:
                 self._chroma._build_embedding_cache()
 
+            # 预计算所有旧记忆的 tag set（第一层粗筛，避免每轮重复 parse）
+            old_mem_tags: dict[str, set[str]] = {}
+            for old_m in old_mems:
+                old_tags_str = (old_m.get("metadata") or {}).get("tags", "") or ""
+                old_tags = {t.strip() for t in old_tags_str.split(",") if len(t.strip()) >= 2}
+                if old_tags:
+                    old_mem_tags[old_m["id"]] = old_tags
+
             superseded = 0
 
             for new_m in new_mems:
                 new_meta = new_m.get("metadata") or {}
                 new_tags_str = new_meta.get("tags", "") or ""
-                new_tags = [t.strip() for t in new_tags_str.split(",") if len(t.strip()) >= 2]
+                new_tags = {t.strip() for t in new_tags_str.split(",") if len(t.strip()) >= 2}
                 if not new_tags:
                     continue
                 new_emb = self._chroma._emb_cache.get(new_m["id"])
                 if not new_emb:
                     continue
 
-                # 第一层：CNN 事实域判断（替代话题树分支交集）
-                new_branch = set(self._topic_tree.get_branch(new_tags[0])) if self._topic_tree else set(new_tags)
+                # 话题树分支扩展（供 reason 日志使用，不作为硬门槛）
+                if self._topic_tree:
+                    new_branch = set(self._topic_tree.get_branch(
+                        next(iter(new_tags), "")
+                    ))
+                else:
+                    new_branch = new_tags
 
                 for old_m in old_mems:
-                    old_meta = old_m.get("metadata") or {}
-                    old_tags_str = old_meta.get("tags", "") or ""
-                    old_tags = [t.strip() for t in old_tags_str.split(",") if len(t.strip()) >= 2]
-                    if not old_tags:
-                        continue
                     old_emb = self._chroma._emb_cache.get(old_m["id"])
                     if not old_emb or len(old_emb) != len(new_emb):
                         continue
 
-                    # 第一层：CNN 已移除，直接进入 cosine 精筛
-                    first_pass = True
+                    # ── 第一层：tag 交集粗筛（替代已移除的 CNN） ──
+                    old_tags = old_mem_tags.get(old_m["id"], set())
+                    if not old_tags:
+                        continue
+                    shared = new_tags & old_tags
+                    if not shared:
+                        continue  # 无共同标签 → 几乎不可能是同一事实域
 
-                    if not first_pass:
-                        continue  # dead code — 保留结构供后续门控
-
-                    # 第二层：embedding 语义精筛
+                    # ── 第二层：embedding 语义精筛 ──
                     dot = sum(a * b for a, b in zip(new_emb, old_emb))
                     n1 = (sum(a * a for a in new_emb) ** 0.5) or 1e-10
                     n2 = (sum(b * b for b in old_emb) ** 0.5) or 1e-10
@@ -691,9 +733,10 @@ class ConsolidationEngine:
                     if sim < self.CONTRADICTION_SIM_LOW:
                         continue  # 不同话题
                     if sim > self.CONTRADICTION_SIM_HIGH:
-                        continue  # 近似重复，已有重复检测
+                        continue  # 近似重复（已有重复检测处理）
 
-                    # 第三层：事实变化判定（双路径）
+                    # ── 第三层：事实变化判定（双路径） ──
+                    old_meta = old_m.get("metadata") or {}
                     new_val = new_meta.get("emotion_valence_bin", "") or ""
                     old_val = old_meta.get("emotion_valence_bin", "") or ""
                     new_summary = (new_meta.get("summary", "") or "")[:40]
@@ -714,7 +757,7 @@ class ConsolidationEngine:
                     reason = (
                         f"{flip_kind}: {flip_detail} "
                         f"sim={sim:.2f} "
-                        f"tags={list(new_branch & old_branch)[:3]}"
+                        f"tags={list(shared)[:3]}"
                     )
                     self._chroma.supersede_memory(old_m["id"], new_m["id"], reason)
                     superseded += 1
@@ -725,13 +768,13 @@ class ConsolidationEngine:
                     conflicts.append({
                         "new_id": new_m["id"][:8],
                         "old_id": old_m["id"][:8],
-                        "shared_tags": list(new_branch & old_branch)[:3],
+                        "shared_tags": list(shared)[:3],
                         "new_summary": new_summary,
                         "old_summary": old_summary,
                         "detected_at": now_ts,
                         "reason": reason,
                     })
-                    state["pending_conflicts"] = conflicts[-10:]  # 保留最近10个
+                    state["pending_conflicts"] = conflicts[-10:]
                     self._write_state(state)
 
                     break  # 一条新记忆只覆盖一条旧记忆

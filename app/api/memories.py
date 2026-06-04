@@ -46,12 +46,15 @@ def api_memories(
             doc = results["documents"][0][i] if results.get("documents") else ""
             items.append({
                 "id": mid,
+                "title": meta.get("summary", "")[:60] or "未命名",
+                "body": (doc or "")[:200],
                 "summary": meta.get("summary", ""),
                 "document": (doc or "")[:200],
                 "tags": meta.get("tags", "").split(",") if isinstance(meta.get("tags"), str) else (meta.get("tags") or []),
                 "emotion": meta.get("emotion", ""),
                 "timestamp": meta.get("timestamp", ""),
-                "hit_count": meta.get("hit_count", 0),
+                "hit_count": meta.get("hit_count", 0) or 0,
+                "type": meta.get("source", "user") or "user",
                 "source": meta.get("source", "user"),
                 "distance": results["distances"][0][i] if results.get("distances") else None,
             })
