@@ -86,8 +86,7 @@ except Exception:
 print("\n[2] 项目文件完整性")
 required_files = [
     ("run.py", "启动入口"),
-    ("requirements.txt", "完整依赖"),
-    ("requirements-lite.txt", "轻量依赖"),
+    ("requirements.txt", "依赖清单"),
     ("verify_env.py", "本诊断脚本"),
     ("SETUP.md", "安装指南"),
     ("QUICKSTART.md", "快速上手"),
@@ -120,17 +119,7 @@ for pkg, (desc, install_cmd) in core_deps.items():
     except ImportError:
         check(f"{pkg} ({desc})", False, install_cmd)
 
-# 重型可选依赖
-print("  可选依赖:")
-for pkg, desc, hint in [
-    ("torch", "PyTorch (本地 embedding)", "pip install torch 或使用 requirements-lite.txt"),
-    ("transformers", "HuggingFace (模型加载)", "pip install transformers 或使用 requirements-lite.txt"),
-]:
-    try:
-        __import__(pkg)
-        check(f"  {pkg}", True)
-    except ImportError:
-        warn(f"  {pkg} 未安装", hint)
+# 无重型可选依赖 — 全部已内置于 requirements.txt
 
 # ── 4. Ollama 服务 ──
 print("\n[4] Ollama 服务")

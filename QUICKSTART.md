@@ -31,10 +31,6 @@ cd -First-beat.CH-MemorySystem
 pip install -r requirements.txt
 ```
 
-> 如果 `pip install -r requirements.txt` 报错（特别是 torch 装不上），用轻量版：
-> ```bash
-> pip install -r requirements-lite.txt
-> ```
 
 ---
 

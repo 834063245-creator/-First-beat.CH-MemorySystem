@@ -128,8 +128,7 @@ ollama pull bge-m3
 git clone https://github.com/834063245-creator/-First-beat.CH-MemorySystem.git
 cd chuchen
 
-pip install -r requirements.txt          # Full
-# pip install -r requirements-lite.txt   # Lightweight
+pip install -r requirements.txt
 
 # 3. Start the engine
 python run.py

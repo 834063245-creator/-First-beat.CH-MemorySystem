@@ -42,11 +42,7 @@ ollama list
 git clone https://github.com/834063245-creator/-First-beat.CH-MemorySystem.git
 cd -First-beat.CH-MemorySystem
 
-# Full install (includes local embedding)
 pip install -r requirements.txt
-
-# Lightweight install (remote embedding / MCP-only mode)
-pip install -r requirements-lite.txt
 ```
 
 ### 4. Configure Environment Variables
@@ -84,7 +80,7 @@ python verify_env.py
 |---------|-------------|----------|
 | `Connection refused` to Ollama | Ollama service not running | Run `ollama serve` or start the Ollama app |
 | `model 'bge-m3' not found` | Model not downloaded | `ollama pull bge-m3` |
-| `ModuleNotFoundError: torch` | Full deps not installed | `pip install torch` or use `requirements-lite.txt` |
+| `ModuleNotFoundError` | Dependencies not installed | `pip install -r requirements.txt` |
 | Port 8082 already in use | Another service running | Kill the old process: `netstat -ano | findstr :8082` |
 | `DEEPSEEK_API_KEY` 401 | Invalid key | Works without DeepSeek — summaries fall back to keyword truncation |
 | Import `app.core.circuit` fails | Project root not in Python path | Make sure you run `python run.py` from the project root |

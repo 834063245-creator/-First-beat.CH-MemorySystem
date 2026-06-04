@@ -54,3 +54,6 @@ Thumbs.db
 .codebuddy/
 .codegraph/
 .claude/
+
+# Reasonix
+.reasonix/
