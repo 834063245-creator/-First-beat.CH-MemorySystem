@@ -11,8 +11,7 @@ import time
 from app.brain.semantic import extract_tags, tokenize as _sem_tokenize
 
 from app.config.settings import (
-    RERANK_SEMANTIC_WEIGHT, RERANK_ATTENTION_WEIGHT, ATTENTION_WINDOW,
-    RERANK_LN_MAX, DEFAULT_TOP_K, MAX_MEMORIES_IN_PROMPT,
+    ATTENTION_WINDOW,
     LITE_WORK_MEMORY_BUDGET,
 )
 from app.retrieval.scoring import compute_score
@@ -26,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # ── 检索门控：意图 → 各路配额 ────────────────────────────────
 # 配额含义是 ChromaDB query 的 n_results（不是截断上限）。
-# 截断统一由 MAX_MEMORIES_IN_PROMPT 管理。
+# 截断由引擎 weave_context 统一决策（不再有硬 K）。
 _INTENT_ROUTES = {
     "casual":             {"semantic": 10, "tag": 5,  "entity": 0, "time_expand": 0},
     "recall":             {"semantic": 20, "tag": 8,  "entity": 5, "time_expand": 5},
@@ -149,10 +148,6 @@ def run_chat_retrieval(
     """
     import math
 
-    _ACTUAL_TOP_K = max(
-        DEFAULT_TOP_K,
-        min(ctx_obj.chroma_service._read_collection.count() // 20, 100),
-    )
     _cached_q_tags = extract_tags(user_message, topk=5) or []
     _ticks = [("start", time.perf_counter())]
     def _log_step(name):
@@ -161,11 +156,8 @@ def run_chat_retrieval(
         bottleneck.record(name, ms)
         _ticks.append((name, time.perf_counter()))
 
-    # ── 意图门控 ──
-    route = _resolve_route(intent if intent else _classify_intent(user_message))
-    sem_n = route["semantic"]
-    tag_n = route["tag"]
-    entity_n = route["entity"]
+    # ── 意图门控（intent 传递给 retrieve_all 复用） ──
+    _intent = intent if intent else _classify_intent(user_message)
 
     _log_step('intent_gate')
     # ── 时间线近端历史 ──
@@ -211,238 +203,17 @@ def run_chat_retrieval(
         logger.debug("DMN 预热失败: %s", exc)
 
     _log_step('dmn_preheat')
-    # ── 语义检索（ChromaDB） ──
+    # ── 全量检索：8 路全开，引擎编织替代 K 截断 ──
     if not memories and query_embedding_for_retrieval is not None:
         try:
-            cq = bool(
-                re.search(
-                    r"(?:多少|几个|几件|几台|哪些|how many|count|总数|所有)",
-                    user_message,
-                    re.I,
-                )
+            memories = retrieve_all(
+                user_message, query_embedding_for_retrieval, ctx_obj,
+                intent=_intent,
             )
-            nq = max(sem_n, 40) if cq else sem_n
-            # 两段式：先捞 hot，不够再补 warm+cool
-            hot_n = int(nq * 1.5)
-            results = ctx_obj.chroma_service._read_collection.query(
-                query_embeddings=[query_embedding_for_retrieval],
-                n_results=hot_n,
-                where={"$and": [{"heat": "hot"}, {"archived": {"$ne": True}}]},
-                include=["documents", "metadatas", "distances"],
-            )
-            hot_count = len(results.get("ids", [[]])[0])
-            if hot_count < nq:
-                remain = nq  # 补到标准配额
-                remain_results = ctx_obj.chroma_service._read_collection.query(
-                    query_embeddings=[query_embedding_for_retrieval],
-                    n_results=remain,
-                    where={"$and": [{"heat": {"$in": ["warm", "cool"]}}, {"archived": {"$ne": True}}]},
-                    include=["documents", "metadatas", "distances"],
-                )
-                for key in ("ids", "metadatas", "documents", "distances"):
-                    if key in remain_results:
-                        hot_val = results.get(key, [[]])[0]
-                        warm_val = remain_results.get(key, [[]])[0]
-                        results[key] = [hot_val + [v for v in warm_val if v not in hot_val]]
-            for i, mid in enumerate(results.get("ids", [[]])[0]):
-                meta = (
-                    dict(results["metadatas"][0][i])
-                    if results.get("metadatas")
-                    else {}
-                )
-                if meta.get("stale", False) or meta.get("archived", False):
-                    continue
-                doc = (
-                    results["documents"][0][i]
-                    if results.get("documents")
-                    else ""
-                )
-                memories.append({
-                    "id": mid, "document": doc, "metadata": meta,
-                    "summary": meta.get("summary", ""),
-                    "hit_count": meta.get("hit_count", 0) or 0,
-                    "source": "semantic", "summary_only": True,
-                    "distance": results["distances"][0][i],
-                })
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("全量检索失败: %s", exc)
 
-        # ── 关键词扩展 ──
-        if len(memories) < 3:
-            try:
-                kws = _cached_q_tags
-                if kws:
-                    kw_emb = local_embed(" ".join(kws))
-                    if kw_emb:
-                        kr = ctx_obj.chroma_service._read_collection.query(
-                            query_embeddings=[kw_emb],
-                            n_results=_ACTUAL_TOP_K,
-                            include=["documents", "metadatas", "distances"],
-                        )
-                        eids = {m["id"] for m in memories}
-                        for i, mid in enumerate(kr.get("ids", [[]])[0]):
-                            if mid in eids:
-                                continue
-                            meta = dict(kr["metadatas"][0][i]) if kr.get("metadatas") else {}
-                            if meta.get("stale", False) or meta.get("archived", False):
-                                continue
-                            doc = kr["documents"][0][i] if kr.get("documents") else ""
-                            memories.append({
-                                "id": mid, "document": doc, "metadata": meta,
-                                "summary": meta.get("summary", ""),
-                                "hit_count": meta.get("hit_count", 0) or 0,
-                                "source": "keyword_expand",
-                            })
-            except Exception:
-                pass
-
-        # ── 标签嵌入最近邻扩展（替代话题树：embedding cosine 相似度找近邻标签） ──
-        try:
-            tag_index = getattr(ctx_obj, '_tag_index', None)
-            if tag_index is not None and tag_index.size() > 0:
-                topic_expanded = tag_index.nearest(_cached_q_tags, top_k=5)
-                if topic_expanded:
-                    _cached_q_tags.extend(
-                        [t for t in topic_expanded if t not in _cached_q_tags]
-                    )
-        except Exception:
-            pass
-
-        # ── 倒排索引标签匹配 + 多标签匹配 ──
-        if tag_n > 0:
-            try:
-                q_tags = _cached_q_tags
-                if q_tags:
-                    eids = {m["id"] for m in memories}
-                    candidate_ids = set()
-                    # 标签索引优先（O(1)，启动时已构建）
-                    candidate_ids = ctx_obj.inverted_index.query_tags(q_tags)
-                    if not candidate_ids:
-                        for tag in q_tags:
-                            tag_ids = ctx_obj.inverted_index.get_exact(tag)
-                            candidate_ids.update(tag_ids)
-                    candidate_ids -= eids
-                    if not candidate_ids:
-                        for tag in q_tags:
-                            tag_result = ctx_obj.chroma_service._read_collection.get(
-                                where={"tags": {"$contains": tag}},
-                                include=["metadatas"],
-                            )
-                            for i, mid in enumerate(tag_result.get("ids", [])):
-                                if mid in eids:
-                                    continue
-                                if tag_result["metadatas"][i].get("stale", False):
-                                    continue
-                                candidate_ids.add(mid)
-                    if candidate_ids:
-                        dr = ctx_obj.chroma_service._read_collection.get(
-                            ids=list(candidate_ids)[:50],
-                            include=["documents", "metadatas"],
-                        )
-                        for i, mid in enumerate(dr.get("ids", [])):
-                            if mid in eids:
-                                continue
-                            _m = dr["metadatas"][i] if dr.get("metadatas") else {}
-                            _d = dr["documents"][i] if dr.get("documents") else ""
-                            memories.append({
-                                "id": mid, "document": _d, "metadata": _m,
-                                "summary": _m.get("summary", ""),
-                                "hit_count": _m.get("hit_count", 0) or 0,
-                                "source": "tag_match", "distance": 0.5,
-                            })
-                            eids.add(mid)
-                            if len([x for x in memories if x.get("source") == "tag_match"]) >= 20:
-                                break
-                    # ── 多标签匹配 ──
-                    if q_tags:
-                        mids = ctx_obj.inverted_index.query(q_tags, min_match=2)
-                        if mids:
-                            dr = ctx_obj.chroma_service._read_collection.get(
-                                ids=mids, include=["documents", "metadatas"])
-                            eids = {m["id"] for m in memories}
-                            bc = 0
-                            for i, mid in enumerate(dr.get("ids", [])):
-                                if mid in eids:
-                                    continue
-                                meta = dr["metadatas"][i] if dr.get("metadatas") else {}
-                                doc = dr["documents"][i] if dr.get("documents") else ""
-                                if meta.get("stale", False) or meta.get("archived", False):
-                                    continue
-                                memories.append({
-                                    "id": mid, "document": doc, "metadata": meta,
-                                    "summary": meta.get("summary", ""),
-                                    "hit_count": meta.get("hit_count", 0) or 0,
-                                    "source": "kw_match", "distance": 0.4,
-                                })
-                                eids.add(mid)
-                                bc += 1
-                                if bc >= 10:
-                                    break
-            except Exception:
-                pass
-
-        _log_step('tag_retrieval')
-    # ── 实体检索 + 实体共现扩展 ──
-        if entity_n > 0:
-            try:
-                q_entities = extract_entities(user_message)
-                if q_entities:
-                    entity_names = [
-                        e["text"] for e in q_entities
-                        if e.get("type") in ("PERSON", "LOCATION", "ORGANIZATION")
-                    ]
-                    seen = {m["id"] for m in memories}
-                    all_entity_ids = set()
-                    for ename in entity_names:
-                        ids = ctx_obj.inverted_index.get_exact(ename)
-                        all_entity_ids.update(ids)
-                    all_entity_ids -= seen
-                    if all_entity_ids:
-                        dr = ctx_obj.chroma_service._read_collection.get(
-                            ids=list(all_entity_ids),
-                            include=["documents", "metadatas"],
-                        )
-                        for i, mid in enumerate(dr.get("ids", [])):
-                            if mid in seen:
-                                continue
-                            meta = dr["metadatas"][i] if dr.get("metadatas") else {}
-                            doc = dr["documents"][i] if dr.get("documents") else ""
-                            memories.append({
-                                "id": mid, "document": doc, "metadata": meta,
-                                "summary": meta.get("summary", ""),
-                                "hit_count": meta.get("hit_count", 0) or 0,
-                                "source": "entity_match", "distance": 0.5,
-                            })
-                            seen.add(mid)
-                # ── 实体共现扩展 ──
-                if hasattr(ctx_obj, "entity_pair_tracker") and ctx_obj.entity_pair_tracker:
-                    q_entities_ext = extract_entities(user_message)
-                    if q_entities_ext:
-                        enames = list(dict.fromkeys(
-                            e["text"] for e in q_entities_ext
-                            if e.get("type") in ("PERSON", "LOCATION", "ORGANIZATION")
-                            and len(e["text"]) >= 2
-                        ))
-                        if enames:
-                            pair_ids = ctx_obj.entity_pair_tracker.get_memory_ids(enames)
-                            pair_ids = [mid for mid in pair_ids if mid not in seen]
-                            if pair_ids:
-                                dr = ctx_obj.chroma_service._read_collection.get(
-                                    ids=pair_ids[:20], include=["documents", "metadatas"])
-                                for i, mid in enumerate(dr.get("ids", [])):
-                                    if mid in seen:
-                                        continue
-                                    meta = dr["metadatas"][i] if dr.get("metadatas") else {}
-                                    doc = dr["documents"][i] if dr.get("documents") else ""
-                                    memories.append({
-                                        "id": mid, "document": doc, "metadata": meta,
-                                        "summary": meta.get("summary", ""),
-                                        "hit_count": meta.get("hit_count", 0) or 0,
-                                        "source": "entity_co_occurrence", "distance": 0.45,
-                                    })
-                                    seen.add(mid)
-            except Exception:
-                pass
+    _log_step('retrieval')
 
     # ── 注意力位移因子 ──
     try:
@@ -481,81 +252,11 @@ def run_chat_retrieval(
         for mem in memories:
             mem["attention_proximity"] = 0.0
 
-    # ── Reranker 精排 ──
-    _errs = _load_error_counts(data_dir=ctx_obj.data_dir)
-    _corrs = _load_correction_boosts(data_dir=ctx_obj.data_dir)
-
-    try:
-        from rank_bm25 import BM25Okapi
-        qt = _sem_tokenize(user_message)
-        docs = [m.get("document", "") or m.get("summary", "") for m in memories]
-        corpus = [_sem_tokenize(d) for d in docs]
-        bm25 = BM25Okapi(corpus)
-        scores = bm25.get_scores(qt)
-        for i, m in enumerate(memories):
-            m["_bm25"] = float(scores[i]) if i < len(scores) else 0.0
-        if sum(1 for s in scores if s > 0) < 3 and len(memories) > 5:
-            raise ValueError("BM25 过于稀疏，回退 embedding reranker")
-        _hot = lambda m: 0.1 if m.get("metadata", {}).get("heat") == "hot" else 0.0
-        memories.sort(
-            key=lambda m: compute_score(
-                similarity=1.0 - m.get("distance", 1.0),
-                hit_count=m.get("hit_count", 0) or 0,
-                attention_boost=m.get("attention_proximity", 0.0),
-                source_bonus=(0.1 if m.get("source") in (
-                    "text_match", "keyword_expand", "tag_match",
-                    "bm25_fulltext", "kw_match", "entity_match",
-                ) else 0.0) + _hot(m),
-                error_penalty=_errs.get(m.get("id", ""), 0) * 0.05,
-            )
-            + _corrs.get(m.get("id", ""), 0.0) * 0.1
-            + 0.001 * (m.get("_bm25", 0) or 0),
-            reverse=True,
-        )
-        for m in memories:
-            m["score"] = (
-                compute_score(
-                    similarity=1.0 - m.get("distance", 1.0),
-                    hit_count=m.get("hit_count", 0) or 0,
-                    attention_boost=m.get("attention_proximity", 0.0),
-                    source_bonus=(0.1 if m.get("source") in (
-                        "text_match", "keyword_expand", "tag_match",
-                        "bm25_fulltext", "kw_match", "entity_match",
-                    ) else 0.0) + _hot(m),
-                    error_penalty=_errs.get(m.get("id", ""), 0) * 0.05,
-                )
-                + _corrs.get(m.get("id", ""), 0.0) * 0.1
-                + 0.001 * (m.get("_bm25", 0) or 0)
-            )
-        memories = memories[:MAX_MEMORIES_IN_PROMPT]
-    except Exception:
-        try:
-            from app.retrieval.reranker import rerank
-            if len(memories) > 1:
-                attn_boosts = {
-                    m.get("id", ""): m.get("attention_proximity", 0.0)
-                    for m in memories if m.get("id")
-                }
-                attn_all_zero = all(v == 0 for v in attn_boosts.values())
-                attn_w = 0.0 if attn_all_zero else RERANK_ATTENTION_WEIGHT
-                memories = rerank(
-                    user_message, memories, top_k=MAX_MEMORIES_IN_PROMPT,
-                    correction_boosts=_corrs, error_counts=_errs,
-                    attention_boosts=attn_boosts, attention_weight=attn_w,
-                )
-                for m in memories:
-                    m["score"] = m.get("_rr_score", 0.0)
-            else:
-                raise ValueError("候选<2条，跳过rerank")
-        except Exception:
-            pass
-
+    # ── 分数默认值（引擎 weave_context 负责过滤，不再 K 截断）──
     for m in memories:
         if "score" not in m or m.get("score") is None:
-            m["score"] = 0.0
-
-
-    _log_step('entity_retrieval')
+            sim = 1.0 - m.get("distance", 1.0)
+            m["score"] = round(max(0.0, sim), 3)
     # ── 兜底 ──
     if not memories:
         logger.warning("检索全部为空，回退到工作记忆兜底")
@@ -573,9 +274,6 @@ def run_chat_retrieval(
                     })
         except Exception as exc:
             logger.warning("工作记忆兜底也失败了: %s", exc)
-
-    if len(memories) > MAX_MEMORIES_IN_PROMPT:
-        memories = memories[:MAX_MEMORIES_IN_PROMPT]
 
     # ── 命中计数 ──
     for mem in memories:
@@ -604,3 +302,287 @@ def run_chat_retrieval(
             meta["emotion_valence_bin"] = resolve_emotion_category(meta)
 
     return timeline_recent, session_context, personalities, memories
+
+
+def retrieve_all(
+    user_message: str,
+    query_embedding: list | None,
+    ctx_obj,
+    intent: str | None = None,
+) -> list[dict]:
+    """全量检索，不加数量截断。8 路全开，去重后返回候选集。
+
+    Returns: list of dicts, each with:
+        id, document, metadata, distance, source, summary, hit_count
+    """
+    import math
+
+    # ── 语义检索：n_results 放宽到 500，低阈值兜底 ──
+    SEMANTIC_HARD_CAP = 500
+    MIN_SIMILARITY = 0.3  # 相似度低于此的不收
+
+    _cached_q_tags = extract_tags(user_message, topk=5) or []
+    route = _resolve_route(intent if intent else _classify_intent(user_message))
+    sem_n = min(route["semantic"], SEMANTIC_HARD_CAP)
+    tag_n = route["tag"]
+    entity_n = route["entity"]
+
+    seen_ids: set[str] = set()
+    candidates: list[dict] = []
+
+    def _add(memories: list, source: str):
+        for m in memories:
+            mid = m.get("id", "")
+            if mid and mid not in seen_ids:
+                seen_ids.add(mid)
+                m["source"] = source
+                candidates.append(m)
+
+    # ① 语义检索（hot 优先 + warm/cool 兜底）
+    if query_embedding and sem_n > 0:
+        try:
+            # hot
+            hot_results = ctx_obj.chroma_service._read_collection.query(
+                query_embeddings=[query_embedding],
+                n_results=min(sem_n, 200),
+                where={"$and": [{"heat": "hot"}, {"archived": {"$ne": True}}]},
+                include=["documents", "metadatas", "distances"],
+            )
+            hot_mems = []
+            for i, mid in enumerate(hot_results.get("ids", [[]])[0]):
+                meta = dict(hot_results["metadatas"][0][i]) if hot_results.get("metadatas") else {}
+                doc = hot_results["documents"][0][i] if hot_results.get("documents") else ""
+                dist = hot_results["distances"][0][i] if hot_results.get("distances") else 1.0
+                hot_mems.append({
+                    "id": mid, "document": doc, "metadata": meta,
+                    "summary": meta.get("summary", ""),
+                    "hit_count": meta.get("hit_count", 0) or 0,
+                    "distance": dist,
+                })
+            _add(hot_mems, "semantic_hot")
+
+            # warm+cool 兜底
+            remain = sem_n
+            if remain > 0:
+                cool_results = ctx_obj.chroma_service._read_collection.query(
+                    query_embeddings=[query_embedding],
+                    n_results=remain,
+                    where={"$and": [{"heat": {"$in": ["warm", "cool"]}}, {"archived": {"$ne": True}}]},
+                    include=["documents", "metadatas", "distances"],
+                )
+                for i, mid in enumerate(cool_results.get("ids", [[]])[0]):
+                    if mid in seen_ids:
+                        continue
+                    dist = cool_results["distances"][0][i] if cool_results.get("distances") else 1.0
+                    sim = 1.0 - dist
+                    if sim < MIN_SIMILARITY:
+                        continue
+                    meta = dict(cool_results["metadatas"][0][i]) if cool_results.get("metadatas") else {}
+                    doc = cool_results["documents"][0][i] if cool_results.get("documents") else ""
+                    seen_ids.add(mid)
+                    candidates.append({
+                        "id": mid, "document": doc, "metadata": meta,
+                        "summary": meta.get("summary", ""),
+                        "hit_count": meta.get("hit_count", 0) or 0,
+                        "distance": dist, "source": "semantic_cool",
+                    })
+        except Exception as exc:
+            logger.debug("retrieve_all 语义检索失败: %s", exc)
+
+    # ② 关键词匹配（BM25/倒排）
+    if hasattr(ctx_obj, 'inverted_index') and _cached_q_tags:
+        try:
+            kw_ids = ctx_obj.inverted_index.query(_cached_q_tags, min_match=1)
+            if kw_ids:
+                eids = seen_ids.copy()
+                kw_ids = [mid for mid in kw_ids if mid not in eids][:20]
+                if kw_ids:
+                    dr = ctx_obj.chroma_service._read_collection.get(
+                        ids=kw_ids, include=["documents", "metadatas"])
+                    kw_mems = []
+                    for i, mid in enumerate(dr.get("ids", [])):
+                        meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
+                        doc = dr["documents"][i] if dr.get("documents") else ""
+                        kw_mems.append({
+                            "id": mid, "document": doc, "metadata": meta,
+                            "summary": meta.get("summary", ""),
+                            "hit_count": meta.get("hit_count", 0) or 0,
+                            "distance": 0.4,
+                        })
+                    _add(kw_mems, "kw_match")
+        except Exception as exc:
+            logger.debug("retrieve_all 关键词匹配失败: %s", exc)
+
+    # ③ 标签索引
+    if hasattr(ctx_obj, 'inverted_index') and tag_n > 0 and _cached_q_tags:
+        try:
+            tag_ids = ctx_obj.inverted_index.query_tags(_cached_q_tags)
+            if tag_ids:
+                eids = seen_ids.copy()
+                tag_ids = [mid for mid in tag_ids if mid not in eids][:20]
+                if tag_ids:
+                    dr = ctx_obj.chroma_service._read_collection.get(
+                        ids=tag_ids, include=["documents", "metadatas"])
+                    tag_mems = []
+                    for i, mid in enumerate(dr.get("ids", [])):
+                        meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
+                        doc = dr["documents"][i] if dr.get("documents") else ""
+                        tag_mems.append({
+                            "id": mid, "document": doc, "metadata": meta,
+                            "summary": meta.get("summary", ""),
+                            "hit_count": meta.get("hit_count", 0) or 0,
+                            "distance": 0.5,
+                        })
+                    _add(tag_mems, "tag_match")
+        except Exception as exc:
+            logger.debug("retrieve_all 标签匹配失败: %s", exc)
+
+    # ④ 实体索引
+    if hasattr(ctx_obj, 'inverted_index') and entity_n > 0 and _cached_q_tags:
+        try:
+            from app.analysis.entity import extract_entities
+            q_entities = extract_entities(user_message)
+            if q_entities:
+                entity_names = [
+                    e["text"] for e in q_entities
+                    if e.get("type") in ("PERSON", "LOCATION", "ORGANIZATION") and len(e["text"]) >= 2
+                ]
+                all_entity_ids: set[str] = set()
+                for ename in entity_names:
+                    ids = ctx_obj.inverted_index.get_exact(ename)
+                    all_entity_ids.update(ids)
+                all_entity_ids -= seen_ids
+                if all_entity_ids:
+                    dr = ctx_obj.chroma_service._read_collection.get(
+                        ids=list(all_entity_ids)[:20], include=["documents", "metadatas"])
+                    ent_mems = []
+                    for i, mid in enumerate(dr.get("ids", [])):
+                        meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
+                        doc = dr["documents"][i] if dr.get("documents") else ""
+                        ent_mems.append({
+                            "id": mid, "document": doc, "metadata": meta,
+                            "summary": meta.get("summary", ""),
+                            "hit_count": meta.get("hit_count", 0) or 0,
+                            "distance": 0.5,
+                        })
+                    _add(ent_mems, "entity_match")
+        except Exception as exc:
+            logger.debug("retrieve_all 实体匹配失败: %s", exc)
+
+    # ⑤ 共现扩展
+    if hasattr(ctx_obj, 'co_tracker') and seen_ids:
+        try:
+            cooc = ctx_obj.co_tracker.query(list(seen_ids))
+            if cooc:
+                cooc_ids = [c["id"] for c in cooc if c["id"] not in seen_ids][:10]
+                if cooc_ids:
+                    dr = ctx_obj.chroma_service._read_collection.get(
+                        ids=cooc_ids, include=["documents", "metadatas"])
+                    cooc_mems = []
+                    for i, mid in enumerate(dr.get("ids", [])):
+                        meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
+                        doc = dr["documents"][i] if dr.get("documents") else ""
+                        cooc_mems.append({
+                            "id": mid, "document": doc, "metadata": meta,
+                            "summary": meta.get("summary", ""),
+                            "hit_count": meta.get("hit_count", 0) or 0,
+                            "distance": 0.45,
+                        })
+                    _add(cooc_mems, "co_occurrence")
+        except Exception as exc:
+            logger.debug("retrieve_all 共现扩展失败: %s", exc)
+
+    # ⑥ 时间触发
+    if hasattr(ctx_obj, 'temporal_pattern_index'):
+        try:
+            tps = ctx_obj.temporal_pattern_index.query()
+            if tps:
+                tp_tags = [t[0] for t in tps[:5]]
+                tp_ids = ctx_obj.inverted_index.query_tags(tp_tags) if hasattr(ctx_obj, 'inverted_index') else set()
+                tp_ids = [mid for mid in tp_ids if mid not in seen_ids][:10]
+                if tp_ids:
+                    dr = ctx_obj.chroma_service._read_collection.get(
+                        ids=tp_ids, include=["documents", "metadatas"])
+                    time_mems = []
+                    for i, mid in enumerate(dr.get("ids", [])):
+                        meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
+                        doc = dr["documents"][i] if dr.get("documents") else ""
+                        time_mems.append({
+                            "id": mid, "document": doc, "metadata": meta,
+                            "summary": meta.get("summary", ""),
+                            "hit_count": meta.get("hit_count", 0) or 0,
+                            "distance": 0.5,
+                        })
+                    _add(time_mems, "time_triggered")
+        except Exception as exc:
+            logger.debug("retrieve_all 时间触发失败: %s", exc)
+
+    # ⑦ 话题树分支
+    if hasattr(ctx_obj, 'topic_tree') and ctx_obj.topic_tree and _cached_q_tags:
+        try:
+            expanded_tags = ctx_obj.topic_tree.expand(_cached_q_tags)
+            if expanded_tags:
+                topic_ids = ctx_obj.inverted_index.query_tags(expanded_tags) if hasattr(ctx_obj, 'inverted_index') else set()
+                topic_ids = [mid for mid in topic_ids if mid not in seen_ids][:10]
+                if topic_ids:
+                    dr = ctx_obj.chroma_service._read_collection.get(
+                        ids=topic_ids, include=["documents", "metadatas"])
+                    topic_mems = []
+                    for i, mid in enumerate(dr.get("ids", [])):
+                        meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
+                        doc = dr["documents"][i] if dr.get("documents") else ""
+                        topic_mems.append({
+                            "id": mid, "document": doc, "metadata": meta,
+                            "summary": meta.get("summary", ""),
+                            "hit_count": meta.get("hit_count", 0) or 0,
+                            "distance": 0.55,
+                        })
+                    _add(topic_mems, "topic_expand")
+        except Exception as exc:
+            logger.debug("retrieve_all 话题树扩展失败: %s", exc)
+
+    # ⑧ 注意力漂移（最近 3 轮嵌入加权）
+    if hasattr(ctx_obj, 'chat_history'):
+        try:
+            from app.llm.embed import local_embed_batch
+            recent_msgs = []
+            for rec in reversed(ctx_obj.chat_history.get_records_snapshot()):
+                msg = rec.get("user_message", "")
+                if msg and msg != "[内心独白]":
+                    recent_msgs.append(msg)
+                    if len(recent_msgs) >= 3:
+                        break
+            if recent_msgs:
+                msg_embs = local_embed_batch([m for m in recent_msgs if m])
+                msg_embs = [e for e in msg_embs if e is not None]
+                if msg_embs:
+                    import numpy as np
+                    decay = 0.7
+                    n = len(msg_embs)
+                    weights = [decay ** (n - 1 - i) for i in range(n)]
+                    center = np.average(msg_embs, axis=0, weights=weights).tolist()
+                    attn_results = ctx_obj.chroma_service._read_collection.query(
+                        query_embeddings=[center],
+                        n_results=10,
+                        include=["documents", "metadatas", "distances"],
+                    )
+                    for i, mid in enumerate(attn_results.get("ids", [[]])[0]):
+                        if mid in seen_ids:
+                            continue
+                        dist = attn_results["distances"][0][i] if attn_results.get("distances") else 1.0
+                        sim = 1.0 - dist
+                        if sim < MIN_SIMILARITY:
+                            continue
+                        meta = dict(attn_results["metadatas"][0][i]) if attn_results.get("metadatas") else {}
+                        doc = attn_results["documents"][0][i] if attn_results.get("documents") else ""
+                        seen_ids.add(mid)
+                        candidates.append({
+                            "id": mid, "document": doc, "metadata": meta,
+                            "summary": meta.get("summary", ""),
+                            "hit_count": meta.get("hit_count", 0) or 0,
+                            "distance": dist, "source": "attention_drift",
+                        })
+        except Exception as exc:
+            logger.debug("retrieve_all 注意力漂移失败: %s", exc)
+
+    return candidates

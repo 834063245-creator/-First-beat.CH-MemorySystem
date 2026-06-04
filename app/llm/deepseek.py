@@ -746,8 +746,27 @@ class LLMClient:
 
     @staticmethod
     def _build_memories_for_tool(cognitive_state: "UtteranceSpec") -> str:
-        """记忆格式化为 tool content（JSON 结构，保留时间戳和来源）。"""
+        """记忆格式化为 tool content（JSON 结构，保留时间戳和来源）。
+
+        若有编织结果（woven_context），故事线优先展示，fact 记忆随后。
+        """
         items = []
+
+        # ── 引擎编织的故事线优先 ──
+        wc = getattr(cognitive_state, 'woven_context', None)
+        if wc and wc.narratives:
+            for i, n in enumerate(wc.narratives):
+                items.append({
+                    "id": f"narrative_{i}",
+                    "time": "",
+                    "relative_time": "",
+                    "summary": n[:200],
+                    "source": "engine narrative",
+                    "hit_count": 0,
+                    "relevance": 1.0,
+                    "stale": False,
+                })
+
         _mems = cognitive_state.memories
         # MemoryDirective → dict 归一（支持两种类型混用）
         if _mems and not isinstance(_mems[0], dict):

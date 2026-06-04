@@ -52,6 +52,19 @@ class CorrectMemoryBody(BaseModel):
     corrected_summary: str
 
 
+from dataclasses import dataclass, field
+
+
+@dataclass
+class WovenContext:
+    """引擎编织后的记忆上下文。替代原来的 flat memory list。"""
+    narratives: list[str] = field(default_factory=list)
+    linked_patterns: list[str] = field(default_factory=list)
+    fact_memories: list[dict] = field(default_factory=list)
+    background_notes: dict = field(default_factory=dict)
+    should_speak: bool = False
+    total_candidates: int = 0
+    total_tokens: int = 0
 
 
 

@@ -5,6 +5,7 @@
 意图/情绪分类由 app.brain.semantic 驱动（bge-m3 原型匹配）。
 """
 
+import json
 import logging
 import threading
 from dataclasses import dataclass, field
@@ -264,28 +265,46 @@ class CircuitOrchestrator:
                 logger.debug("行为预测跳过: %s", exc)
 
         _log_step('mirror_predict')
+        # ── 引擎编织：从候选集中织出上下文（替代 TOP_K 截断）──
+        woven = self.weave_context(memories, prefrontal)
+        if not woven.should_speak:
+            memories = []
+        else:
+            memories = woven.fact_memories
+        _log_step('weave_context')
+
         # ③ 一致性校验 + 巩固状态注入
         from app.core.state import CognitiveState
         temp = CognitiveState()
         import math as _math
-        for mem in memories:
-            meta = mem.get("metadata") or {}
-            source = mem.get("source", "semantic")
-            dist = mem.get("distance", 0.5)
-            stale = meta.get("stale", False)
-            if stale:
-                temp.suppressed_ids.add(mem.get("id", ""))
-                continue
 
-            # 连续置信度：组合语义距离 + hit_count + 来源可靠性
-            semantic_conf = 1.0 - dist
-            hc = meta.get("hit_count", 0) or 0
-            hit_conf = min(_math.log(hc + 1) / _math.log(11), 1.0) if hc > 0 else 0.0
-            source_weight = {
-                "semantic": 1.0, "dmn_preheat": 0.85, "entity_match": 0.8,
-                "kw_match": 0.65, "tag_match": 0.6, "keyword_expand": 0.55,
-                "text_match": 0.6, "time_rhythm": 0.4, "co_occurrence": 0.35,
-            }.get(source, 0.5)
+        # ── 编织后的记忆直接作为 fact，跳过 CognitiveState 二次评分 ──
+        if woven.should_speak and woven.fact_memories:
+            for mem in woven.fact_memories:
+                meta = mem.get("metadata") or {}
+                if meta.get("stale", False):
+                    temp.suppressed_ids.add(mem.get("id", ""))
+                    continue
+                temp.add_fact(mem, certainty=0.7)
+        else:
+            for mem in memories:
+                meta = mem.get("metadata") or {}
+                source = mem.get("source", "semantic")
+                dist = mem.get("distance", 0.5)
+                stale = meta.get("stale", False)
+                if stale:
+                    temp.suppressed_ids.add(mem.get("id", ""))
+                    continue
+
+                # 连续置信度：组合语义距离 + hit_count + 来源可靠性
+                semantic_conf = 1.0 - dist
+                hc = meta.get("hit_count", 0) or 0
+                hit_conf = min(_math.log(hc + 1) / _math.log(11), 1.0) if hc > 0 else 0.0
+                source_weight = {
+                    "semantic": 1.0, "dmn_preheat": 0.85, "entity_match": 0.8,
+                    "kw_match": 0.65, "tag_match": 0.6, "keyword_expand": 0.55,
+                    "text_match": 0.6, "time_rhythm": 0.4, "co_occurrence": 0.35,
+                }.get(source, 0.5)
             certainty = 0.5 * semantic_conf + 0.25 * hit_conf + 0.25 * source_weight
             certainty = max(0.0, min(1.0, certainty))
 
@@ -433,7 +452,172 @@ class CircuitOrchestrator:
             mirror_prediction=mirror_prediction or {},
             topic_notes=topic_notes,
             relationship=rs,
+            woven_context=woven,
         )
+
+    def weave_context(
+        self,
+        candidates: list[dict],
+        cognitive_state,
+    ) -> "WovenContext":
+        """引擎编织记忆上下文。替代原来的 TOP_K 截断。
+
+        全程纯规则 + 统计，零 LLM 调用。延迟目标 < 150ms。
+        """
+        from app.models.schemas import WovenContext
+        from collections import defaultdict
+        import math
+
+        if not candidates:
+            return WovenContext(should_speak=False, total_candidates=0)
+
+        wc = WovenContext(total_candidates=len(candidates))
+
+        # ── 预处理：去 stale + 取元数据 ──
+        active = []
+        for m in candidates:
+            meta = m.get("metadata") or {}
+            if meta.get("stale", False):
+                continue
+            tags = meta.get("tags", "")
+            if isinstance(tags, str):
+                tags = [t.strip() for t in tags.split(",") if t.strip()]
+            elif not isinstance(tags, list):
+                tags = []
+            m["_tags"] = tags
+            m["_entities"] = meta.get("entities", []) or []
+            ts = meta.get("timestamp", 0)
+            try:
+                m["_ts"] = float(ts)
+            except (ValueError, TypeError):
+                m["_ts"] = 0
+            active.append(m)
+
+        if not active:
+            return WovenContext(should_speak=False, total_candidates=len(candidates))
+
+        # ── 判断要不要说 ──
+        intent = getattr(cognitive_state, 'intent', 'casual') if hasattr(cognitive_state, 'intent') else 'casual'
+        if intent == 'casual' and len(active) <= 3:
+            # 闲聊 + 候选少 = 不说
+            wc.should_speak = False
+            return wc
+        wc.should_speak = True
+
+        # ═══════════════════════════════════════════════════
+        # 层一：故事线（同实体 + 跨时间）
+        # ═══════════════════════════════════════════════════
+        entity_buckets = defaultdict(list)
+        for m in active:
+            raw_entities = m.get("_entities", [])
+            if isinstance(raw_entities, str):
+                try:
+                    raw_entities = json.loads(raw_entities)
+                except (json.JSONDecodeError, TypeError):
+                    raw_entities = []
+            if not isinstance(raw_entities, list):
+                raw_entities = []
+            entities = m.get("_tags", []) + raw_entities
+            entities = list(set(e for e in entities if isinstance(e, str) and len(e) >= 2))
+            if entities:
+                key = tuple(sorted(entities[:3]))
+                entity_buckets[key].append(m)
+
+        narratives = []
+        used_in_narrative = set()
+        for key, bucket in entity_buckets.items():
+            if len(bucket) < 2:
+                continue
+            bucket.sort(key=lambda x: x.get("_ts", 0))
+            timespan_days = (bucket[-1].get("_ts", 0) - bucket[0].get("_ts", 0)) / 86400
+            if timespan_days < 1:
+                continue  # 同一天内的不算故事线
+
+            # 拼 narrative
+            entity_str = "/".join(key)
+            first_ts = bucket[0].get("_ts", 0)
+            last_ts = bucket[-1].get("_ts", 0)
+            from datetime import datetime
+            first_date = datetime.fromtimestamp(first_ts).strftime("%m月%d日") if first_ts else "?"
+            last_date = datetime.fromtimestamp(last_ts).strftime("%m月%d日") if last_ts else "?"
+
+            # 情绪变化判断
+            valences = []
+            for m in bucket:
+                v = m.get("metadata", {}).get("emotion_valence_bin", "neutral") if m.get("metadata") else "neutral"
+                valences.append(v)
+            trend = "延续"
+            if "positive" in valences and "negative" in valences:
+                trend = "出现翻转"
+            elif all(v == "positive" for v in valences):
+                trend = "持续积极"
+            elif all(v == "negative" for v in valences):
+                trend = "持续消极"
+
+            narrative = (
+                f"{first_date}首次提到{entity_str}，"
+                f"共提及{len(bucket)}次，跨越{int(timespan_days)}天，{trend}。"
+            )
+            narratives.append(narrative)
+            for m in bucket:
+                used_in_narrative.add(m.get("id", ""))
+
+        wc.narratives = narratives[:5]  # 最多 5 条故事线
+
+        # ═══════════════════════════════════════════════════
+        # 层三：分层（fact / background / discard）
+        # ═══════════════════════════════════════════════════
+        MIN_FACT_DIST = 0.30  # 语义距离阈值
+
+        for m in active:
+            mid = m.get("id", "")
+            dist = m.get("distance", 0.5)
+            source = m.get("source", "semantic")
+
+            # story line 里的自动进 fact
+            if mid in used_in_narrative:
+                wc.fact_memories.append(m)
+                continue
+
+            # 语义距离判断 + 来源权重
+            source_boost = {"semantic_hot": 1.0, "semantic_cool": 0.9,
+                            "entity_match": 0.85, "kw_match": 0.7,
+                            "tag_match": 0.7, "co_occurrence": 0.6,
+                            "time_triggered": 0.5, "attention_drift": 0.8,
+                            "topic_expand": 0.55}
+            effective_dist = dist * source_boost.get(source, 0.8)
+
+            if effective_dist < MIN_FACT_DIST:
+                wc.fact_memories.append(m)
+            # elif effective_dist < 0.25:
+            #     pass  # reference 级暂不实现
+            # else: discard 级，不处理
+
+        # ═══════════════════════════════════════════════════
+        # 层四：Token 预算分配
+        # ═══════════════════════════════════════════════════
+        MAX_TOKENS = 2000  # 给 fact_memories 的最大 token 预算
+        estimated_tokens = 0
+        final_facts = []
+
+        # narrative 已经压缩得很短，不占太多 token
+        for n in wc.narratives:
+            estimated_tokens += len(n) // 2  # 中文字符估算为 0.5 token
+
+        for m in wc.fact_memories:
+            doc = m.get("document", "") or m.get("summary", "") or ""
+            summary = (m.get("metadata") or {}).get("summary", "") or ""
+            text = summary[:200] if summary else doc[:200]
+            tokens = len(text) // 2 + 10  # +10 预留 overhead
+            estimated_tokens += tokens
+            if estimated_tokens <= MAX_TOKENS:
+                final_facts.append(m)
+            else:
+                break
+
+        wc.fact_memories = final_facts
+        wc.total_tokens = estimated_tokens
+        return wc
 
 
 @dataclass

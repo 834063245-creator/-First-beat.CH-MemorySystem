@@ -11,7 +11,10 @@ LLM 不再需要理解置信度、来源、标签等元数据。
 from __future__ import annotations
 
 import dataclasses
-from typing import Optional, Literal
+from typing import Optional, Literal, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.models.schemas import WovenContext
 
 
 # ── 关系模型 ─────────────────────────────────────────────────
@@ -285,3 +288,4 @@ class UtteranceSpec:
     emotional_reversals: list[dict] = dataclasses.field(default_factory=list)
     topic_notes: list[dict] = dataclasses.field(default_factory=list)
     relationship: Optional[RelationshipState] = None
+    woven_context: Optional["WovenContext"] = None
