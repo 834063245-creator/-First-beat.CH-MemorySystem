@@ -227,7 +227,7 @@ def run_chat_retrieval(
             results = ctx_obj.chroma_service._read_collection.query(
                 query_embeddings=[query_embedding_for_retrieval],
                 n_results=hot_n,
-                where={"heat": "hot", "archived": {"$ne": True}},
+                where={"$and": [{"heat": "hot"}, {"archived": {"$ne": True}}]},
                 include=["documents", "metadatas", "distances"],
             )
             hot_count = len(results.get("ids", [[]])[0])
@@ -236,7 +236,7 @@ def run_chat_retrieval(
                 remain_results = ctx_obj.chroma_service._read_collection.query(
                     query_embeddings=[query_embedding_for_retrieval],
                     n_results=remain,
-                    where={"heat": {"$in": ["warm", "cool"]}, "archived": {"$ne": True}},
+                    where={"$and": [{"heat": {"$in": ["warm", "cool"]}}, {"archived": {"$ne": True}}]},
                     include=["documents", "metadatas", "distances"],
                 )
                 for key in ("ids", "metadatas", "documents", "distances"):
@@ -543,6 +543,8 @@ def run_chat_retrieval(
                     correction_boosts=_corrs, error_counts=_errs,
                     attention_boosts=attn_boosts, attention_weight=attn_w,
                 )
+                for m in memories:
+                    m["score"] = m.get("_rr_score", 0.0)
             else:
                 raise ValueError("候选<2条，跳过rerank")
         except Exception:
