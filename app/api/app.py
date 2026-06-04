@@ -15,7 +15,6 @@ from app.api.memories import router as memories_router
 from app.api.personalities import router as personalities_router
 from app.api.consolidation import router as consolidation_router
 from app.api.distill import router as distill_router
-from app.mcp.server import router as mcp_router
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +26,6 @@ _Routers = [
     personalities_router,
     consolidation_router,
     distill_router,
-    mcp_router,
 ]
 
 

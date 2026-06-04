@@ -93,7 +93,7 @@ required_files = [
     ("README.md", "项目文档"),
     (".env.example", "配置模板"),
     ("app/core/circuit.py", "认知管线"),
-    ("app/mcp/server.py", "MCP 服务"),
+
     ("app/llm/deepseek.py", "LLM 格式器"),
     ("app/llm/local.py", "本地 LLM"),
     ("app/tools/dispatch.py", "工具分发"),

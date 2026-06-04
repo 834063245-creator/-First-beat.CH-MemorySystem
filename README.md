@@ -1,12 +1,11 @@
 # 初痕 · First Beat — 有自主节律的认知记忆引擎
 
-> ⚠️ **全系统停用 / System Decommissioned**
-> MCP 方案已废弃。引擎与 Agent 框架存在不可调和的主语冲突，不再继续开发 MCP 接口方向。项目归档，代码保留供参考。
+> 初痕是一个独立运行的认知记忆引擎，不做文本生成，只做记忆。
+
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-258%20passed-green.svg)]()
-[![MCP](https://img.shields.io/badge/MCP-9%20tools-orange.svg)]()
 [English](README_EN.md)
 
 👉 [快速安装](SETUP.md) | 🔧 [环境诊断](verify_env.py)
@@ -15,7 +14,7 @@
 
 **别人给 LLM 加记忆插件；初痕让 LLM 当自己的语言皮层。**
 
-不做文本生成。只做记忆。初痕是一个独立的认知引擎，通过 MCP 协议对任何 AI Agent 提供记忆服务。引擎负责检索、巩固、人格建模和认知决策，Agent 的 LLM 只负责说话。
+不做文本生成。只做记忆。初痕是一个独立运行的认知记忆引擎。引擎负责检索、巩固、人格建模和认知决策，LLM 只负责说话。
 
 ---
 
@@ -38,7 +37,7 @@
 | 维度 | 初痕现状 | 更强的方案 |
 |------|----------|------------|
 | **Benchmark 跑分** | 无 LongMemEval/LoCoMo 分数 | Mem0 / Zep 有公开 benchmark 背书 |
-| **知识图谱** | 不自建，通过 MCP 兼容外部系统 | Obsidian / Mem0 / Zep / Cognee |
+| **知识图谱** | 不自建 | Obsidian / Mem0 / Zep / Cognee |
 | **社区生态** | 个人项目 | Mem0 34K+ star，有商业公司维护 |
 | **生产成熟度** | 自用为主 | Mem0 / Zep 提供 SaaS 托管 |
 | **多模态** | 文本为主 | 部分方案支持图片/音频 |
@@ -52,8 +51,7 @@
 | LLM 角色 | 记忆的主人 | 记忆的管家 | 引擎的语言皮层 |
 | 检索方式 | 语义 + BM25 + 实体 | 语义 + 自编辑窗口 | **8 路并行检索 + 两级精排** |
 | 部署 | 云端 SaaS / 自建 | 自托管 Agent 运行时 | **pip install → python run.py** |
-| MCP 协议 | ❌ | ❌ | **✅ 原生 MCP Server** |
-| 中文原生 | ❌ | ❌ | **✅ 汉字级 ChuchuTok + 全中文文档** |
+| 中文原生 | ❌ | ❌ | **✅ ChuchuTok + 全中文文档** |
 
 核心差异就一句话：别人的记忆系统是 LLM 的被动工具，初痕是**有自己节律的独立器官**。引擎在后台自己跑巩固、蒸馏、冲动，不需要等用户发消息。
 
@@ -81,7 +79,7 @@
 
 初痕是在否定了 Jarvis 那条路之后从头做的。
 
-**如果你有兴趣帮着跑 benchmark，非常欢迎。** 引擎的 MCP 接口是标准的，外部评测工具可以直接调用。提 Issue 或 PR 都可以，我会全力配合。先谢过了。
+**如果你有兴趣帮着跑 benchmark，非常欢迎。** 引擎的接口是标准的，外部评测工具可以直接调用。提 Issue 或 PR 都可以，我会全力配合。先谢过了。
 
 > 仓库里包含了我自己用的审计套件（`scripts/audit.py`），覆盖语义检索、关键词、时间检索、排序等 8 类场景的回归测试。虽然不是 LongMemEval 那样的行业标准，但对整个系统的功能完整性做了全面验证，可作为参考。
 
@@ -89,27 +87,9 @@
 
 ## 工作原理
 
-```
- 你的 AI Agent ─── MCP ──→ 初痕引擎 (localhost:8082)
-     │                          │
-     │ ── run_engine("用户说了什么") ──→
-     │                          │  ① 意图/情绪分析
-     │                          │  ② 8 路并行检索
-     │                          │  ③ 认知状态分层 (fact/reference/background)
-     │                          │  ④ 门控决策 (压抑不合适的冲动)
-     │                          │
-     │ ←── 结构化认知上下文 ────  │
-     │   {execute, memories,     │
-     │    personality, impulses, │
-     │    relationship, mood}    │
-     │                          │
- LLM 生成回复                      │
-     │                          │
-     └── store_turn ──→ 入库 ────┘
-
- 后台自主运行（不依赖用户在线）：
-   巩固 4h/24h · 冲动 5源泊松 · 蒸馏 · 模式发现
-```
+引擎启动后独立运行，不依赖用户在线：
+- ① 意图/情绪分析 → ② 8 路并行检索 → ③ 认知状态分层 → ④ 门控决策
+- 后台：巩固 4h/24h · 冲动 5源泊松 · 蒸馏 · 模式发现
 
 ---
 
@@ -146,98 +126,6 @@ python verify_env.py                        # 一键诊断
 
 ---
 
-## 10 个 MCP 工具
-
-| 工具 | 输入 | 输出 |
-|------|------|------|
-| **`run_engine`** | 用户消息 | 意图/情绪/记忆/人格/冲动/关系/执行指令 |
-| **`store_turn`** | 用户消息 + AI 回复 | 入库确认 |
-| **`query_memories`** | 查询文本 | 语义检索结果（含相关性、时间、情绪） |
-| **`get_recent_history`** | N | 最近 N 轮对话 |
-| **`get_memory_stats`** | — | 记忆总数、热度分布、情绪分布 |
-| **`get_personality_tags`** | source (user/ai) | 人格标签列表 |
-| **`get_topic_tree`** | — | 话题树结构 |
-| **`get_relationship`** | — | 熟悉度/信任度/亲密度/交互模式 |
-| **`get_pattern_observations`** | — | 模式发现 + 自动调参记录 |
-
-### `run_engine` 返回示例
-
-```json
-{
-  "execute": {
-    "tone": "caring",
-    "formality": 0.1,
-    "response_mode": "soothe",
-    "user_mood": "negative",
-    "user_intent": "emotional_sharing"
-  },
-  "memories": [
-    {"role": "fact",   "summary": "用户最近压力大", "time_hint": "今天", "emotional_context": "用户情绪低落"},
-    {"role": "reference", "summary": "用户上周提过项目deadline", "time_hint": "上周"}
-  ],
-  "personality": {
-    "user": [{"content": "深夜容易情绪波动", "hit_count": 8}],
-    "ai":   [{"content": "偏好先共情再给建议", "hit_count": 12}]
-  },
-  "impulses": ["你心里好像想起了什么——关于初痕项目的事"],
-  "relationship": {
-    "familiarity": 0.42,
-    "trust": 0.68,
-    "closeness": 0.35,
-    "interaction_mode": "collaborator"
-  }
-}
-```
-
----
-
-## 接入 AI Agent
-
-在 Agent 工作区创建 `.claude/mcp.json`（Claude Code），或任意支持 MCP 的客户端：
-
-```json
-{
-  "mcpServers": {
-    "chuchen": {
-      "url": "http://localhost:8082/mcp/jsonrpc"
-    }
-  }
-}
-```
-
-远程部署换成 `https://your-server.com:8082/mcp/jsonrpc`。
-
-验证连接：
-
-```bash
-curl -X POST http://localhost:8082/mcp/jsonrpc \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"get_memory_stats","arguments":{}},"id":"1"}'
-```
-
-### 接入外部知识库/图谱
-
-初痕没有知识库，没有知识图谱。如果需要，接外部系统。
-
-`run_engine` 的 `external_context` 参数负责这件事：
-
-```json
-// 调 run_engine 时传:
-{
-  "message": "用户说了什么",
-  "external_context": [
-    {"source": "obsidian", "title": "架构方案.md", "content": "..."},
-    {"source": "neo4j", "entities": [...]}
-  ]
-}
-
-// 返回里原样带回，Agent 自己合并
-```
-
-可接入的外部系统：Obsidian、Neo4j、Cognee、Mem0 等。
-
----
-
 ## Docker
 
 ```bash
@@ -258,7 +146,6 @@ app/
 ├── background/    # 后台节律：4h/24h 巩固 · 5 源冲动 · 蒸馏
 ├── analysis/      # Russell 情绪环 · 实体提取 · 模式发现 · 人格对称性
 ├── personality/   # 双人格系统（用户 + AI 独立演化）
-├── mcp/           # MCP JSON-RPC 服务
 ├── llm/           # 本地 embedding (bge-m3) + DeepSeek/本地 LLM
 ├── api/           # REST 管理端点
 ├── tools/         # 原子写入 · 工具分发
