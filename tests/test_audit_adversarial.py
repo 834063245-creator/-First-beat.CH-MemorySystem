@@ -47,11 +47,11 @@ class TestSynonymRobustness:
         emb1 = _embed(q1)
         emb2 = _embed(q2)
         store = _get_store()
-        r1 = store._read_collection.query(
+        r1 = store._collection.query(
             query_embeddings=[emb1], n_results=10,
             include=["metadatas", "distances"]
         )
-        r2 = store._read_collection.query(
+        r2 = store._collection.query(
             query_embeddings=[emb2], n_results=10,
             include=["metadatas", "distances"]
         )
@@ -90,7 +90,7 @@ class TestMultiTopicQuery:
         results = []
         for query, expected_tags in self.MULTI_TOPIC_CASES:
             emb = _embed(query)
-            r = store._read_collection.query(
+            r = store._collection.query(
                 query_embeddings=[emb], n_results=15,
                 include=["metadatas"]
             )

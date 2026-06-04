@@ -354,7 +354,7 @@ def retrieve_all(
         if not (query_embedding and sem_n > 0):
             return
         try:
-            col = ctx_obj.chroma_service._read_collection
+            col = ctx_obj.chroma_service._collection
             local = []
             # hot
             hot = col.query(query_embeddings=[query_embedding], n_results=min(sem_n, 200),
@@ -392,7 +392,7 @@ def retrieve_all(
             if not kw_ids:
                 return
             kw_ids = kw_ids[:20]
-            dr = ctx_obj.chroma_service._read_collection.get(ids=kw_ids, include=["documents", "metadatas"])
+            dr = ctx_obj.chroma_service._collection.get(ids=kw_ids, include=["documents", "metadatas"])
             local = []
             for i, mid in enumerate(dr.get("ids", [])):
                 meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
@@ -411,7 +411,7 @@ def retrieve_all(
             tag_ids = list(ctx_obj.inverted_index.query_tags(_cached_q_tags))[:20]
             if not tag_ids:
                 return
-            dr = ctx_obj.chroma_service._read_collection.get(ids=tag_ids, include=["documents", "metadatas"])
+            dr = ctx_obj.chroma_service._collection.get(ids=tag_ids, include=["documents", "metadatas"])
             local = []
             for i, mid in enumerate(dr.get("ids", [])):
                 meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
@@ -440,7 +440,7 @@ def retrieve_all(
                 all_eids.update(ctx_obj.inverted_index.get_exact(ename))
             if not all_eids:
                 return
-            dr = ctx_obj.chroma_service._read_collection.get(
+            dr = ctx_obj.chroma_service._collection.get(
                 ids=list(all_eids)[:20], include=["documents", "metadatas"])
             local = []
             for i, mid in enumerate(dr.get("ids", [])):
@@ -465,7 +465,7 @@ def retrieve_all(
             tp_ids = list(tp_ids)[:10]
             if not tp_ids:
                 return
-            dr = ctx_obj.chroma_service._read_collection.get(ids=tp_ids, include=["documents", "metadatas"])
+            dr = ctx_obj.chroma_service._collection.get(ids=tp_ids, include=["documents", "metadatas"])
             local = []
             for i, mid in enumerate(dr.get("ids", [])):
                 meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
@@ -488,7 +488,7 @@ def retrieve_all(
             topic_ids = list(topic_ids)[:10]
             if not topic_ids:
                 return
-            dr = ctx_obj.chroma_service._read_collection.get(ids=topic_ids, include=["documents", "metadatas"])
+            dr = ctx_obj.chroma_service._collection.get(ids=topic_ids, include=["documents", "metadatas"])
             local = []
             for i, mid in enumerate(dr.get("ids", [])):
                 meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
@@ -523,7 +523,7 @@ def retrieve_all(
             n = len(msg_embs)
             weights = [decay ** (n - 1 - i) for i in range(n)]
             center = np.average(msg_embs, axis=0, weights=weights).tolist()
-            results = ctx_obj.chroma_service._read_collection.query(
+            results = ctx_obj.chroma_service._collection.query(
                 query_embeddings=[center], n_results=10,
                 include=["documents", "metadatas", "distances"])
             local = []
@@ -567,7 +567,7 @@ def retrieve_all(
             if cooc:
                 cooc_ids = [c["id"] for c in cooc if c["id"] not in seen_ids][:10]
                 if cooc_ids:
-                    dr = ctx_obj.chroma_service._read_collection.get(
+                    dr = ctx_obj.chroma_service._collection.get(
                         ids=cooc_ids, include=["documents", "metadatas"])
                     for i, mid in enumerate(dr.get("ids", [])):
                         if not mid or mid in seen_ids:

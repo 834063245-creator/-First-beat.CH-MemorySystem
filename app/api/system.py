@@ -283,7 +283,7 @@ def api_status():
 
         # ── ChromaDB 集合信息 ──
         try:
-            col = ctx.chroma_service._read_collection
+            col = ctx.chroma_service._collection
             snapshot["chromadb"] = {
                 "collection_name": col.name,
                 "count": col.count(),

@@ -257,7 +257,7 @@ class ConsolidationEngine:
         queries = unique_queries[:IDLE_PREHEAT_QUERIES]
 
         # 对每个预测 query 做检索预热，缓存为 chat 流程兼容格式
-        collection = self._chroma._read_collection
+        collection = self._chroma._collection
         for query in queries:
             try:
                 results = query_memory(collection, query=query, top_k=5)
@@ -488,7 +488,7 @@ class ConsolidationEngine:
             merged = 0
             try:
                 seen_dupes: set[str] = set()
-                collection = self._chroma._read_collection
+                collection = self._chroma._collection
                 # 只查最近 30 天入库的记忆（旧记忆重复已在之前的浅巩固中处理）
                 recent_cutoff = _time.time() - 86400 * 30
                 recent_mems = [
@@ -567,7 +567,7 @@ class ConsolidationEngine:
                     # 批量更新
                     for i in range(0, len(cooling), 100):
                         batch = cooling[i:i + 100]
-                        self._chroma._write_collection.update(
+                        self._chroma._collection.update(
                             ids=batch,
                             metadatas=[{"heat": "cool"}] * len(batch),
                         )

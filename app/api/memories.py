@@ -35,7 +35,7 @@ def api_memories(
         query_emb = local_embed(search)
         if query_emb is None:
             return {"items": [], "total": 0, "page": page, "per_page": per_page}
-        results = client._read_collection.query(
+        results = client._collection.query(
             query_embeddings=[query_emb],
             n_results=50,
             include=["documents", "metadatas", "distances"],

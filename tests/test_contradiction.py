@@ -311,7 +311,7 @@ class TestContradictionDetection:
 
         svc = ChromaService.__new__(ChromaService)
         write_coll = MagicMock()
-        svc._write_collection = write_coll
+        svc._collection = write_coll
         svc._lock = MagicMock()
 
         svc.supersede_memory("old_123", "new_456", "测试取代")

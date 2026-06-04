@@ -74,7 +74,7 @@ def check_resolution(
             continue
 
         try:
-            chroma_service._write_collection.update(
+            chroma_service._collection.update(
                 ids=[old_id],
                 metadatas=[{"stale": True}],
             )

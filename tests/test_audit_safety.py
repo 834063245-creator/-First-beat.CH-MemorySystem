@@ -14,7 +14,7 @@ def _memory_digest(persist_dir: str, n: int = 100) -> dict[str, str]:
     import random as _r
     _r.seed(42)
     cs = ChromaService(persist_dir=persist_dir)
-    all_data = cs._read_collection.get(include=["documents"])
+    all_data = cs._collection.get(include=["documents"])
     all_ids = all_data.get("ids", [])
     all_docs = all_data.get("documents", [])
     if not all_ids:

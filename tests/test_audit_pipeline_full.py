@@ -292,7 +292,7 @@ def pipeline_ctx():
 
         # 额外热度标记：某些记忆标记为 hot
         if i % 3 == 0:
-            cs._write_collection.update(
+            cs._collection.update(
                 ids=[mid],
                 metadatas=[{"heat": "hot"}],
             )

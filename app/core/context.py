@@ -555,7 +555,7 @@ class AppContext:
                 self.chat_history.update_chroma_id(timestamp, memory_id)
                 try:
                     if embedding is not None and tags:
-                        similar = self.chroma_service._read_collection.query(
+                        similar = self.chroma_service._collection.query(
                             query_embeddings=[embedding], n_results=5,
                             include=["metadatas", "distances"],
                         )
@@ -568,7 +568,7 @@ class AppContext:
                                 if dist < 0.08 and not sim_meta.get("stale", False):
                                     old_tags = set(sim_meta.get("tags", "").split(",")) if sim_meta.get("tags") else set()
                                     if set(tags) & old_tags:
-                                        self.chroma_service._write_collection.update(
+                                        self.chroma_service._collection.update(
                                             ids=[sim_id],
                                             metadatas=[{"stale": True, "superseded_by": memory_id}],
                                         )
@@ -582,7 +582,7 @@ class AppContext:
                         for t in tags[:3]:
                             if len(t) < 2:
                                 continue
-                            prev = self.chroma_service._read_collection.get(
+                            prev = self.chroma_service._collection.get(
                                 where={"tags": {"$contains": t}},
                                 include=["metadatas"],
                                 limit=10,
@@ -703,7 +703,7 @@ class AppContext:
             logger.info("AI 巩固 worker 已启动")
             while not self._stop_event.is_set():
                 try:
-                    all_data = self.ai_chroma_service._read_collection.get(
+                    all_data = self.ai_chroma_service._collection.get(
                         include=["metadatas"], limit=200,
                     )
                     metas = [dict(m) for m in (all_data.get("metadatas") or []) if m]
@@ -726,7 +726,7 @@ class AppContext:
     def _record_ai_co_occurrence(self):
         """AI 蒸馏后记录 AI 表达共现，积累 AI 人格数据。"""
         try:
-            all_data = self.ai_chroma_service._read_collection.get(
+            all_data = self.ai_chroma_service._collection.get(
                 include=["metadatas"], limit=100,
             )
             ids = all_data.get("ids", [])

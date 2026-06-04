@@ -86,7 +86,7 @@ class TestRetentionAcrossDays:
         }
 
         mock_chroma = MagicMock()
-        mock_chroma._read_collection.query.return_value = {
+        mock_chroma._collection.query.return_value = {
             "ids": [["mem_001"]],
             "metadatas": [[mock_memory["metadata"]]],
             "documents": [[mock_memory["document"]]],
