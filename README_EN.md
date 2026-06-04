@@ -1,68 +1,61 @@
-# First Beat — A Cognitive Memory Engine with Its Own Rhythm
+# First Beat — A Self-Contained Memory Being
 
-> ⚠️ **全系统停用 / System Decommissioned**
-> The MCP approach has been abandoned. The engine and Agent frameworks have irreconcilable subject-identity conflicts; MCP interface development will not continue. Project archived, code retained for reference.
+> First Beat is a closed-loop cognitive system. The engine makes decisions. The LLM is its mouth. Add an API key and it comes alive.
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-258%20passed-green.svg)]()
-[![MCP](https://img.shields.io/badge/MCP-9%20tools-orange.svg)]()
 [中文文档](README.md)
 
-👉 [Setup Guide](SETUP_EN.md) | 🔧 [Environment Check](verify_env.py)
+👉 [Quick Start](QUICKSTART.md) | 🔧 [Setup Guide](SETUP_EN.md) | [Environment Check](verify_env.py)
 
 ---
 
 **Others bolt memory plugins onto LLMs. First Beat treats the LLM as its mouth.**
 
-Doesn't generate text. Only does memory. First Beat is a standalone cognitive engine that serves memory to any AI Agent through the MCP protocol. The engine handles retrieval, consolidation, personality modeling, and cognitive decisions — the Agent's LLM is just the speaker.
+First Beat provides a self-contained memory infrastructure. The engine runs consolidation, impulse generation, distillation, and pattern discovery in the background — then speaks naturally through the LLM when the timing is right. What you build on top — a chat app, a desktop companion, an AI pet — is up to you. First Beat handles the memory and the voice.
 
 ---
 
-## What Makes It Different
+## Not a Memory Plugin — a Memory Being
 
-### Where First Beat stands alone
+**Most AI memory projects (Mem0, Zep, Letta, MemOS, Cognee, and others) do the same kind of thing**: they provide an SDK or API that lets developers embed "memory capability" into their own agents. And they do it well — Mem0 handles hundreds of millions of calls daily, Zep's temporal graph tops the benchmarks, and Letta's self-editing memory is an elegant design.
 
-| Capability | Description |
-|------|------|
-| **Autonomous rhythm** | Background 4h/24h dual-cycle consolidation, 5-source impulse system — engine speaks unprompted |
-| **Personality modeling** | User + AI dual personality, independent evolution from conversation distillation |
-| **Emotion analysis** | Russell 2D circumplex + bge-m3 semantic prototype matching, fully local, zero LLM calls |
-| **Fact-level temporal reasoning** | Dual-path contradiction detection |
-| **Pattern discovery** | Multi-timescale pattern recognition + auto-tuning |
-| **Zero API key startup** | Clone and run — all models are local, no external service registration needed |
-| **Semantic engine** | bge-m3 powered: keyword extraction / intent classification / emotion analysis / negation detection / urgency — pure functions, zero model files |
+**First Beat chose a different direction**. It provides no SDK, exposes no integration API, and embeds into nothing. It is a complete, self-contained system — cognition, memory, emotion, impulse, and language output, all in a single process. The user adds an LLM API key, runs `python run.py`, and talks to it directly.
 
-### Where others are stronger
+**The price of not being a "plugin"** is that if you want it to have Agent-like capabilities, you can only develop them from inside the closed loop — a workload far beyond what I can handle alone right now.
 
-| Dimension | First Beat status | Stronger alternative |
-|------|----------|------------|
-| **Benchmark scores** | No LongMemEval/LoCoMo scores | Mem0 / Zep have published benchmarks |
-| **Knowledge graph** | MCP-compatible with external systems | Obsidian / Mem0 / Zep / Cognee |
-| **Community & ecosystem** | Solo project | Mem0 34K+ stars, backed by a company |
-| **Production maturity** | Personal use, no SLA | Mem0 / Zep offer managed SaaS |
-| **Multimodal** | Text only | Some systems support images/audio |
-| **Temporal reasoning depth** | Emotion-driven, no neutral fact tracking | Zep native temporal graph, fact-level conflict tracking |
+**If you can help, I would be deeply grateful**.
 
-### Design philosophy
+Whether this direction is the right one — the path is far from paved. But it is genuinely not "yet another memory plugin."
 
-| | Mem0 | Letta (MemGPT) | **First Beat** |
-|---|---|---|---|
-| Approach | LLM extracts facts → stores in vector DB | LLM manages its own memory | **Engine decides → LLM executes** |
-| LLM's role | Owner of memory | Caretaker of memory | Engine's language cortex |
-| Retrieval | Semantic + BM25 + entity | Semantic + self-editing window | **8-path parallel + 2-stage rerank** |
-| Deployment | Cloud SaaS / self-host | Self-hosted agent runtime | **pip install → python run.py** |
-| MCP protocol | ❌ | ❌ | **✅ Native MCP Server** |
-| Chinese native | ❌ | ❌ | **✅ ChuchuTok + full Chinese docs** |
+### Design Choice: Tight Coupling
 
-One sentence: other memory systems are passive tools for the LLM. First Beat is **an independent organ with its own heartbeat**. The engine runs consolidation, distillation, and impulse generation in the background — it doesn't wait for user input.
+The entire pipeline is entangled. Functional areas can be identified — intent, emotion, personality, relationship — but they are not connected through modular interfaces. They interweave like a biological neural network. This isn't an engineering limitation; it's an intentional design choice. If you split intent analysis and emotion perception into two standalone services, what remains between them is just a data protocol — you lose the ability for them to sense and resonate with each other.
+
+### The Closed Loop
+
+The system has two layers: the request-response pipeline handles each conversation, and the autonomous background rhythm runs even when no user is present. The two layers interweave through shared memory storage and impulse injection — see [How It Works](#how-it-works) below for details.
+
+### How It Compares
+
+| | Mem0 | Zep | Letta | MemOS | First Beat |
+|---|---|---|---|---|---|
+| **What it is** | Memory API service | Temporal KG engine | Agent memory OS | Memory operating system | Self-contained memory being |
+| **Integrator** | Developers (pip/SDK) | Developers (deploy/API) | Developers (Agent SDK) | Developers (deploy/API) | Anyone building a chat/companion/desktop-pet product |
+| **End beneficiary** | Agent's chat users | Agent's chat users | Agent's chat users | Agent's chat users | Their product's end users |
+| **How to use** | pip install → call API | Deploy service → call API | pip install → Agent SDK | Deploy → API call | pip install → add Key → run.py |
+| **External interface** | SDK / REST API | MCP / REST API | Python SDK / ADE | Memory API | REST / OpenAI-compatible / SSE streaming |
+| **Runs as** | Embedded in agent | Embedded in agent | Part of agent framework | Needs app layer on top | One process, full loop |
+| **Background rhythm** | — | — | sleeptime compute | — | 10 threads: consolidation / impulse / distillation / patterns |
+| **Unprompted speech** | — | — | — | — | Engine speaks when it wants to |
+| **Coupling** | Loose (detached) | Loose | Medium (agent controls memory) | Loose | Tight — inseparable |
+
+None of these differences are about right or wrong. Mem0 and Zep chose loose coupling — providing flexible APIs and SDKs so developers can embed memory into any architecture. First Beat chose tight coupling — providing an entire self-contained memory being that others use as infrastructure to build whatever product they want on top. Two different choices for two different kinds of users.
 
 ---
 
----
-
-
-### Why no LongMemEval / LoCoMo scores?
+## Why no LongMemEval / LoCoMo scores?
 
 You may notice systems like Mem0 publish LongMemEval, LoCoMo, and other benchmark scores. First Beat doesn't. The reason is straightforward:
 
@@ -76,43 +69,108 @@ First Beat's design goals are not "store more, retrieve faster":
 - Consolidate, distill, and discover patterns autonomously in the background
 - Speak unprompted when the timing is right
 
-None of these can be measured by a "ask a fact, answer a fact" benchmark.
+None of these can be measured by a "ask a fact, answer a fact" benchmark. An early experiment called **Jarvis** used SQLite + FAISS and could score on benchmarks. But it was fundamentally "store and retrieve," with no autonomous rhythm, no personality modeling, no impulse system. It had a good memory, but it didn't know you. First Beat was built from scratch after rejecting that entire approach.
 
-More directly: if First Beat's goal were to score high on LongMemEval, I could write a specialized retriever for that task. But then it wouldn't be First Beat — it would just be another vector database, not the "get to know you" engine I set out to build.
+**If you're interested in helping with benchmarks, you're very welcome.** Open an issue or PR and I'll help however I can.
 
-In fact, I already did. An early experiment called **Jarvis** (still sitting on my D drive) used SQLite + FAISS vector search + LLM fact extraction — cold injection, fact recall, knowledge graphs. It would score decently on benchmarks. But it was fundamentally "store and retrieve," with no autonomous rhythm, no personality modeling, no impulse system. It had a good memory, but it didn't know you.
-
-First Beat was built from scratch after rejecting that entire approach.
-
-**If you're interested in helping with benchmarks, you're very welcome.** The engine exposes a standard MCP interface — any evaluation tool can call it directly. Open an issue or PR and I'll help however I can. Thank you.
-
-> The repo also includes an audit suite (`scripts/audit.py`) I built for my own use — it covers 8 categories of regression tests (semantic retrieval, keyword search, temporal, ranking, etc.). It's not an industry-standard benchmark like LongMemEval, but it provides comprehensive functional verification of the entire system. Feel free to use it as a reference.
+> The repo includes an audit suite (`scripts/audit.py`) covering 8 categories of regression tests. Not an industry-standard benchmark, but comprehensive functional verification of the entire system.
 
 ---
 
 ## How It Works
 
-```
- Your AI Agent ─── MCP ──→ First Beat Engine (localhost:8082)
-     │                          │
-     │ ── run_engine("user said something") ──→
-     │                          │  ① Intent / emotion analysis
-     │                          │  ② 8-path parallel retrieval
-     │                          │  ③ Cognitive state layering (fact / reference / background)
-     │                          │  ④ Gating (suppress inappropriate impulses)
-     │                          │
-     │ ←── Structured Context ────  │
-     │   {execute, memories,        │
-     │    personality, impulses,     │
-     │    relationship, mood}        │
-     │                              │
- LLM generates reply                 │
-     │                              │
-     └── store_turn ──→ Persist ────┘
+First Beat has two layers. The request-response pipeline handles each conversation — from user message in, to LLM reply out. The autonomous background rhythm runs when no user is present — consolidating memories, distilling personality, discovering patterns, generating impulses, and speaking unprompted when the timing is right. The two layers interweave through shared memory storage and impulse injection.
 
- Background (no user needed):
-   Consolidation 4h/24h · 5-source impulse (Poisson) · Distillation · Pattern discovery
 ```
+                       ┌─── Request-Response Pipeline ───┐
+                       │                                  │
+  User message         │                                  │       SSE streaming output
+  ───────→ Embedding ──→ 8-path parallel ──→ 2-stage ──→ CircuitOrchestrator
+            (bge-m3)    retrieval            rerank       │
+                        (semantic/BM25/tag/  (embed+hit)  ├─ Intent (bge-m3 prototype match)
+                         entity/keyword/                  ├─ Emotion (Russell circumplex)
+                         attention/time/                   ├─ Cognitive layering + gating
+                         co-occurrence)                    ├─ Impulse injection + mirror predict
+                                                          ├─ Relationship state
+                                                          └─ Output: UtteranceSpec
+                                                                  │
+                                                                  ▼
+                                            LLM generates reply ←── LLMClient
+                                            (prompt: memories + personality
+                                             + impulses + execute directives)
+                                                                  │
+                                                                  ▼
+                        ┌────────── Storage ──────────┐
+                        │                              │
+                        ├─ chat_history.append() ──→ JSONL conversation log
+                        ├─ _enqueue_store_task() ──→ queue → worker
+                        │                              │
+                        │   ┌──────────────────────────┘
+                        │   ▼
+                        │   summary + tags + embedding → ChromaDB memory store
+                        │   conflict detection ←── old vs new → auto-replace stale
+                        │
+                        └─ working_memory incremental update
+
+  ┌───── Background Rhythm (10 threads, fully autonomous) ─────┐
+  │                                                              │
+  │  5 Impulse Sources (Poisson)    Impulse Consumer  Consolidation Engine  │
+  │  ┌──────────────────┐      ┌──────────────┐    ┌──────────────┐        │
+  │  │ Emotion trend     │      │              │    │ Shallow 4h    │        │
+  │  │ Time rhythm       ├──→ PriorityQueue ──→ pop→LLM speak         │        │
+  │  │ Random roam       │      │ store as      │    │ │ personality │        │
+  │  │ Curiosity         │      │ [inner voice] │    │ │ distillation│        │
+  │  │ Behavior pattern  │      └──────────────┘    │ Deep 24h      │        │
+  │  └──────────────────┘                           │ │ cognitive   │        │
+  │                                                  │ │ profile     │        │
+  │                                                  └──────────────┘        │
+  │  DMN idle detection ──→ triggers consolidation                           │
+  │  AI consolidation ──→ AI expression analysis + distillation              │
+  │  Pattern discovery ──→ multi-timescale stats (zero LLM calls)            │
+  └──────────────────────────────────────────────────────────────────────────┘
+```
+
+### The Request-Response Pipeline: journey of a message
+
+**① Embedding.** When a user message arrives, it is first converted into a 1024-dimensional vector by bge-m3 (Ollama, fully local). No external API calls at this stage.
+
+**② Retrieval.** The embedding triggers 8 parallel retrieval paths — semantic similarity, BM25 keyword, tag inverted index, entity match, attention drift, time-triggered, co-occurrence expansion, and topic tree branching. Each path independently recalls candidate memories, which then enter a two-stage rerank: first pass scores by embedding cosine similarity + hit_count weight, second pass sorts by source priority (semantic > preheat > entity > keyword > tag > time > co-occurrence). The top-K memories proceed to the next stage.
+
+**③ Circuit Orchestration (CircuitOrchestrator).** This is the cognitive core. After receiving retrieval results, it executes in sequence:
+- Intent analysis: bge-m3 semantically matches the user message against predefined intent prototypes — casual / question / emotional_sharing / request / command
+- Emotion analysis: same bge-m3 prototype matching, mapped onto Russell's circumplex model (valence + arousal), producing emotion + intensity
+- Cognitive layering: sorts memories into fact / reference / background tiers, deciding which are explicitly injected into the prompt and which serve as background context
+- Gating: based on intent + emotion + memory confidence + relationship state, decides tone (warm/calm/humorous), formality (0~1), and response mode (empathize first / understand first / answer directly / confirm first)
+- Impulse injection: checks the PriorityQueue for signals produced by background impulse sources, and injects any pending ones into UtteranceSpec
+- Behavior prediction: Markov-chain probability table predicts what the user might say or need next
+- Relationship assessment: combines familiarity, trust, closeness, and interaction_mode into a current relationship snapshot
+
+All steps execute serially within a single method call. No microservices, no pipeline DAG — just a set of functions running one after another in a single thread. They don't communicate through JSON; they access the same in-memory data structures directly.
+
+**④ LLM Generation.** UtteranceSpec is handed to LLMClient, which translates it into LLM-consumable format — memories formatted as tool-role JSON, impulses turned into natural language cues, gating decisions rendered as execution directives ("keep a warm tone, empathize before responding"), personality tags injected into the system prompt. It then calls the LLM API and streams the response. Tool calls (web search, file read/write, shell execution) are handled here — the LLM can invoke tools, results feed into the next generation round, up to two rounds.
+
+**⑤ Storage.** After the reply is generated, two storage paths trigger in parallel. The synchronous path writes to chat_history.jsonl (conversation log) and triggers an incremental working_memory update (a lightweight summary of the most recent N turns). The asynchronous path places the message into an in-memory queue, consumed by a dedicated worker: LLM generates a summary → bge-m3 extracts semantic tags → entity extraction (qwen2.5:3b) → emotion analysis → temporal feature annotation → write to ChromaDB. Conflict detection runs automatically during ingestion — if a new memory is semantically near-identical to an older one but more recent, the old one is marked stale and eventually replaced.
+
+### The Autonomous Background: what happens when you're gone
+
+The background pipeline does not depend on user messages. When the engine starts, 10 daemon threads begin running independently, each with its own Poisson rhythm or fixed interval.
+
+**Impulse system (6 threads).** Five impulse sources run independently — Emotion Trend detects shifts in the user's emotional trajectory, Time Rhythm discovers behavioral patterns tied to specific times of day, Random Roam pulls old memories at random from the store, Curiosity explores topics that have never been discussed, and Behavior Pattern identifies paradigms in the user's behavior. Each source triggers on its own Poisson distribution, producing (content, priority) signals that pass through fatigue suppression into a PriorityQueue. The sixth thread — the impulse consumer — polls the queue: when the user has been idle for over 2 minutes, it pulls the highest-priority signal, calls the LLM to turn it into natural language, and stores the result as `[inner voice]` in both chat_history and ChromaDB. This is how the engine "speaks unprompted" — it doesn't wait for the user to send a message. When it has something to say, it says it.
+
+**Consolidation engine (2 threads).** Shallow consolidation triggers every 4 hours: rebuilds the topic tree, detects memory conflicts, and runs personality distillation (extracting behavior patterns, thinking patterns, preference patterns, communication patterns, and other tags from conversation). Deep consolidation triggers every 24 hours: extends shallow consolidation with cross-day pattern comparison, evolution trend detection, and cognitive profile refinement. A DMN thread handles idle detection — how long since the user last spoke, whether it's time to trigger consolidation.
+
+**AI consolidation (1 thread).** Independent of user memory, this analyzes the AI's own expression patterns — what tone the AI uses in which emotional contexts, whether the AI's expressive habits are shifting. The resulting AI personality tags are stored separately from user personality tags and injected into the system prompt's "my own expressive habits" section during LLM generation.
+
+**Pattern discovery (no standalone thread; triggered by consolidation).** Multi-timescale statistical pattern recognition — conversation frequency trends, topic drift velocity, emotional fluctuation cycles. Entirely statistical, zero LLM calls. Produces two outputs: tuning (auto-parameter suggestions like emotion dampening toggle, formality offset, proactive suppression) and observations (human-readable pattern descriptions injected into the LLM prompt as background context).
+
+### Where the Two Layers Meet
+
+The request-response pipeline and the background rhythm are not isolated — they intersect at several key points:
+
+- **The memory store is shared.** The request pipeline writes new memories; the background consolidation pipeline reads and reorganizes them. What the user just discussed is pulled into the topic tree by shallow consolidation within hours.
+- **Impulses inject into the request pipeline.** Signals produced by background impulse sources are checked during CircuitOrchestrator's impulse injection step — if there's a pending signal while the user is actively chatting, it gets injected into UtteranceSpec and influences the LLM's reply direction.
+- **Personality tags flow both ways.** Tags distilled by background processes are injected into the system prompt during LLM generation, shaping how the LLM understands the user. New information in the LLM's replies gets stored, distilled, and fed back into updated personality tags.
+- **Disable either direction, and the other degrades.** Without background consolidation, memories just pile up without being understood. Without the request pipeline, background impulses have no one to listen.
 
 ---
 
@@ -122,6 +180,7 @@ First Beat was built from scratch after rejecting that entire approach.
 
 - **Python 3.11+**
 - **Ollama** with bge-m3 model
+- (Optional) **LLM API Key** — engine runs without one, just won't speak
 
 ```bash
 # 1. Install Ollama and pull embedding model
@@ -129,11 +188,15 @@ ollama pull bge-m3
 
 # 2. Clone & install
 git clone https://github.com/834063245-creator/-First-beat.CH-MemorySystem.git
-cd chuchen
+cd -First-beat.CH-MemorySystem
 
 pip install -r requirements.txt
 
-# 3. Start the engine
+# 3. (Optional) Configure LLM Key (supports DeepSeek / OpenAI / SiliconFlow / etc.)
+cp .env.example .env
+# Edit .env, set LLM_API_KEY and LLM_BASE_URL
+
+# 4. Start
 python run.py
 # → Service running at http://localhost:8082
 ```
@@ -149,92 +212,36 @@ python verify_env.py                        # One-click diagnostics
 
 ---
 
-## 9 MCP Tools
+## API
 
-| Tool | Input | Output |
-|------|-------|--------|
-| **`run_engine`** | User message | Intent / emotion / memories / personality / impulses / relationship / execution directive |
-| **`store_turn`** | User msg + AI reply | Persistence confirmation |
-| **`query_memories`** | Query text | Semantic results with relevance, time, emotion |
-| **`get_recent_history`** | N | Last N conversation turns |
-| **`get_memory_stats`** | — | Total count, heat distribution, emotion distribution |
-| **`get_personality_tags`** | Source (user/ai) | Personality tag list |
-| **`get_topic_tree`** | — | Topic tree structure |
-| **`get_relationship`** | — | Familiarity / trust / closeness / interaction mode |
-| **`get_pattern_observations`** | — | Pattern discoveries + auto-tuning records |
+The engine exposes REST and OpenAI-compatible endpoints. Connect any client (NextChat, Open WebUI, custom frontend, desktop companion shell), or call directly from your code.
 
-### run_engine Response Example
+### Chat
 
-```json
-{
-  "execute": {
-    "tone": "caring",
-    "formality": 0.1,
-    "response_mode": "soothe",
-    "user_mood": "negative",
-    "user_intent": "emotional_sharing"
-  },
-  "memories": [
-    {"role": "fact",   "summary": "User has been under pressure lately", "time_hint": "Today", "emotional_context": "User seems down"},
-    {"role": "reference", "summary": "User mentioned a project deadline last week", "time_hint": "Last week"}
-  ],
-  "personality": {
-    "user": [{"content": "Tends to be emotional late at night", "hit_count": 8}],
-    "ai":   [{"content": "Prefers empathy before advice", "hit_count": 12}]
-  },
-  "impulses": ["Something comes to mind — about their project"],
-  "relationship": {
-    "familiarity": 0.42,
-    "trust": 0.68,
-    "closeness": 0.35,
-    "interaction_mode": "collaborator"
-  }
-}
-```
+| Endpoint | Description |
+|------|------|
+| `POST /chat` | Chat (full response with trace) |
+| `POST /chat/stream` | Chat (SSE streaming: reasoning + content + trace) |
+| `POST /v1/chat/completions` | OpenAI-compatible endpoint |
 
----
+### Management
 
-## Connect Your AI Agent
-
-Create `.claude/mcp.json` in your Agent's workspace (Claude Code), or use any MCP-compatible client:
-
-```json
-{
-  "mcpServers": {
-    "chuchen": {
-      "url": "http://localhost:8082/mcp/jsonrpc"
-    }
-  }
-}
-```
-
-For remote: replace with `https://your-server.com:8082/mcp/jsonrpc`.
-
-Verify:
-
-```bash
-curl -X POST http://localhost:8082/mcp/jsonrpc \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"get_memory_stats","arguments":{}},"id":"1"}'
-```
-
-### Connecting external knowledge bases / graphs
-
-First Beat has no built-in knowledge base or graph. Connect external systems instead.
-
-Pass results through `run_engine`'s `external_context`:
-
-```json
-{
-  "message": "user message",
-  "external_context": [
-    {"source": "obsidian", "title": "architecture.md", "content": "..."},
-    {"source": "neo4j", "entities": [...]}
-  ]
-}
-```
-
-Compatible with: Obsidian, Neo4j, Cognee, Mem0, etc.
+| Endpoint | Description |
+|------|------|
+| `GET /health` | Health check |
+| `GET /api/ping` | Heartbeat |
+| `GET /api/user-active` | User activity heartbeat (frontend calls every 10s; used by impulse system for idle detection) |
+| `GET /api/memories` | Memory list (semantic search, tag filter, pagination) |
+| `GET /api/memories/stats` | Memory statistics |
+| `GET /api/memories/{id}` | Memory detail (with conversation context) |
+| `POST /api/memories/{id}/correct` | Correct memory summary |
+| `DELETE /api/memories/{id}` | Delete memory |
+| `POST /api/memories/feedback` | Report memory error |
+| `GET /api/personalities` | Personality tags |
+| `GET /api/consolidation/status` | Consolidation status |
+| `GET /api/distill/status` | Distillation status |
+| `GET /api/chat/history` | Chat history |
+| `GET /api/prompt` | View/edit system prompt |
 
 ---
 
@@ -252,26 +259,25 @@ Pull the model on first run: `docker exec chuchen-ollama ollama pull bge-m3`
 
 ```
 app/
-├── core/          # Cognitive pipeline: intent · gating · orchestration
-├── memory/        # ChromaDB + working memory + inverted / co-occurrence / temporal indices
-├── retrieval/     # 8-path parallel recall + BM25 / embedding two-stage rerank
-├── background/    # Autonomous: 4h/24h consolidation · 5-source impulse · distillation
-├── analysis/      # Russell circumplex · entity extraction · pattern discovery · personality symmetry
-├── personality/   # Dual personality (user + AI, evolve independently)
-├── mcp/           # MCP JSON-RPC server
-├── llm/           # Local embedding (bge-m3) + DeepSeek / local LLM
-├── api/           # REST admin endpoints
-├── tools/         # Atomic writes · tool dispatch
+├── core/          # Cognitive pipeline: orchestration · cognitive state · gating · context
 ├── brain/         # Semantic engine core — semantic.py (~240 lines, zero model deps)
 │   ├── semantic.py        # 7 semantic functions: tags/intent/emotion/negation/urgency/tokenize/entities
 │   ├── models.py          # Compatibility shim (delegates to semantic.py)
 │   ├── keywords.py        # Keyword constants
 │   └── metrics.py         # Training metrics persistence
+├── memory/        # ChromaDB + working memory + inverted/co-occurrence/temporal indices
+├── retrieval/     # 8-path parallel recall + BM25/embedding two-stage rerank
+├── background/    # Autonomous: 4h/24h consolidation · 5-source impulse · distillation · conflict detection · lifecycle
+├── analysis/      # Russell circumplex · entity extraction · pattern discovery · personality symmetry · behavior prediction
+├── personality/   # Dual personality (user + AI, evolve independently)
+├── llm/           # Local embedding (bge-m3) + LLM chat generation + summarization
+├── api/           # REST endpoints: chat · memory management · personality · consolidation · distillation
+├── tools/         # Atomic writes · tool dispatch · search · file operations
 ├── config/        # Central config
 └── models/        # Pydantic schemas
 
-backend/           # Legacy module shims (migrating to app/)
-tests/             # 320+ tests, 5 layers: engine logic · gate · inverted index · thread safety · integration
+tests/             # 320+ tests
+scripts/           # Audit suite + utility scripts
 ```
 
 ---
@@ -288,21 +294,50 @@ tests/             # 320+ tests, 5 layers: engine logic · gate · inverted inde
 
 ---
 
+## Tech Stack
+
+- Python 3.11+ / FastAPI / ChromaDB (local persistence)
+- Embedding: bge-m3 via Ollama (1024-dim)
+- Semantic core: bge-m3 (keyword extraction / intent-emotion prototype matching)
+- Entity extraction: Ollama qwen2.5:3b (async during ingestion)
+- Negation detection: whitelist + distance rules (no model)
+- Urgency: 10-line ruleset (no model)
+- BM25 tokenization: character 2-gram + rank-bm25
+- Main LLM: configurable — DeepSeek / OpenAI / any OpenAI-compatible provider
+- Deployment: Windows / macOS / Linux, Docker optional
+
+---
+
 ## Environment Variables
 
 | Variable | Required | Description |
 |----------|:--------:|-------------|
 | `OLLAMA_EMBED_MODEL` | Yes | Embedding model, default `bge-m3` |
 | `LOCAL_LLM_OLLAMA_URL` | Yes | Ollama endpoint, default `http://localhost:11434` |
-| `DEEPSEEK_API_KEY` | No | DeepSeek API key |
-| `DEEPSEEK_BASE_URL` | No | DeepSeek API base URL |
+| `LLM_API_KEY` | No | LLM API key (without it, engine won't speak) |
+| `LLM_BASE_URL` | No | LLM API base URL, default `https://api.deepseek.com` |
+| `LLM_MODEL` | No | Model name, default `deepseek-v4-flash` |
+| `DEEPSEEK_API_KEY` | No | (Legacy — still works) Same as `LLM_API_KEY` |
 | `LOCAL_LLM_ENABLED` | No | Enable local LLM, default `true` |
 | `LOCAL_LLM_MODEL` | No | Local LLM model, default `qwen2.5:7b` |
 | `BOCHA_API_KEY` | No | Bocha search API key |
 | `DATA_DIR` | No | Data directory, default `./data` |
-| `DEPLOY_MODE` | No | `full` |
 | `USERS` | No | Multi-user auth JSON |
 | `IMPULSE_ACTIVE_PATH_B` | No | Impulse system toggle, default `true` |
+
+See `.env.example` for details.
+
+---
+
+## Audit
+
+```bash
+python scripts/audit.py              # Full 8 categories
+python scripts/audit.py --quick      # Quick mode
+python scripts/audit.py --category 1 # Single category
+```
+
+Reports saved in `audit/` directory.
 
 ---
 

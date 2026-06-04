@@ -1,15 +1,4 @@
-"""LLM 工具定义与调度 — 从 backend/main.py 迁移至此。
-
-包含 OpenAI 兼容的工具定义常量，以及工具调用分发函数 _handle_tool_call。
-"""
-import json
-import logging
-import subprocess
-
-from app.api.deps import AppContext
-
-logger = logging.getLogger(__name__)
-
+"""LLM 工具定义 — OpenAI 兼容的工具定义常量。"""
 
 # ── 工具定义（OpenAI 兼容格式） ──────────────────────────────
 
@@ -157,71 +146,3 @@ TOOLS = [
     SEARCH_WEB_TOOL, READ_FILE_TOOL, LIST_FILES_TOOL, GREP_FILES_TOOL,
     WRITE_FILE_TOOL, EDIT_FILE_TOOL, BASH_TOOL, GLOB_TOOL,
 ]
-
-
-# ── 工具调度 ──────────────────────────────────────────────────
-
-async def handle_tool_call(tc: dict, extra_msgs: list, ctx: AppContext, *,
-                           reasoning_content: str = "", is_stream: bool = False):
-    """执行一个工具调用，追加结果到 extra_msgs。"""
-    name = tc["function"]["name"]
-    args = json.loads(tc["function"]["arguments"]) if tc["function"].get("arguments") else {}
-
-    asst_msg = {"role": "assistant", "tool_calls": [tc]}
-    if reasoning_content:
-        asst_msg["reasoning_content"] = reasoning_content
-
-    if name == "search_web":
-        from backend.search import search_web
-        search_text = await search_web(args.get("query", ""))
-        logger.info("%s搜索结果长度: %d", "流式" if is_stream else "", len(search_text))
-        extra_msgs.append(asst_msg)
-        extra_msgs.append({"role": "tool", "tool_call_id": tc["id"], "content": search_text})
-
-    elif name == "read_file":
-        from app.tools.workspace import read_file
-        file_content = read_file(args.get("path", ""))
-        extra_msgs.append(asst_msg)
-        extra_msgs.append({"role": "tool", "tool_call_id": tc["id"], "content": file_content})
-
-    elif name == "list_files":
-        from app.tools.workspace import list_files
-        listing = list_files(args.get("pattern", ""))
-        extra_msgs.append(asst_msg)
-        extra_msgs.append({"role": "tool", "tool_call_id": tc["id"], "content": listing})
-
-    elif name == "grep_files":
-        from app.tools.workspace import grep_files
-        matched = grep_files(args.get("pattern", ""), args.get("glob_pattern", "**/*.py"))
-        extra_msgs.append(asst_msg)
-        extra_msgs.append({"role": "tool", "tool_call_id": tc["id"], "content": matched})
-
-    elif name == "write_file":
-        from app.tools.workspace import write_file
-        result = write_file(args.get("path", ""), args.get("content", ""))
-        extra_msgs.append(asst_msg)
-        extra_msgs.append({"role": "tool", "tool_call_id": tc["id"], "content": result})
-
-    elif name == "edit_file":
-        from app.tools.workspace import edit_file
-        result = edit_file(args.get("path", ""), args.get("old_str", ""), args.get("new_str", ""))
-        extra_msgs.append(asst_msg)
-        extra_msgs.append({"role": "tool", "tool_call_id": tc["id"], "content": result})
-
-    elif name == "bash":
-        try:
-            r = subprocess.run(args["command"], shell=True, capture_output=True, text=True, timeout=30)
-            result = r.stdout + r.stderr
-        except subprocess.TimeoutExpired:
-            result = "命令执行超时（30s）"
-        except Exception as e:
-            result = f"执行失败: {e}"
-        extra_msgs.append(asst_msg)
-        extra_msgs.append({"role": "tool", "tool_call_id": tc["id"], "content": result})
-
-    elif name == "glob":
-        import glob as _glob
-        matches = _glob.glob(args.get("pattern", ""), root_dir=args.get("root", "."), recursive=True)
-        result = "\n".join(matches) if matches else "未匹配到文件"
-        extra_msgs.append(asst_msg)
-        extra_msgs.append({"role": "tool", "tool_call_id": tc["id"], "content": result})

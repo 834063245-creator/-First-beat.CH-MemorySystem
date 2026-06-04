@@ -10,7 +10,7 @@ import os
 from collections import defaultdict, deque
 from typing import Optional
 
-from circuit import analyze_user_message
+from app.core.circuit import analyze_user_message
 
 logger = logging.getLogger(__name__)
 

@@ -23,6 +23,12 @@ _last_heartbeat_time: float | None = None
 _heartbeat_lock = threading.Lock()
 
 
+def get_last_heartbeat() -> float | None:
+    """供后台消费线程查询用户最后活跃时间。"""
+    with _heartbeat_lock:
+        return _last_heartbeat_time
+
+
 @router.get("/api/ping")
 def ping():
     return {"status": "ok"}
@@ -42,8 +48,8 @@ def api_user_active():
 def api_get_prompt():
     """Get current system prompt."""
     prompt_file = os.getenv("PROMPT_FILE", "prompt.txt")
-    backend_dir = os.path.join(os.path.dirname(__file__), "..", "..", "backend")
-    path = os.path.join(backend_dir, prompt_file)
+    project_dir = os.path.join(os.path.dirname(__file__), "..", "..")
+    path = os.path.join(project_dir, prompt_file)
     try:
         with open(path, "r", encoding="utf-8") as f:
             return {"content": f.read()}
@@ -61,10 +67,10 @@ def api_update_prompt(body: dict):
     if len(content) > 50000:
         raise HTTPException(status_code=400, detail="content 过长（上限 50000 字符）")
     prompt_file = os.getenv("PROMPT_FILE", "prompt.txt")
-    backend_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "backend"))
-    path = os.path.normpath(os.path.join(backend_dir, prompt_file))
-    # 确保目标路径在 backend 目录内（防止任意路径写入）
-    if not path.startswith(backend_dir):
+    project_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    path = os.path.normpath(os.path.join(project_dir, prompt_file))
+    # 确保目标路径在项目目录内（防止任意路径写入）
+    if not path.startswith(project_dir):
         raise HTTPException(status_code=400, detail="路径不合法")
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)

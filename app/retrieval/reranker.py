@@ -31,7 +31,7 @@ def rerank(
     attn = attention_boosts or {}
 
     try:
-        from local_embed import local_embed
+        from app.llm.embed import local_embed
 
         query_emb = local_embed(query)
         if query_emb is None:

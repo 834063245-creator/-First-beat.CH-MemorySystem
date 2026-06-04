@@ -27,7 +27,7 @@ from typing import Optional
 # 路径：从 scripts/ 回到项目根目录
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _project_root)
-sys.path.insert(0, os.path.join(_project_root, "backend"))
+# (backend/ removed — all modules now in app/)
 os.chdir(_project_root)
 
 logging.basicConfig(level=logging.WARNING)
@@ -47,7 +47,7 @@ CHAT_HISTORY: list[dict] = []
 
 def load_data():
     global CHROMA_DATA, PERSONALITY_TAGS, CHAT_HISTORY
-    from app.config.settings import CHROMA_PERSIST_DIR, PERSONALITY_DIR as _pd, PERSONALITY_COLLECTION
+    from app.config.settings import CHROMA_PERSIST_DIR, PERSONALITY_CHROMA_DIR as _pd, PERSONALITY_COLLECTION
     from app.config.settings import CHAT_HISTORY_PATH
     import chromadb
 

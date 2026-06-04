@@ -31,7 +31,7 @@ def api_memories(
     client = ctx.chroma_service
 
     if search:
-        from backend.local_embed import local_embed
+        from app.llm.embed import local_embed
         query_emb = local_embed(search)
         if query_emb is None:
             return {"items": [], "total": 0, "page": page, "per_page": per_page}
@@ -89,7 +89,7 @@ def api_memories_correct(memory_id: str, body: dict, ctx: AppContext = Depends(g
     if not corrected:
         raise HTTPException(status_code=400, detail="摘要不能为空")
 
-    from backend.local_embed import local_embed
+    from app.llm.embed import local_embed
     embedding = local_embed(corrected)
     if embedding is None:
         raise HTTPException(status_code=500, detail="Embedding 失败")

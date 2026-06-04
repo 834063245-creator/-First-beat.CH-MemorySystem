@@ -20,11 +20,16 @@ load_dotenv(_env_path)
 OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "bge-m3")
 
 # ============================================================
-# DeepSeek API (主模型生成回答)
+# LLM API（主模型生成回答）
 # ============================================================
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
-DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-DEEPSEEK_MODEL = "deepseek-v4-flash"
+LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("DEEPSEEK_API_KEY", "")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL") or os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+LLM_MODEL = os.getenv("LLM_MODEL") or os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+
+# 保留旧名导出，不破坏现有代码引用
+DEEPSEEK_API_KEY = LLM_API_KEY
+DEEPSEEK_BASE_URL = LLM_BASE_URL
+DEEPSEEK_MODEL = LLM_MODEL
 
 # ============================================================
 # 博查搜索 API
@@ -52,7 +57,7 @@ AUTH_TOKEN_PATH = os.path.join(DATA_DIR, "auth_tokens.json")
 
 # 用户 → 数据目录映射
 USER_DATA_DIRS: dict[str, str] = {
-    "admin": os.path.join(BASE_DIR, "backend", "data"),
+    "admin": DATA_DIR,
 }
 
 # ============================================================

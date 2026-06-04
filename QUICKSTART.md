@@ -31,10 +31,23 @@ cd -First-beat.CH-MemorySystem
 pip install -r requirements.txt
 ```
 
+---
+
+## 第三步：配置 LLM Key（30 秒）
+
+引擎需要 LLM 才能说话。去 [platform.deepseek.com](https://platform.deepseek.com) 注册拿一个 API Key，或者用 OpenAI / 硅基流动等其他厂商。
+
+```bash
+cp .env.example .env
+# 用记事本打开 .env，找到 LLM_API_KEY= 这一行，把 Key 填进去
+# 如果用其他厂商，同时修改 LLM_BASE_URL 和 LLM_MODEL
+```
+
+不填也能启动——引擎所有后台功能（记忆、巩固、冲动、人格建模）照常运行，只是不会说话。
 
 ---
 
-## 第三步：启动（1 分钟）
+## 第四步：启动（30 秒）
 
 ```bash
 # 1. 检查环境
@@ -58,14 +71,25 @@ curl http://localhost:8082/health
 
 返回 `{"status":"ok"}` 就说明引擎在跑了。
 
+试着跟它说话：
+
+```bash
+curl -X POST http://localhost:8082/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"你好，我叫小明，我喜欢打篮球"}'
+```
+
 ---
 
 ## 接下来干嘛？
 
-1. **把你的 AI Agent 接上来**：在 `.claude/mcp.json` 里配置，[看这里](README.md#接入-ai-agent)
-2. **跑测试**：`python -m pytest tests/ -v`
-3. **看架构**：[README](README.md)
-4. **出问题了？** [排查指南](SETUP.md)
+1. **跟引擎聊天**：`POST /chat` 或 `POST /chat/stream`（流式）
+2. **接 OpenAI 兼容客户端**：端点 `POST /v1/chat/completions`
+3. **看记忆**：`GET /api/memories`、`GET /api/memories/stats`
+4. **跑测试**：`python -m pytest tests/ -v`
+5. **跑审计**：`python scripts/audit.py`
+6. **看架构**：[README](README.md)
+7. **出问题了？** [排查指南](SETUP.md)
 
 ---
 

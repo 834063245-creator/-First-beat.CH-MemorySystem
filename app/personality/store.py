@@ -20,7 +20,7 @@ import chromadb
 import numpy as np
 
 from app.config.settings import PERSONALITY_CHROMA_DIR, PERSONALITY_COLLECTION, PERSONALITY_DEDUP_THRESHOLD
-from metadata import extract_topics
+from app.core.metadata import extract_topics
 
 logger = logging.getLogger(__name__)
 

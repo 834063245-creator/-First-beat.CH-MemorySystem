@@ -1,7 +1,6 @@
 """初痕记忆引擎 — FastAPI 应用工厂。
 
-暴露接口：MCP Server（JSON-RPC）、REST 管理端点、健康检查。
-不包含聊天端点——引擎不做文本生成，只做记忆决策。
+暴露接口：REST 管理端点、聊天端点、健康检查。
 """
 import logging
 import threading
@@ -15,6 +14,7 @@ from app.api.memories import router as memories_router
 from app.api.personalities import router as personalities_router
 from app.api.consolidation import router as consolidation_router
 from app.api.distill import router as distill_router
+from app.api.chat import router as chat_router
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +26,14 @@ _Routers = [
     personalities_router,
     consolidation_router,
     distill_router,
+    chat_router,
 ]
 
 
 def _startup_warmup():
     """后台预热：embedding 模型。"""
     try:
-        from backend.local_embed import local_embed
+        from app.llm.embed import local_embed
         local_embed("warmup")
         logger.info("本地 Embedding 模型已预热")
     except Exception as exc:

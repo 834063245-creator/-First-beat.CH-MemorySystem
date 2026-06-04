@@ -1,4 +1,4 @@
-"""LLM 调用层 — 硅基流动（Embedding + 小模型）+ DeepSeek + Jina AI."""
+"""LLM 调用层 — 通用文本生成 + 工具调用。"""
 import asyncio
 import json
 import logging
@@ -25,9 +25,9 @@ def now_hint() -> str:
     return f"当前时间：[{now.year}-{now.month:02d}-{now.day:02d} {now.hour:02d}:{now.minute:02d} {weekdays[now.weekday()]}]"
 
 from app.config.settings import (
-    DEEPSEEK_API_KEY,
-    DEEPSEEK_BASE_URL,
-    DEEPSEEK_MODEL,
+    LLM_API_KEY,
+    LLM_BASE_URL,
+    LLM_MODEL,
 )
 
 
@@ -69,16 +69,16 @@ _CORE_RULES = (
 
 
 # ===================================================================
-# DeepSeek — 主模型回答
+# LLM Client — 主模型回答（通用，不绑死供应商）
 # ===================================================================
 
-class DeepSeekLLM:
-    """DeepSeek 主模型：基于记忆上下文生成回答."""
+class LLMClient:
+    """通用 LLM 客户端：基于记忆上下文生成回答。"""
 
     def __init__(self):
-        self.api_key = DEEPSEEK_API_KEY
-        self.base_url = DEEPSEEK_BASE_URL
-        self.model = DEEPSEEK_MODEL
+        self.api_key = LLM_API_KEY
+        self.base_url = LLM_BASE_URL
+        self.model = LLM_MODEL
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0))
         self._pattern_discovery: Optional["PatternDiscovery"] = None
 
@@ -509,7 +509,7 @@ class DeepSeekLLM:
 
             # 最近发生了什么（可选）
             if timeline_recent:
-                from chat_history import ChatHistory
+                from app.memory.history import ChatHistory
                 tl_lines = ['【最近发生了什么】']
                 tl_lines.extend(ChatHistory.annotate_chunks(timeline_recent))
                 sections.append('\n'.join(tl_lines))
@@ -530,7 +530,7 @@ class DeepSeekLLM:
                         ts_tag = f"[{datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M')}] "
                     stale_tag = " [已更新]" if mem.get("metadata", {}).get("stale", False) else ""
 
-                    conf_tag = f"[{DeepSeekLLM._confidence_label(mem)}置信]" if not mem.get("metadata", {}).get("stale", False) else ""
+                    conf_tag = f"[{LLMClient._confidence_label(mem)}置信]" if not mem.get("metadata", {}).get("stale", False) else ""
                     emo_tag = ""
                     ei = mem.get("metadata", {}).get("emotional_intensity", 0)
                     valence = mem.get("metadata", {}).get("emotion_valence_bin", "") or ""
@@ -585,8 +585,8 @@ class DeepSeekLLM:
                                 m_lines.extend(ctx_lines)
                 # 整体置信度评估
                 total = len(memories)
-                high = sum(1 for m in memories if DeepSeekLLM._confidence_label(m) == "高")
-                mid = sum(1 for m in memories if DeepSeekLLM._confidence_label(m) == "中")
+                high = sum(1 for m in memories if LLMClient._confidence_label(m) == "高")
+                mid = sum(1 for m in memories if LLMClient._confidence_label(m) == "中")
                 if high == total:
                     overall = "高"
                 elif high + mid >= total / 2:
@@ -768,7 +768,7 @@ class DeepSeekLLM:
             rel = ""
             if ts:
                 try:
-                    rel = DeepSeekLLM._relative_time(float(ts))
+                    rel = LLMClient._relative_time(float(ts))
                 except (ValueError, TypeError):
                     pass
             ts_str = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M") if ts else ""
@@ -826,6 +826,8 @@ _tool_id_lock = threading.Lock()
 
 def parse_dsml_tool_calls(text: str) -> list:
     """将 DeepSeek 原生 DSML 工具调用解析为 OpenAI 结构。"""
+    if "deepseek" not in LLM_MODEL.lower():
+        return []
     calls = []
 
     # 格式 1: <|DSML|tool_calls> ... </|DSML|tool_calls>
@@ -869,6 +871,8 @@ def parse_dsml_tool_calls(text: str) -> list:
 
 def strip_dsml(text: str) -> str:
     """移除 DSML 标记，保留纯文本内容。含流式碎片处理。"""
+    if "deepseek" not in LLM_MODEL.lower():
+        return text
     text = _DSML_RE.sub("", text)
     text = _ALT_TOOL_RE.sub("", text)
     # 完整标签
@@ -883,3 +887,7 @@ def strip_dsml(text: str) -> str:
     text = re.sub(r'</\|DSML[^>]*', "", text)      # 未闭合的 </|DSML...
     text = re.sub(r'<｜[^▸]*', "", text)           # 替代格式碎片
     return text.strip()
+
+
+# 向后兼容别名
+DeepSeekLLM = LLMClient

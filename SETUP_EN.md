@@ -49,8 +49,10 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env — check OLLAMA_EMBED_MODEL and LOCAL_LLM_OLLAMA_URL
+# Edit .env — at minimum, set LLM_API_KEY (needed for the engine to speak)
 ```
+
+The engine starts without a key — memory, consolidation, impulse, and personality modeling all work. It just won't generate responses.
 
 ### 5. Start
 
@@ -74,6 +76,27 @@ python verify_env.py
 
 ---
 
+## Data Directory Structure
+
+On first run, the engine creates the following under `./data/`:
+
+```
+data/
+├── chroma/              # ChromaDB vector store (memory storage)
+├── chat_history.jsonl   # Conversation records
+├── working_memory.json  # Working memory summary
+├── impulse_state.json   # Impulse system state
+├── dmn_state.json       # Consolidation state
+├── topic_tree.json      # Topic tree
+├── co_occurrence.json   # Co-occurrence matrix
+├── pattern_cache.json   # Pattern discovery cache (in cache/ dir)
+├── personality_chroma/  # Personality tag store
+├── behavior_chroma/     # Behavior pattern store
+└── ai_chroma/           # AI expression memory store
+```
+
+---
+
 ## Troubleshooting
 
 | Symptom | Likely Cause | Solution |
@@ -81,9 +104,10 @@ python verify_env.py
 | `Connection refused` to Ollama | Ollama service not running | Run `ollama serve` or start the Ollama app |
 | `model 'bge-m3' not found` | Model not downloaded | `ollama pull bge-m3` |
 | `ModuleNotFoundError` | Dependencies not installed | `pip install -r requirements.txt` |
-| Port 8082 already in use | Another service running | Kill the old process: `netstat -ano | findstr :8082` |
-| `DEEPSEEK_API_KEY` 401 | Invalid key | Works without DeepSeek — summaries fall back to keyword truncation |
-| Import `app.core.circuit` fails | Project root not in Python path | Make sure you run `python run.py` from the project root |
+| Port 8082 already in use | Another service running | Kill the old process: `netstat -ano \| findstr :8082` |
+| `LLM_API_KEY` 401 | Invalid or missing key | Check `LLM_API_KEY` in `.env` |
+| Engine doesn't speak | No API key configured | Edit `.env`, add a valid LLM_API_KEY |
+| Import `app.core.circuit` fails | Not in project root | Make sure you run `python run.py` from the project root |
 | ChromaDB write failure | Disk space or permission issue | Check `data/` directory permissions, ensure 500MB+ free space |
 
 ### Test Ollama Connection
@@ -120,7 +144,8 @@ docker exec -it chuchen-ollama ollama pull bge-m3
 
 ## Next Steps
 
-- [README](README_EN.md) — Architecture overview and MCP tool documentation
+- [README_EN.md](README_EN.md) — Architecture overview and API documentation
+- [QUICKSTART.md](QUICKSTART.md) — 3-minute quick start
 - [CONTRIBUTING.md](CONTRIBUTING.md) — Contribution guide
 - [AUTHOR_EN.md](AUTHOR_EN.md) — The story behind the project
 

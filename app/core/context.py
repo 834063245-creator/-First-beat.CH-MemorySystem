@@ -1,7 +1,6 @@
 """应用上下文 — AppContext 类 + ctx_manager 导出。
 
-迁移里程碑：不再从 backend/main.py 导入 AppContext。
-AppContext 类在此处完整定义，底层模块仍可从 backend/ 导入。
+AppContext 类在此处完整定义，所有模块从 app/ 自给自足。
 """
 import asyncio
 import queue
@@ -10,7 +9,6 @@ import logging
 import os
 import random
 import re
-import sys
 import threading
 import time
 from collections import Counter
@@ -22,10 +20,6 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# ── 确保 backend/ 可导入（底层模块仍在 backend/ 中） ─────────
-_backend_dir = os.path.join(os.path.dirname(__file__), "..", "..", "backend")
-if _backend_dir not in sys.path:
-    sys.path.insert(0, os.path.abspath(_backend_dir))
 
 
 from app.config.settings import (                  # noqa: E402
@@ -35,21 +29,22 @@ from app.config.settings import (                  # noqa: E402
     STORE_FAILURES_PATH, BEHAVIOR_CHROMA_DIR, BEHAVIOR_COLLECTION,
     CONSOLIDATION_SHALLOW_INTERVAL, CONSOLIDATION_DEEP_INTERVAL,
     AI_CHROMA_DIR, AI_COLLECTION, AI_DISTILL_STATE_PATH,
+    IMPULSE_ACTIVE_PATH_B,
     IS_LITE, LITE_DISABLE_BACKGROUND_TASKS, LITE_DISABLE_IMPULSE,
     LITE_WORK_MEMORY_BUDGET, USER_DATA_DIRS,
     STOP_WORDS as _STOP_WORDS,
 )
-from memory import ChromaService                   # noqa: E402
-from llm import DeepSeekLLM                        # noqa: E402
-from retrieval import CoOccurrenceTracker           # noqa: E402
-from app.memory.entity_pair import EntityPairTracker  # noqa: E402
-from personality_store import PersonalityStore       # noqa: E402
-from behavior_store import BehaviorStore             # noqa: E402
-from chat_history import ChatHistory                 # noqa: E402
-from inverted_index import InvertedIndex             # noqa: E402
-from topic_affinity import TopicAffinity             # noqa: E402
-from temporal_pattern import TemporalPatternIndex    # noqa: E402
-from distill import DistillEngine                    # noqa: E402
+from app.memory.chroma import ChromaService
+from app.llm.deepseek import LLMClient
+from app.memory.cooccur import CoOccurrenceTracker
+from app.memory.entity_pair import EntityPairTracker
+from app.personality.store import PersonalityStore
+from app.personality.behavior import BehaviorStore
+from app.memory.history import ChatHistory
+from app.memory.inverted import InvertedIndex
+from app.memory.affinity import TopicAffinity
+from app.memory.temporal import TemporalPatternIndex
+from app.background.distill import DistillEngine
 from app.analysis.predictor import BehaviorPredictor  # noqa: E402
 from app.analysis.pattern_discovery import PatternDiscovery  # noqa: E402
 from app.tools.atomic import atomic_write             # noqa: E402
@@ -68,7 +63,7 @@ def _get_local_llm() -> "LocalLLM":
     if _LOCAL_LLM is None:
         with _LOCAL_LLM_LOCK:
             if _LOCAL_LLM is None:
-                from local_llm import LocalLLM
+                from app.llm.local import LocalLLM
                 _LOCAL_LLM = LocalLLM()
     return _LOCAL_LLM
 
@@ -95,7 +90,7 @@ class AppContext:
             persist_dir=f"{data_dir}/ai_chroma",
             collection_name=AI_COLLECTION,
         )
-        self.deepseek_llm = DeepSeekLLM()
+        self.llm_client = LLMClient()
         self.storage_executor = ThreadPoolExecutor(max_workers=5)
         self.retrieval_executor = ThreadPoolExecutor(max_workers=3)
         import atexit
@@ -130,7 +125,7 @@ class AppContext:
         )
         self.distill_engine = self.user_distill  # 向后兼容
         if not (IS_LITE and LITE_DISABLE_BACKGROUND_TASKS):
-            from consolidation import ConsolidationEngine
+            from app.background.consolidation import ConsolidationEngine
             self.dmn = ConsolidationEngine(
                 chroma_service=self.chroma_service,
                 personality_store=self.personality_store,
@@ -157,11 +152,11 @@ class AppContext:
             chat_history_path=f"{data_dir}/chat_history.jsonl",
         )
         self._pattern_discovery.load_cache()
-        if hasattr(self, 'deepseek_llm'):
-            self.deepseek_llm.set_pattern_discovery(self._pattern_discovery)
+        if hasattr(self, 'llm_client'):
+            self.llm_client.set_pattern_discovery(self._pattern_discovery)
 
         if not (IS_LITE and LITE_DISABLE_IMPULSE):
-            from impulse import ImpulseScheduler
+            from app.background.impulse import ImpulseScheduler
             self.impulse_scheduler = ImpulseScheduler(
                 state_path=f"{data_dir}/impulse_state.json",
                 temporal_pattern_index=self.temporal_pattern_index,
@@ -276,6 +271,97 @@ class AppContext:
                 chat_history=self.chat_history,
                 personality_store=self.personality_store,
             )
+            self._start_impulse_consumer()
+
+    # ── 冲动消费 worker ──────────────────────────────────────
+
+    def _start_impulse_consumer(self):
+        """冲动信号内部消费线程：取信号 → LLM 生成 → 存为 [内心独白]。
+
+        这是冲动系统闭环的最后一环——引擎不等外部调用，自己消费自己产出的信号。
+        """
+        import asyncio
+
+        def _consumer():
+            logger.info("冲动消费线程已启动 for %s", self.data_dir)
+            while not self._stop_event.is_set():
+                try:
+                    # 检查 Path B 开关
+                    if not IMPULSE_ACTIVE_PATH_B:
+                        self._stop_event.wait(60)
+                        continue
+
+                    # 检查空闲条件（用户不在聊天中）
+                    from app.api.system import get_last_heartbeat
+                    hb = get_last_heartbeat()
+                    if not self.impulse_scheduler.should_deliver(self.chat_history, hb):
+                        self._stop_event.wait(30)
+                        continue
+
+                    # 取信号（已通过频率限制 + 疲劳抑制）
+                    imp = self.impulse_scheduler.get_next()
+                    if not imp:
+                        self._stop_event.wait(30)
+                        continue
+
+                    signal = imp.get("content", "")
+                    source = imp.get("source", "")
+                    if not signal:
+                        continue
+
+                    logger.info("冲动消费: [%s] %s", source, signal[:80])
+
+                    # 构建发言 prompt
+                    from app.llm.deepseek import load_system_prompt, now_hint
+                    system_prompt = load_system_prompt()
+                    speak_prompt = (
+                        f"{now_hint()}\n\n"
+                        f"你的心里有一个信号在浮现：\n"
+                        f"{signal}\n\n"
+                        f"顺着这个信号，你想对用户说什么就说什么。\n"
+                        f"不要解释这个信号从哪里来，不要加'我注意到'这类前缀，\n"
+                        f"就只是顺着心里的感觉，自然地开口。"
+                    )
+
+                    # 调 LLM 生成自然语言（generate 是 async，用 asyncio.run 包装）
+                    try:
+                        result = asyncio.run(
+                            self.llm_client.generate(
+                                speak_prompt,
+                                max_tokens=256,
+                            )
+                        )
+                        reply = result.get("content", "").strip()
+                    except Exception as llm_err:
+                        logger.warning("冲动LLM调用失败，回退原文: %s", llm_err)
+                        reply = signal
+
+                    if not reply:
+                        continue
+
+                    logger.info("冲动发言: %s", reply[:80])
+
+                    # 存为内心独白
+                    from datetime import datetime
+                    now_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    self.chat_history.append("[内心独白]", reply, now_ts)
+                    self._enqueue_store_task(
+                        user_message="[内心独白]",
+                        ai_message=reply,
+                        timestamp=now_ts,
+                    )
+
+                except Exception as exc:
+                    logger.error("冲动消费循环异常: %s", exc)
+                    self._stop_event.wait(60)
+
+        t = threading.Thread(
+            target=_consumer,
+            daemon=True,
+            name=f"impulse_consumer_{self.data_dir}",
+        )
+        t.start()
+        self._impulse_consumer_thread = t
 
     # ── DMN worker ───────────────────────────────────────────
 
@@ -312,7 +398,7 @@ class AppContext:
                     lsc = 0
                     ldc = 0
                     try:
-                        from consolidation import _load_state as _dmn_load
+                        from app.background.consolidation import _load_state as _dmn_load
                         dmn_state = _dmn_load(f"{self.data_dir}/dmn_state.json")
                         lsc = dmn_state.get("last_shallow_consolidation", 0) or 0
                         ldc = dmn_state.get("last_deep_consolidation", 0) or 0
@@ -347,9 +433,9 @@ class AppContext:
 
     def _store_conversation(self, user_message: str, ai_message: str, timestamp: str):
         """在线程池中并行调用摘要/标签 + embedding。失败自动重试最多3次。"""
-        from local_embed import local_embed
-        from emotion import analyze_emotion_2d, resolve_emotion_category
-        from entity_extractor import extract_entities
+        from app.llm.embed import local_embed
+        from app.analysis.emotion import analyze_emotion_2d, resolve_emotion_category
+        from app.analysis.entity import extract_entities
         _STORE_FAILURES_PATH = f"{self.data_dir}/store_failures.jsonl"
         last_exc = None
 
@@ -537,7 +623,7 @@ class AppContext:
                         if prev_ts and timestamp:
                             gap = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S") - datetime.strptime(prev_ts, "%Y-%m-%d %H:%M:%S")
                             gap_hours = gap.total_seconds() / 3600
-                            from config import DISTILL_IDLE_HOURS
+                            from app.config.settings import DISTILL_IDLE_HOURS
                             if gap_hours > DISTILL_IDLE_HOURS:
                                 logger.info("DMN: 检测到空闲 %.1f小时，触发级别任务", gap_hours)
                                 self.storage_executor.submit(self.dmn.on_idle, gap_hours)
@@ -628,7 +714,7 @@ class AppContext:
                     )
                     metas = [dict(m) for m in (all_data.get("metadatas") or []) if m]
                     if len(metas) >= 10:
-                        from emotion import resolve_emotion_category
+                        from app.analysis.emotion import resolve_emotion_category
                         valences = Counter(resolve_emotion_category(m) for m in metas)
                         intensities = [m.get("emotional_intensity", 0) or 0 for m in metas]
                         avg_intensity = sum(intensities) / len(intensities) if intensities else 0
@@ -681,18 +767,20 @@ class AppContext:
             self._queue_thread.join(timeout=5)
         if hasattr(self, '_ai_consolidation_thread') and self._ai_consolidation_thread:
             self._ai_consolidation_thread.join(timeout=3)
+        if hasattr(self, '_impulse_consumer_thread') and self._impulse_consumer_thread:
+            self._impulse_consumer_thread.join(timeout=5)
         if hasattr(self, '_dmn_thread') and self._dmn_thread:
             self._dmn_thread.join(timeout=5)
         if hasattr(self, '_consolidation_thread') and self._consolidation_thread:
             self._consolidation_thread.join(timeout=5)
-        # 关闭 DeepSeekLLM 的 httpx 客户端
-        if hasattr(self, 'deepseek_llm') and self.deepseek_llm:
+        # 关闭 LLM Client 的 httpx 客户端
+        if hasattr(self, 'llm_client') and self.llm_client:
             try:
                 _loop = asyncio.get_running_loop()
-                _loop.create_task(self.deepseek_llm.aclose())
+                _loop.create_task(self.llm_client.aclose())
             except RuntimeError:
                 try:
-                    asyncio.run(self.deepseek_llm.aclose())
+                    asyncio.run(self.llm_client.aclose())
                 except Exception:
                     pass
             except Exception:
@@ -711,6 +799,4 @@ class AppContext:
 
 
 # ── ctx_manager 导出 ──────────────────────────────────────────
-# backend/user_context.py 现在从 app.core.context 导入 AppContext，
-# 不再依赖 backend/main.py。
-from user_context import ctx_manager  # noqa: E402, F401
+from app.core.user_context import ctx_manager
