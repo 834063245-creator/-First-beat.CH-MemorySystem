@@ -111,6 +111,7 @@ core_deps = {
     "httpx": ("HTTP 客户端", "pip install httpx"),
     "numpy": ("数值计算", "pip install numpy"),
     "jieba": ("中文分词 (降级兜底)", "pip install jieba"),
+    "rank_bm25": ("BM25 精排", "pip install rank-bm25"),
 }
 for pkg, (desc, install_cmd) in core_deps.items():
     try:

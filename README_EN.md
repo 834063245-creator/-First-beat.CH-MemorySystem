@@ -24,11 +24,11 @@ Doesn't generate text. Only does memory. First Beat is a standalone cognitive en
 |------|------|
 | **Autonomous rhythm** | Background 4h/24h dual-cycle consolidation, 5-source impulse system — engine speaks unprompted |
 | **Personality modeling** | User + AI dual personality, independent evolution from conversation distillation |
-| **Emotion analysis** | Russell 2D circumplex + custom ChuchuCNN, fully local, zero LLM calls |
+| **Emotion analysis** | Russell 2D circumplex + bge-m3 semantic prototype matching, fully local, zero LLM calls |
 | **Fact-level temporal reasoning** | Dual-path contradiction detection |
 | **Pattern discovery** | Multi-timescale pattern recognition + auto-tuning |
 | **Zero API key startup** | Clone and run — all models are local, no external service registration needed |
-| **6 custom CNNs** | Intent/emotion/urgency/negation/topic/fact-domain, 500KB each, CPU <5ms, zero HuggingFace dependency |
+| **Semantic engine** | bge-m3 powered: keyword extraction / intent classification / emotion analysis / negation detection / urgency — pure functions, zero model files |
 
 ### Where others are stronger
 
@@ -259,13 +259,11 @@ app/
 ├── llm/           # Local embedding (bge-m3) + DeepSeek / local LLM
 ├── api/           # REST admin endpoints
 ├── tools/         # Atomic writes · tool dispatch
-├── brain/         # ChuchuCNN custom char-level CNN models
-│   ├── model_intent/     # Intent classification (7 classes, 500KB)
-│   ├── model_emotion/    # Emotion classification (5 classes, 500KB)
-│   ├── model_urgency/    # Urgency 3-class (500KB)
-│   ├── model_negation/   # Negation detection (500KB)
-│   ├── model_topic/      # Topic classification (50-class, 567KB)
-│   └── model_fact/       # Fact domain binary classifier (494KB)
+├── brain/         # Semantic engine core — semantic.py (~240 lines, zero model deps)
+│   ├── semantic.py        # 7 semantic functions: tags/intent/emotion/negation/urgency/tokenize/entities
+│   ├── models.py          # Compatibility shim (delegates to semantic.py)
+│   ├── keywords.py        # Keyword constants
+│   └── metrics.py         # Training metrics persistence
 ├── config/        # Central config
 └── models/        # Pydantic schemas
 
@@ -299,7 +297,7 @@ tests/             # 320+ tests, 5 layers: engine logic · gate · inverted inde
 | `LOCAL_LLM_MODEL` | No | Local LLM model, default `qwen2.5:7b` |
 | `BOCHA_API_KEY` | No | Bocha search API key |
 | `DATA_DIR` | No | Data directory, default `./data` |
-| `DEPLOY_MODE` | No | `full` / `lite` |
+| `DEPLOY_MODE` | No | `full` |
 | `USERS` | No | Multi-user auth JSON |
 | `IMPULSE_ACTIVE_PATH_B` | No | Impulse system toggle, default `true` |
 

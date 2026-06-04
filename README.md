@@ -24,11 +24,11 @@
 |------|------|
 | **自主节律** | 后台 4h/24h 双周期巩固、5 源冲动系统，引擎会主动开口——不依赖用户发消息 |
 | **人格建模** | 用户 + AI 双人格独立演化，从对话中蒸馏形成认知画像 |
-| **情绪分析** | Russell 二维情绪环 + 自研 ChuchuCNN，纯本地零 LLM 调用 |
+| **情绪分析** | Russell 二维情绪环 + bge-m3 语义原型匹配，纯本地零 LLM 调用 |
 | **事实时序推理** | 双路径冲突检测，追踪情绪翻转和事实更新 |
 | **模式发现** | 多时间尺度模式识别 + 自动调参 |
 | **零 API Key 启动** | Clone 即跑，全部模型本地推理，不需要任何外部服务注册 |
-| **6 个自研 CNN** | 意图/情绪/紧急度/否定/话题/事实域，500KB/个，CPU <5ms，零 HuggingFace 依赖 |
+| **语义引擎** | bge-m3 驱动：关键词抽取 / 意图分类 / 情绪分析 / 否定检测 / 紧急度，纯函数零模型文件 |
 
 ### 别人更强的地方
 
@@ -259,13 +259,11 @@ app/
 ├── llm/           # 本地 embedding (bge-m3) + DeepSeek/本地 LLM
 ├── api/           # REST 管理端点
 ├── tools/         # 原子写入 · 工具分发
-├── brain/         # 6 个 ChuchuCNN 自研字符级 CNN (共 3.5MB)
-│   ├── model_intent/     # 意图分类 (7类，500KB)
-│   ├── model_emotion/    # 情绪分类 (5类，500KB)
-│   ├── model_urgency/    # 紧急度三分类 (500KB)
-│   ├── model_negation/   # 否定检测二分类 (500KB)
-│   ├── model_topic/      # 话题分类 (50类，567KB)
-│   └── model_fact/       # 事实域判断 (二分类，494KB)
+├── brain/         # 语义引擎核心 semantic.py（~240 行，零模型依赖）
+│   ├── semantic.py        # 7 个语义函数：标签/意图/情绪/否定/紧急度/分词/实体
+│   ├── models.py          # 兼容外壳（调 semantic.py）
+│   ├── keywords.py        # 关键词常量
+│   └── metrics.py         # 训练指标持久化
 ├── config/        # 中央配置
 └── models/        # Pydantic schemas
 
@@ -299,7 +297,7 @@ tests/             # 320+ 测试，5 层覆盖
 | `LOCAL_LLM_MODEL` | 否 | 本地 LLM 模型名，默认 `qwen2.5:7b` |
 | `BOCHA_API_KEY` | 否 | 博查搜索 API Key |
 | `DATA_DIR` | 否 | 数据目录，默认 `./data` |
-| `DEPLOY_MODE` | 否 | `full` / `lite` |
+| `DEPLOY_MODE` | 否 | `full` |
 | `USERS` | 否 | 多用户认证 JSON |
 | `IMPULSE_ACTIVE_PATH_B` | 否 | 冲动系统开关，默认 `true` |
 
