@@ -1,5 +1,8 @@
 # First Beat — A Cognitive Memory Engine with Its Own Rhythm
 
+> ⚠️ **全系统停用 / System Decommissioned**
+> The MCP approach has been abandoned. The engine and Agent frameworks have irreconcilable subject-identity conflicts; MCP interface development will not continue. Project archived, code retained for reference.
+
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-258%20passed-green.svg)]()

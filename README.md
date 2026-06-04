@@ -1,5 +1,8 @@
 # 初痕 · First Beat — 有自主节律的认知记忆引擎
 
+> ⚠️ **全系统停用 / System Decommissioned**
+> MCP 方案已废弃。引擎与 Agent 框架存在不可调和的主语冲突，不再继续开发 MCP 接口方向。项目归档，代码保留供参考。
+
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-258%20passed-green.svg)]()
