@@ -169,36 +169,42 @@ def local_embed_batch(texts: List[str]) -> List[Optional[List[float]]]:
     if not to_embed_texts:
         return results
 
-    try:
-        with httpx.Client(timeout=httpx.Timeout(60.0, connect=5.0)) as client:
-            resp = client.post(
-                f"{_OLLAMA_URL}/api/embed",
-                json={"model": _OLLAMA_EMBED_MODEL, "input": to_embed_texts, "keep_alive": "30m"},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            raw_embs = data.get("embeddings", [])
-    except Exception as e:
-        logger.warning("Ollama batch embed 失败 (%d 条), 回退逐条: %s", len(to_embed_texts), e)
-        for idx in to_embed:
-            results[idx] = local_embed(texts[idx])
-        return results
+    # 大批量拆成小批，避免 Ollama 单次请求超时
+    _MICRO_BATCH = 16
+    for _mb_start in range(0, len(to_embed_texts), _MICRO_BATCH):
+        _mb_end = min(_mb_start + _MICRO_BATCH, len(to_embed_texts))
+        _mb_texts = to_embed_texts[_mb_start:_mb_end]
+        _mb_indices = to_embed[_mb_start:_mb_end]
 
-    # 归一化 + 写缓存
-    for pos, idx in enumerate(to_embed):
-        if pos < len(raw_embs) and raw_embs[pos] and isinstance(raw_embs[pos], list):
-            arr = np.array(raw_embs[pos], dtype=np.float32)
-            norm = np.linalg.norm(arr)
-            if norm > 0:
-                arr = arr / norm
-            emb = arr.tolist()
-            results[idx] = emb
-            with _embed_cache_lock:
-                if len(_embed_cache) >= _EMBED_CACHE_MAX:
-                    _embed_cache.pop(next(iter(_embed_cache)))
-                _embed_cache[to_embed_texts[pos]] = emb
-        else:
-            results[idx] = None
+        try:
+            with httpx.Client(timeout=httpx.Timeout(60.0, connect=5.0)) as client:
+                resp = client.post(
+                    f"{_OLLAMA_URL}/api/embed",
+                    json={"model": _OLLAMA_EMBED_MODEL, "input": _mb_texts, "keep_alive": "30m"},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                raw_embs = data.get("embeddings", [])
+        except Exception as e:
+            logger.warning("Ollama batch embed 失败 (%d 条), 回退逐条: %s", len(_mb_texts), e)
+            for idx in _mb_indices:
+                results[idx] = local_embed(texts[idx])
+            continue
+
+        for pos, idx in enumerate(_mb_indices):
+            if pos < len(raw_embs) and raw_embs[pos] and isinstance(raw_embs[pos], list):
+                arr = np.array(raw_embs[pos], dtype=np.float32)
+                norm = np.linalg.norm(arr)
+                if norm > 0:
+                    arr = arr / norm
+                emb = arr.tolist()
+                results[idx] = emb
+                with _embed_cache_lock:
+                    if len(_embed_cache) >= _EMBED_CACHE_MAX:
+                        _embed_cache.pop(next(iter(_embed_cache)))
+                    _embed_cache[to_embed_texts[_mb_start + pos]] = emb
+            else:
+                results[idx] = None
 
     return results
 

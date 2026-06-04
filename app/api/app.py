@@ -37,11 +37,13 @@ _Routers = [
 
 
 def _startup_warmup():
-    """后台预热：embedding 模型。"""
+    """后台预热：embedding 模型 + 意图/情绪原型。"""
     try:
         from app.llm.embed import local_embed
+        from app.brain.semantic import _warmup
         local_embed("warmup")
-        logger.info("本地 Embedding 模型已预热")
+        _warmup()
+        logger.info("本地 Embedding 模型 + 原型已预热")
     except Exception as exc:
         logger.warning("本地 Embedding 模型预热失败: %s", exc)
 

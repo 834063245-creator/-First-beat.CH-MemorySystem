@@ -37,6 +37,7 @@ _OLLAMA_CHAT_MODEL = "qwen2.5:3b"
 
 # 候选 n-gram 上限（控制 batch embedding 大小）
 _MAX_NGRAM_CHARS = 200
+_MAX_CANDIDATES = 32
 # ═════════════════════════════════════════════════════════════
 
 _INTENT_PROTOTYPES = {
@@ -215,6 +216,11 @@ def extract_tags(text: str, topk: int = 5) -> list[str]:
     if not candidates:
         return []
     candidates = list(dict.fromkeys(candidates))
+    # 限制候选数，避免 Ollama batch embedding 超时
+    if len(candidates) > _MAX_CANDIDATES:
+        # 优先保留长的 n-gram（更可能是完整词）
+        candidates.sort(key=lambda x: -len(x))
+        candidates = candidates[:_MAX_CANDIDATES]
 
     to_embed = [text] + candidates
     embs = local_embed_batch(to_embed)
