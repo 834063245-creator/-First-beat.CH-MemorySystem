@@ -18,6 +18,7 @@ from app.core.helpers import load_recent_reversals as _load_recent_reversals
 from app.core.tools import (
     SEARCH_WEB_TOOL, READ_FILE_TOOL, LIST_FILES_TOOL, GREP_FILES_TOOL,
     WRITE_FILE_TOOL, EDIT_FILE_TOOL, BASH_TOOL, GLOB_TOOL,
+    ALL_TOOLS,
 )
 from app.models.schemas import ChatRequest, ChatResponse
 from app.llm.embed import local_embed_async
@@ -168,9 +169,7 @@ async def chat_stream(req: ChatRequest, user_ctx = Depends(get_user_context)):
         try:
             for round_idx in range(2):
                 # 工具注册：LLM 只保留纯功能工具，认知型工具归引擎
-                stream_tools = [SEARCH_WEB_TOOL, READ_FILE_TOOL, LIST_FILES_TOOL, GREP_FILES_TOOL,
-                    WRITE_FILE_TOOL, EDIT_FILE_TOOL, BASH_TOOL, GLOB_TOOL,
-                ] if round_idx == 0 and not extra_msgs else None
+                stream_tools = ALL_TOOLS if round_idx == 0 and not extra_msgs else None
                 tool_calls_result = None
                 async for tag, token in user_ctx.llm_client.generate_stream(
                     user_message,
@@ -283,8 +282,7 @@ async def chat(req: ChatRequest, user_ctx = Depends(get_user_context)):
                 user_message,
                 cognitive_state=utterance_spec,
                 timeline_recent=timeline_recent,
-                tools=[SEARCH_WEB_TOOL, READ_FILE_TOOL, LIST_FILES_TOOL, GREP_FILES_TOOL,
-                       WRITE_FILE_TOOL, EDIT_FILE_TOOL, BASH_TOOL, GLOB_TOOL,],
+                tools=ALL_TOOLS,
                 extra_messages=extra_messages,
             )
             if not result["tool_calls"]:
@@ -385,9 +383,7 @@ async def openai_chat_completions(raw: dict, user_ctx = Depends(get_user_context
         """OpenAI 格式 SSE 流式生成器。"""
         extra_msgs: list | None = None
         for round_idx in range(2):
-            stream_tools = [SEARCH_WEB_TOOL, READ_FILE_TOOL, LIST_FILES_TOOL, GREP_FILES_TOOL,
-                WRITE_FILE_TOOL, EDIT_FILE_TOOL, BASH_TOOL, GLOB_TOOL,
-            ] if round_idx == 0 and not extra_msgs else None
+            stream_tools = ALL_TOOLS if round_idx == 0 and not extra_msgs else None
             full_text = ""
             tool_calls_result = None
             async for tag, token in user_ctx.llm_client.generate_stream(
@@ -441,9 +437,7 @@ async def openai_chat_completions(raw: dict, user_ctx = Depends(get_user_context
     extra_msgs: list | None = None
     final_text = ""
     for round_idx in range(2):
-        stream_tools = [SEARCH_WEB_TOOL, READ_FILE_TOOL, LIST_FILES_TOOL, GREP_FILES_TOOL,
-                       WRITE_FILE_TOOL, EDIT_FILE_TOOL, BASH_TOOL, GLOB_TOOL,
-                       ] if round_idx == 0 and not extra_msgs else None
+        stream_tools = ALL_TOOLS if round_idx == 0 and not extra_msgs else None
         result = await user_ctx.llm_client.generate(
             user_message,
             cognitive_state=utterance_spec,

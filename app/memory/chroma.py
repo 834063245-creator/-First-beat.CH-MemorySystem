@@ -36,9 +36,8 @@ class ChromaService:
     def __init__(self, persist_dir: Optional[str] = None, *,
                  collection_name: Optional[str] = None):
         chroma_path = persist_dir or CHROMA_PERSIST_DIR
-        # 读/写客户端（各一个连接池，不混用）
-        self._read_client = chromadb.PersistentClient(path=chroma_path)
-        self._write_client = chromadb.PersistentClient(path=chroma_path)
+        # ChromaDB PersistentClient 内部有连接池，线程安全，无需读写分离
+        self._client = chromadb.PersistentClient(path=chroma_path)
         self._lock = threading.Lock()
         # 情绪淡化计数器
         self._desensitization_counter = 0
@@ -47,21 +46,9 @@ class ChromaService:
         self._emb_cache_lock = threading.Lock()
 
         coll_name = collection_name or EMBED_MODELS[DEFAULT_EMBED_MODEL]["collection"]
-        self._read_collection = self._read_client.get_or_create_collection(
+        self._collection = self._client.get_or_create_collection(
             name=coll_name, embedding_function=None,
         )
-        self._write_collection = self._write_client.get_or_create_collection(
-            name=coll_name, embedding_function=None,
-        )
-
-    def close(self):
-        """释放 ChromaDB 客户端资源。"""
-        with self._lock:
-            self._read_client = None
-            self._write_client = None
-            self._read_collection = None
-            self._write_collection = None
-            self._emb_cache = {}
 
     # ------------------------------------------------------------------
     # 记忆写入
@@ -117,7 +104,7 @@ class ChromaService:
             meta.update(time_features)
 
         with self._lock:
-            self._write_collection.add(
+            self._collection.add(
                 ids=[memory_id],
                 documents=[document],
                 embeddings=[embedding],
@@ -128,7 +115,7 @@ class ChromaService:
     def mark_storage_complete(self, memory_id: str):
         """标记记忆入库完成。"""
         with self._lock:
-            self._write_collection.update(
+            self._collection.update(
                 ids=[memory_id],
                 metadatas=[{"storage_complete": True}],
             )
@@ -148,7 +135,7 @@ class ChromaService:
             "summary": summary,
             "tags": ",".join(tags),
         }
-        self._write_collection.update(
+        self._collection.update(
             ids=[memory_id],
             metadatas=[meta],
             embeddings=[embedding],
@@ -157,7 +144,7 @@ class ChromaService:
 
     def count(self) -> int:
         """返回 ChromaDB 中的记忆总数。"""
-        return self._read_collection.count()
+        return self._collection.count()
 
     # ------------------------------------------------------------------
     # 命中计数
@@ -166,7 +153,7 @@ class ChromaService:
     def increment_hit_count(self, memory_id: str, delta: int = 1):
         """命中计数 +delta，同时记录 last_hit_time（threading.Lock 保证原子性）。"""
         with self._lock:
-            result = self._write_collection.get(ids=[memory_id], include=["metadatas"])
+            result = self._collection.get(ids=[memory_id], include=["metadatas"])
             if not result["ids"]:
                 return
             meta = dict(result["metadatas"][0])
@@ -177,7 +164,7 @@ class ChromaService:
                     or (meta.get("emotional_intensity", 0) or 0) >= 2
                     or meta.get("emotion_valence_bin", "") in ("positive", "negative")):
                 meta["heat"] = "hot"
-            self._write_collection.update(ids=[memory_id], metadatas=[meta])
+            self._collection.update(ids=[memory_id], metadatas=[meta])
 
         # 情绪淡化已迁移至深巩固线程，不再在检索路径中触发
 
@@ -191,7 +178,7 @@ class ChromaService:
         事实保留，情绪标签淡化。"""
         with self._lock:
             try:
-                result = self._write_collection.get(
+                result = self._collection.get(
                     where={"emotional_intensity": {"$gte": 1}},
                     include=["metadatas"],
                 )
@@ -241,7 +228,7 @@ class ChromaService:
 
                 if last_dt < cutoff:
                     new_ei = max(0, ei - self.EMOTION_DECREMENT)
-                    self._write_collection.update(
+                    self._collection.update(
                         ids=[memory_id],
                         metadatas=[{"emotional_intensity": new_ei}],
                     )
@@ -272,7 +259,7 @@ class ChromaService:
         """
         from datetime import datetime as _dt
         with self._lock:
-            self._write_collection.update(
+            self._collection.update(
                 ids=[old_id],
                 metadatas=[{
                     "stale": True,
@@ -315,7 +302,7 @@ class ChromaService:
                       sort: str = "time", order: str = "desc",
                       tag: str = "", date_from: float = 0, date_to: float = 0) -> dict:
         """分页返回记忆列表，支持筛选和排序。"""
-        result = self._read_collection.get(include=["metadatas"])
+        result = self._collection.get(include=["metadatas"])
         items = []
         for i, mid in enumerate(result["ids"]):
             meta = result["metadatas"][i]
@@ -352,7 +339,7 @@ class ChromaService:
 
     def get_memory_detail(self, memory_id: str) -> Optional[dict]:
         """单条记忆详情，含原始对话、元信息、上下文。"""
-        result = self._read_collection.get(
+        result = self._collection.get(
             ids=[memory_id],
             include=["documents", "metadatas"],
         )
@@ -374,7 +361,7 @@ class ChromaService:
 
     def delete_memory(self, memory_id: str):
         """从 ChromaDB 删除记忆。"""
-        self._write_collection.delete(ids=[memory_id])
+        self._collection.delete(ids=[memory_id])
         self._emb_cache.pop(memory_id, None)
         logger.info("ChromaDB 删除成功 id=%s", memory_id[:8])
 
@@ -383,7 +370,7 @@ class ChromaService:
         with self._lock:
             for mid in memory_ids:
                 try:
-                    self._write_collection.update(
+                    self._collection.update(
                         ids=[mid],
                         metadatas=[{"archived": True}],
                     )
@@ -394,11 +381,11 @@ class ChromaService:
     # TODO: 数据量大后 stats 应改为维护独立统计文件，避免全量遍历
     def stats(self) -> dict:
         """记忆统计：总数、总命中、最早/最新时间。"""
-        total = self._read_collection.count()
+        total = self._collection.count()
         if total == 0:
             return {"total": 0, "total_hits": 0, "earliest": None, "latest": None}
 
-        result = self._read_collection.get(include=["metadatas"])
+        result = self._collection.get(include=["metadatas"])
         total_hits = 0
         earliest = None
         latest = None
@@ -419,18 +406,18 @@ class ChromaService:
 
     def total_hits(self) -> int:
         """所有记忆的总命中次数。"""
-        result = self._read_collection.get(include=["metadatas"])
+        result = self._collection.get(include=["metadatas"])
         return sum(meta.get("hit_count", 0) for meta in result["metadatas"])
 
     def earliest_timestamp(self):
         """最早记忆的时间戳。"""
-        result = self._read_collection.get(include=["metadatas"])
+        result = self._collection.get(include=["metadatas"])
         ts_list = [meta.get("timestamp", 0) for meta in result["metadatas"] if meta.get("timestamp")]
         return min(ts_list) if ts_list else None
 
     def latest_timestamp(self):
         """最新记忆的时间戳。"""
-        result = self._read_collection.get(include=["metadatas"])
+        result = self._collection.get(include=["metadatas"])
         ts_list = [meta.get("timestamp", 0) for meta in result["metadatas"] if meta.get("timestamp")]
         return max(ts_list) if ts_list else None
 
@@ -446,7 +433,7 @@ class ChromaService:
             logger.info("Embedding 模型回填已执行过，跳过")
             return 0
 
-        coll = self._write_collection
+        coll = self._collection
         result = coll.get(include=["metadatas"])
         if not result["ids"]:
             # 空库，写入标记文件即可
@@ -480,7 +467,7 @@ class ChromaService:
     # ------------------------------------------------------------------
     def list_all(self) -> list[dict]:
         """返回全部记忆列表（不含 embedding），用于实验。"""
-        coll = self._read_collection
+        coll = self._collection
         result = coll.get(include=["metadatas"])
         docs = result.get("documents") or [None] * len(result["ids"])
         items = []
@@ -509,7 +496,7 @@ class ChromaService:
         """
         self._emb_cache = {}
         try:
-            meta_data = self._read_collection.get(include=["metadatas"])
+            meta_data = self._collection.get(include=["metadatas"])
             ids = meta_data.get("ids", [])
             metas = meta_data.get("metadatas", []) or []
 
@@ -529,7 +516,7 @@ class ChromaService:
             for batch_start in range(0, len(target_ids), _BATCH):
                 batch_ids = target_ids[batch_start:batch_start + _BATCH]
                 try:
-                    d = self._read_collection.get(ids=batch_ids, include=["embeddings"])
+                    d = self._collection.get(ids=batch_ids, include=["embeddings"])
                     for j, rid in enumerate(d.get("ids", [])):
                         emb = d["embeddings"][j] if d.get("embeddings") and j < len(d["embeddings"]) else None
                         if emb is not None:
@@ -538,7 +525,7 @@ class ChromaService:
                     # 批量失败，逐条兜底
                     for mid in batch_ids:
                         try:
-                            d = self._read_collection.get(ids=[mid], include=["embeddings"])
+                            d = self._collection.get(ids=[mid], include=["embeddings"])
                             if d.get("embeddings") and d["embeddings"][0] is not None:
                                 self._emb_cache[mid] = d["embeddings"][0]
                         except Exception:
@@ -555,11 +542,9 @@ class ChromaService:
         return self._emb_cache.get(memory_id)
 
     def close(self):
-        """释放 ChromaDB PersistentClient 资源。"""
-        # ChromaDB PersistentClient 没有显式 close()，
-        # 但删除引用可以让 GC 回收 SQLite 连接。
-        self._read_client = None
-        self._write_client = None
-        self._read_collection = None
-        self._write_collection = None
+        """释放 ChromaDB PersistentClient 资源（带锁保护，防止双线程竞态）。"""
+        with self._lock:
+            self._client = None
+            self._collection = None
+            self._emb_cache = {}
 

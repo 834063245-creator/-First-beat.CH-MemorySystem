@@ -25,11 +25,6 @@ INTENT_KEYWORDS = {
              "你是吗"],
 }
 
-INTENT_LABELS = [
-    "recall", "emotional_sharing", "conflict",
-    "ask_fact", "request", "meta", "casual",
-]
-
 # ═══════════════════════════════════════════════════════
 # 情绪关键词
 # ═══════════════════════════════════════════════════════
@@ -44,8 +39,6 @@ EMOTION_KEYWORDS = {
     "frustrated": ["烦死了", "受不了", "无语", "气死", "崩溃", "不想说了",
                    "够了", "算了吧"],
 }
-
-EMOTION_LABELS = ["intimate", "positive", "negative", "frustrated", "neutral"]
 
 # ═══════════════════════════════════════════════════════
 # 辅助

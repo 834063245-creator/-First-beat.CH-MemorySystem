@@ -68,6 +68,8 @@ LOCAL_LLM_OLLAMA_URL = os.getenv("LOCAL_LLM_OLLAMA_URL", "http://localhost:11434
 LOCAL_LLM_MODEL = os.getenv("LOCAL_LLM_MODEL", "qwen2.5:7b")
 LOCAL_LLM_TIMEOUT = int(os.getenv("LOCAL_LLM_TIMEOUT", "30"))
 
+# 注：OLLAMA_MODELS 环境变量仅在 Ollama 服务端进程生效，
+# Python 端设置无效。保留此变量供子进程 spawn 时继承。
 _OLLAMA_MODELS = os.getenv("OLLAMA_MODELS")
 if _OLLAMA_MODELS:
     os.environ["OLLAMA_MODELS"] = _OLLAMA_MODELS
@@ -90,6 +92,17 @@ TIME_PERIOD_MAP = {
     (21, 23): "晚上",
 }
 
+# 时间段标签反向映射（标签 → 小时范围），供 dispatch.py 工具描述等统一引用
+TIME_PERIOD_LABELS = {
+    "深夜": (0, 5),
+    "早晨": (6, 8),
+    "上午": (9, 11),
+    "中午": (12, 13),
+    "下午": (14, 17),
+    "傍晚": (18, 20),
+    "晚上": (21, 23),
+}
+
 TOPIC_KEYWORDS = {
     "情感": ["爱", "喜欢", "感情", "关系", "陪伴", "想你", "在乎", "依赖", "珍惜"],
     "技术": ["代码", "编程", "bug", "优化", "开发", "部署", "Rust", "Python", "AI", "算法"],
@@ -109,7 +122,7 @@ CO_OCCURRENCE_MAX_PAIRS = 10000
 CO_OCCURRENCE_CLEANUP_RATIO = 0.2
 CO_OCCURRENCE_MIN_COUNT = 2
 TIME_TRIGGERED_MAX = 5
-CONTEXT_WINDOW_SIZE = 10
+CONTEXT_WINDOW_SIZE = 10          # 保留供未来使用（当前无任何 .py 引用）
 CONTEXT_ROUNDS = 10
 
 # ============================================================
@@ -118,7 +131,7 @@ CONTEXT_ROUNDS = 10
 RERANK_LN_MAX = math.log(501)
 RERANK_SEMANTIC_WEIGHT = 0.7     # 与文档一致
 RERANK_ATTENTION_WEIGHT = 0.0    # 调用方按需传入注意力偏移量
-RERANK_HIT_WEIGHT = 0.3          # 替代 RERANK_BETA
+RERANK_HIT_WEIGHT = 0.3          # hit_count 对数归一化后的评分权重
 ATTENTION_WINDOW = 3
 
 # ============================================================
@@ -159,6 +172,7 @@ BEHAVIOR_COLLECTION = "behavior_patterns"
 # ============================================================
 # 时间线近端检索
 # ============================================================
+# legacy — 当前无 .py 引用，保留供可能的旧模块兼容
 TIMELINE_RECENT_COUNT = 5
 WORK_MEMORY_TOKEN_BUDGET = 50000
 

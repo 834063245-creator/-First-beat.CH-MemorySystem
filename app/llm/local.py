@@ -25,9 +25,10 @@ class LocalLLM:
     """
 
     def __init__(self, model: str | None = None):
-        self._api_key = os.getenv("LLM_API_KEY") or os.getenv("DEEPSEEK_API_KEY", "")
-        self._base_url = os.getenv("LLM_BASE_URL") or os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-        self._model = model or (os.getenv("LLM_MODEL") or os.getenv("DEEPSEEK_MODEL", "deepseek-chat"))
+        from app.config.settings import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
+        self._api_key = LLM_API_KEY
+        self._base_url = LLM_BASE_URL
+        self._model = model or LLM_MODEL
 
     def summarize(self, text: str, max_chars: int = 200) -> str:
         """生成文本摘要。

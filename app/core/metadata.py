@@ -35,10 +35,14 @@ def extract_persons(text: str) -> list[str]:
     entities = extract_entities(text)
     persons = [e["text"] for e in entities if e.get("type") == "PERSON"]
     # 代词兜底
-    pronouns = {"我", "你", "他", "她", "我们", "你们", "他们"}
+    pronouns_single = {"我", "你", "他", "她"}
+    pronouns_multi = {"我们", "你们", "他们"}
     for ch in text:
-        if ch in pronouns:
+        if ch in pronouns_single:
             persons.append(ch)
+    for mp in pronouns_multi:
+        if mp in text:
+            persons.append(mp)
     seen = set()
     unique = []
     for p in persons:

@@ -95,7 +95,7 @@ def _ngram_sig(text: str) -> dict[str, float]:
     # LRU 缓存
     with _ngram_cache_lock:
         if len(_ngram_cache) >= _NGRAM_CACHE_MAX:
-            _ngram_cache.clear()
+            _ngram_cache.pop(next(iter(_ngram_cache)))
         _ngram_cache[text] = sig
     return sig
 

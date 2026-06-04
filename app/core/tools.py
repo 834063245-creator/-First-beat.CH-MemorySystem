@@ -142,7 +142,8 @@ GLOB_TOOL = {
     },
 }
 
-TOOLS = [
+# 供 chat.py 等外部模块引用，避免 4 处重复构造相同列表
+ALL_TOOLS = [
     SEARCH_WEB_TOOL, READ_FILE_TOOL, LIST_FILES_TOOL, GREP_FILES_TOOL,
     WRITE_FILE_TOOL, EDIT_FILE_TOOL, BASH_TOOL, GLOB_TOOL,
 ]

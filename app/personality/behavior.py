@@ -15,10 +15,9 @@ class BehaviorStore:
 
     def __init__(self, persist_dir: str, collection_name: str = "behavior_patterns"):
         self._lock = threading.Lock()
+        # ChromaDB PersistentClient 内部有连接池，线程安全，无需读写分离
         self._client = chromadb.PersistentClient(path=persist_dir)
         self._collection = self._client.get_or_create_collection(collection_name, embedding_function=None)
-        self._write_client = chromadb.PersistentClient(path=persist_dir)
-        self._write_collection = self._write_client.get_or_create_collection(collection_name, embedding_function=None)
 
     def store(self, content: str, confidence: str = "中") -> str:
         """存储一条行为模式。"""
@@ -26,7 +25,7 @@ class BehaviorStore:
         embedding = local_embed(content)
         now = datetime.now().isoformat()
         with self._lock:
-            self._write_collection.add(
+            self._collection.add(
                 ids=[pattern_id],
                 documents=[content],
                 embeddings=[embedding],
@@ -54,7 +53,7 @@ class BehaviorStore:
 
     def count(self) -> int:
         with self._lock:
-            return self._write_collection.count()
+            return self._collection.count()
 
     def list_all(self) -> list[dict]:
         data = self._collection.get(include=["documents", "metadatas"])

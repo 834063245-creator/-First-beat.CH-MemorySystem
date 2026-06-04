@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 from app.config.settings import (                  # noqa: E402
     CHROMA_PERSIST_DIR, DATA_DIR, DEFAULT_TOP_K, MAX_MEMORIES_IN_PROMPT,
-    TIMELINE_RECENT_COUNT, WORK_MEMORY_TOKEN_BUDGET,
     CHAT_HISTORY_PATH, CHAT_HISTORY_MAX_MEMORY, DEBUG_INCLUDE_PROMPT,
     STORE_FAILURES_PATH, BEHAVIOR_CHROMA_DIR, BEHAVIOR_COLLECTION,
     CONSOLIDATION_SHALLOW_INTERVAL, CONSOLIDATION_DEEP_INTERVAL,
@@ -460,22 +459,14 @@ class AppContext:
                 if timestamp and ' ' in timestamp:
                     try:
                         dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
-                        # 时间段标签（与 TemporalPatternIndex._current_bucket 保持一致）
+                        # 时间段标签（统一使用 settings.TIME_PERIOD_MAP）
+                        from app.config.settings import TIME_PERIOD_MAP as _tpm
                         h = dt.hour
-                        if h < 6:
-                            period = "深夜"
-                        elif h < 9:
-                            period = "早晨"
-                        elif h < 12:
-                            period = "上午"
-                        elif h < 14:
-                            period = "中午"
-                        elif h < 17:
-                            period = "下午"
-                        elif h < 21:
-                            period = "傍晚"
-                        else:
-                            period = "晚上"
+                        period = "晚上"
+                        for (lo, hi), name in _tpm.items():
+                            if lo <= h <= hi:
+                                period = name
+                                break
                         time_features = {
                             "date": dt.strftime("%Y-%m-%d"),
                             "year": dt.year,

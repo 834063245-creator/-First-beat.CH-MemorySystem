@@ -27,6 +27,7 @@ class CoOccurrenceTracker:
     def __init__(self, file_path: str = _CO_OCCURRENCE_FILE):
         self._file = file_path
         self._lock = threading.Lock()
+        self._ltd_lock = threading.Lock()
         self._cache: dict | None = None
         self._ltd_counter = 0
         self._ensure_file()
@@ -174,10 +175,15 @@ class CoOccurrenceTracker:
                     seen.add(partner_id)
                     results.append({"id": partner_id, "count": count})
         results.sort(key=lambda x: -x["count"])
-        # LTD：周期性衰减过时关联
-        self._ltd_counter += 1
-        if self._ltd_counter >= self.LTD_CHECK_INTERVAL:
-            self._ltd_counter = 0
+        # LTD：周期性衰减过时关联（锁保护，防止多线程竞态）
+        with self._ltd_lock:
+            self._ltd_counter += 1
+            if self._ltd_counter >= self.LTD_CHECK_INTERVAL:
+                self._ltd_counter = 0
+                should_decay = True
+            else:
+                should_decay = False
+        if should_decay:
             self._apply_ltd()
         return results
 

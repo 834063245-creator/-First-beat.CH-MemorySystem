@@ -2,7 +2,7 @@
 
 引擎内部使用的工具函数：
 - query_memory: 统一记忆检索（语义+时间+组合）
-- query_explore: 记忆探索（供引擎/审计使用）
+- query_explore: 记忆探索（仅供手动审计和测试使用，非生产路径）
 - analyze_pattern: 记忆分析（供引擎/审计使用）
 - count_memories: 统计记忆总数（供 DMN 使用）
 
@@ -126,7 +126,7 @@ QUERY_MEMORY_TOOL = {
                     "properties": {
                         "time_period": {
                             "type": "string",
-                            "description": "时段，可选值：凌晨(0-5)、早晨(5-8)、上午(8-12)、下午(12-14)、傍晚(14-18)、晚上(18-21)、深夜(21-24)",
+                            "description": "时段，可选值：深夜(0-5)、早晨(6-8)、上午(9-11)、中午(12-13)、下午(14-17)、傍晚(18-20)、晚上(21-23)",
                         },
                         "day_of_week": {
                             "type": "integer",

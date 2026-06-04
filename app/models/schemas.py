@@ -32,26 +32,6 @@ class ChatResponse(BaseModel):
     debug_info: Optional[dict] = None
 
 
-class PromptBody(BaseModel):
-    content: str
-
-
-class MemoryListResponse(BaseModel):
-    items: list
-    total: int
-    page: int
-    per_page: int
-
-
-class MemoryDeleteResponse(BaseModel):
-    status: str
-    id: str
-
-
-class CorrectMemoryBody(BaseModel):
-    corrected_summary: str
-
-
 from dataclasses import dataclass, field
 
 

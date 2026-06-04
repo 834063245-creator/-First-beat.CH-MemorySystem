@@ -30,12 +30,9 @@ class PersonalityStore:
 
     def __init__(self, persist_dir: Optional[str] = None):
         chroma_path = persist_dir or PERSONALITY_CHROMA_DIR
-        self._read_client = chromadb.PersistentClient(path=chroma_path)
-        self._write_client = chromadb.PersistentClient(path=chroma_path)
-        self._collection = self._read_client.get_or_create_collection(
-            name=PERSONALITY_COLLECTION, embedding_function=None,
-        )
-        self._write_coll = self._write_client.get_or_create_collection(
+        # ChromaDB PersistentClient 内部有连接池，线程安全，无需读写分离
+        self._client = chromadb.PersistentClient(path=chroma_path)
+        self._collection = self._client.get_or_create_collection(
             name=PERSONALITY_COLLECTION, embedding_function=None,
         )
         self._lock = threading.Lock()
@@ -47,7 +44,7 @@ class PersonalityStore:
         """存储一条人格标签。"""
         tag_id = str(uuid.uuid4())
         now = datetime.now().timestamp()
-        self._write_coll.add(
+        self._collection.add(
             ids=[tag_id],
             documents=[content],
             embeddings=[embedding],
@@ -95,13 +92,13 @@ class PersonalityStore:
     def increment_hit(self, tag_id: str):
         """命中计数 +1，更新 last_hit_time。"""
         with self._lock:
-            result = self._write_coll.get(ids=[tag_id], include=["metadatas"])
+            result = self._collection.get(ids=[tag_id], include=["metadatas"])
             if not result["ids"]:
                 return
             meta = dict(result["metadatas"][0])
             meta["hit_count"] = meta.get("hit_count", 0) + 1
             meta["last_hit_time"] = datetime.now().timestamp()
-            self._write_coll.update(ids=[tag_id], metadatas=[meta])
+            self._collection.update(ids=[tag_id], metadatas=[meta])
 
     def get_tag(self, tag_id: str) -> Optional[dict]:
         """单条人格标签详情。"""
@@ -123,7 +120,7 @@ class PersonalityStore:
     def update_tag(self, tag_id, content=None, tag_type=None, confidence=None):
         """更新标签内容或置信度。"""
         with self._lock:
-            result = self._write_coll.get(ids=[tag_id], include=["documents", "metadatas"])
+            result = self._collection.get(ids=[tag_id], include=["documents", "metadatas"])
             if not result["ids"]:
                 return
             meta = dict(result["metadatas"][0])
@@ -131,22 +128,22 @@ class PersonalityStore:
                 from app.llm.embed import local_embed
                 embedding = local_embed(content)
                 meta["content"] = content
-                self._write_coll.update(ids=[tag_id], documents=[content], embeddings=[embedding], metadatas=[meta])
+                self._collection.update(ids=[tag_id], documents=[content], embeddings=[embedding], metadatas=[meta])
             else:
                 if tag_type:
                     meta["type"] = tag_type
                 if confidence:
                     meta["confidence"] = confidence
-                self._write_coll.update(ids=[tag_id], metadatas=[meta])
+                self._collection.update(ids=[tag_id], metadatas=[meta])
 
     def mark_outdated(self, tag_id):
         """标记画像为过时。"""
-        result = self._write_coll.get(ids=[tag_id], include=["metadatas"])
+        result = self._collection.get(ids=[tag_id], include=["metadatas"])
         if not result["ids"]:
             return
         meta = dict(result["metadatas"][0])
         meta["outdated"] = True
-        self._write_coll.update(ids=[tag_id], metadatas=[meta])
+        self._collection.update(ids=[tag_id], metadatas=[meta])
 
     def list_tags(self, page: int = 1, page_size: int = 20,
                   sort: str = "created_at", order: str = "desc",
@@ -195,7 +192,7 @@ class PersonalityStore:
 
     def delete_tag(self, tag_id: str):
         """删除人格标签。"""
-        self._write_coll.delete(ids=[tag_id])
+        self._collection.delete(ids=[tag_id])
 
     def get_count(self) -> int:
         """人格标签总数。"""
