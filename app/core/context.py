@@ -392,6 +392,9 @@ class AppContext:
         """按固定间隔触发 DMN 巩固，与用户活跃与否无关。"""
         def _worker():
             logger.info("巩固节律 worker 已启动 for %s", self.data_dir)
+            # 启动冷却：60s 后再检查，避免和预热/冲动源同时炸资源
+            if not self._stop_event.is_set():
+                self._stop_event.wait(60)
             while not self._stop_event.is_set():
                 try:
                     lsc = 0

@@ -507,7 +507,12 @@ class ImpulseScheduler:
 
     def _source_loop(self, name, source_fn, avg_interval, kwargs):
         """独立泊松循环：执行 → 指数等待 → 执行。"""
-        # 随机初始偏移，防止启动时所有源扎堆
+        # 启动冷却期：首个 120 秒不执行任何冲动源，等系统预热完
+        COOLDOWN = 120
+        logger.debug("冲动源 '%s' 冷却 %ds...", name, COOLDOWN)
+        if self._stop_event.wait(COOLDOWN):
+            return
+        # 随机初始偏移，防止冷却后所有源扎堆
         initial_delay = random.uniform(0, avg_interval * 0.5)
         if initial_delay > 0 and self._stop_event.wait(initial_delay):
             return
