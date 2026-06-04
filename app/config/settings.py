@@ -51,8 +51,9 @@ except (json.JSONDecodeError, TypeError):
 # ============================================================
 # 数据根目录
 # ============================================================
-DATA_DIR = os.getenv("DATA_DIR", "./data")
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # 项目根目录
+_DATA_DEFAULT = os.path.join(BASE_DIR, "data")
+DATA_DIR = os.path.abspath(os.getenv("DATA_DIR", _DATA_DEFAULT))
 AUTH_TOKEN_PATH = os.path.join(DATA_DIR, "auth_tokens.json")
 
 # 用户 → 数据目录映射
