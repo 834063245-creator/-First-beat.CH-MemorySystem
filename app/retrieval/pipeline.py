@@ -310,16 +310,22 @@ def retrieve_all(
     ctx_obj,
     intent: str | None = None,
 ) -> list[dict]:
-    """全量检索，不加数量截断。8 路全开，去重后返回候选集。
+    """全量检索，6 路独立并行 + 1 路依赖合并后执行。
+
+    原 8 路串行改为 ThreadPoolExecutor 并发：
+      - 6 条独立路径并行跑
+      - 共现扩展依赖其他路的 seen_ids，合并后单独跑
+      - 注意力漂移也在并行池中
 
     Returns: list of dicts, each with:
         id, document, metadata, distance, source, summary, hit_count
     """
     import math
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    # ── 语义检索：n_results 放宽到 500，低阈值兜底 ──
     SEMANTIC_HARD_CAP = 500
-    MIN_SIMILARITY = 0.3  # 相似度低于此的不收
+    MIN_SIMILARITY = 0.3
 
     _cached_q_tags = extract_tags(user_message, topk=5) or []
     route = _resolve_route(intent if intent else _classify_intent(user_message))
@@ -327,222 +333,176 @@ def retrieve_all(
     tag_n = route["tag"]
     entity_n = route["entity"]
 
-    seen_ids: set[str] = set()
-    candidates: list[dict] = []
+    _merge_lock = threading.Lock()
+    # 第一阶段：6 路独立并行
+    pool_results: list[list[dict]] = []
 
-    def _add(memories: list, source: str):
-        for m in memories:
-            mid = m.get("id", "")
-            if mid and mid not in seen_ids:
-                seen_ids.add(mid)
-                m["source"] = source
-                candidates.append(m)
+    def _merge(results: list[dict]):
+        with _merge_lock:
+            pool_results.append(results)
 
-    # ① 语义检索（hot 优先 + warm/cool 兜底）
-    if query_embedding and sem_n > 0:
+    def _make_mem(mid, meta, doc, dist, source):
+        return {
+            "id": mid, "document": doc or "", "metadata": meta or {},
+            "summary": (meta or {}).get("summary", ""),
+            "hit_count": (meta or {}).get("hit_count", 0) or 0,
+            "distance": dist, "source": source,
+        }
+
+    def _path_semantic():
+        """① 语义检索（hot + cool）。"""
+        if not (query_embedding and sem_n > 0):
+            return
         try:
+            col = ctx_obj.chroma_service._read_collection
+            local = []
             # hot
-            hot_results = ctx_obj.chroma_service._read_collection.query(
-                query_embeddings=[query_embedding],
-                n_results=min(sem_n, 200),
-                where={"$and": [{"heat": "hot"}, {"archived": {"$ne": True}}]},
-                include=["documents", "metadatas", "distances"],
-            )
-            hot_mems = []
-            for i, mid in enumerate(hot_results.get("ids", [[]])[0]):
-                meta = dict(hot_results["metadatas"][0][i]) if hot_results.get("metadatas") else {}
-                doc = hot_results["documents"][0][i] if hot_results.get("documents") else ""
-                dist = hot_results["distances"][0][i] if hot_results.get("distances") else 1.0
-                hot_mems.append({
-                    "id": mid, "document": doc, "metadata": meta,
-                    "summary": meta.get("summary", ""),
-                    "hit_count": meta.get("hit_count", 0) or 0,
-                    "distance": dist,
-                })
-            _add(hot_mems, "semantic_hot")
-
-            # warm+cool 兜底
+            hot = col.query(query_embeddings=[query_embedding], n_results=min(sem_n, 200),
+                            where={"$and": [{"heat": "hot"}, {"archived": {"$ne": True}}]},
+                            include=["documents", "metadatas", "distances"])
+            for i, mid in enumerate(hot.get("ids", [[]])[0]):
+                meta = dict(hot["metadatas"][0][i]) if hot.get("metadatas") else {}
+                doc = hot["documents"][0][i] if hot.get("documents") else ""
+                dist = hot["distances"][0][i] if hot.get("distances") else 1.0
+                local.append(_make_mem(mid, meta, doc, dist, "semantic_hot"))
+            # cool 兜底
             remain = sem_n
             if remain > 0:
-                cool_results = ctx_obj.chroma_service._read_collection.query(
-                    query_embeddings=[query_embedding],
-                    n_results=remain,
-                    where={"$and": [{"heat": {"$in": ["warm", "cool"]}}, {"archived": {"$ne": True}}]},
-                    include=["documents", "metadatas", "distances"],
-                )
-                for i, mid in enumerate(cool_results.get("ids", [[]])[0]):
-                    if mid in seen_ids:
+                cool = col.query(query_embeddings=[query_embedding], n_results=remain,
+                                 where={"$and": [{"heat": {"$in": ["warm", "cool"]}}, {"archived": {"$ne": True}}]},
+                                 include=["documents", "metadatas", "distances"])
+                for i, mid in enumerate(cool.get("ids", [[]])[0]):
+                    dist = cool["distances"][0][i] if cool.get("distances") else 1.0
+                    if 1.0 - dist < MIN_SIMILARITY:
                         continue
-                    dist = cool_results["distances"][0][i] if cool_results.get("distances") else 1.0
-                    sim = 1.0 - dist
-                    if sim < MIN_SIMILARITY:
-                        continue
-                    meta = dict(cool_results["metadatas"][0][i]) if cool_results.get("metadatas") else {}
-                    doc = cool_results["documents"][0][i] if cool_results.get("documents") else ""
-                    seen_ids.add(mid)
-                    candidates.append({
-                        "id": mid, "document": doc, "metadata": meta,
-                        "summary": meta.get("summary", ""),
-                        "hit_count": meta.get("hit_count", 0) or 0,
-                        "distance": dist, "source": "semantic_cool",
-                    })
+                    meta = dict(cool["metadatas"][0][i]) if cool.get("metadatas") else {}
+                    doc = cool["documents"][0][i] if cool.get("documents") else ""
+                    local.append(_make_mem(mid, meta, doc, dist, "semantic_cool"))
+            if local:
+                _merge(local)
         except Exception as exc:
             logger.debug("retrieve_all 语义检索失败: %s", exc)
 
-    # ② 关键词匹配（BM25/倒排）
-    if hasattr(ctx_obj, 'inverted_index') and _cached_q_tags:
+    def _path_keyword():
+        """② 关键词匹配。"""
+        if not (hasattr(ctx_obj, 'inverted_index') and _cached_q_tags):
+            return
         try:
             kw_ids = ctx_obj.inverted_index.query(_cached_q_tags, min_match=1)
-            if kw_ids:
-                eids = seen_ids.copy()
-                kw_ids = [mid for mid in kw_ids if mid not in eids][:20]
-                if kw_ids:
-                    dr = ctx_obj.chroma_service._read_collection.get(
-                        ids=kw_ids, include=["documents", "metadatas"])
-                    kw_mems = []
-                    for i, mid in enumerate(dr.get("ids", [])):
-                        meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
-                        doc = dr["documents"][i] if dr.get("documents") else ""
-                        kw_mems.append({
-                            "id": mid, "document": doc, "metadata": meta,
-                            "summary": meta.get("summary", ""),
-                            "hit_count": meta.get("hit_count", 0) or 0,
-                            "distance": 0.4,
-                        })
-                    _add(kw_mems, "kw_match")
+            if not kw_ids:
+                return
+            kw_ids = kw_ids[:20]
+            dr = ctx_obj.chroma_service._read_collection.get(ids=kw_ids, include=["documents", "metadatas"])
+            local = []
+            for i, mid in enumerate(dr.get("ids", [])):
+                meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
+                doc = dr["documents"][i] if dr.get("documents") else ""
+                local.append(_make_mem(mid, meta, doc, 0.4, "kw_match"))
+            if local:
+                _merge(local)
         except Exception as exc:
             logger.debug("retrieve_all 关键词匹配失败: %s", exc)
 
-    # ③ 标签索引
-    if hasattr(ctx_obj, 'inverted_index') and tag_n > 0 and _cached_q_tags:
+    def _path_tag():
+        """③ 标签索引。"""
+        if not (hasattr(ctx_obj, 'inverted_index') and tag_n > 0 and _cached_q_tags):
+            return
         try:
-            tag_ids = ctx_obj.inverted_index.query_tags(_cached_q_tags)
-            if tag_ids:
-                eids = seen_ids.copy()
-                tag_ids = [mid for mid in tag_ids if mid not in eids][:20]
-                if tag_ids:
-                    dr = ctx_obj.chroma_service._read_collection.get(
-                        ids=tag_ids, include=["documents", "metadatas"])
-                    tag_mems = []
-                    for i, mid in enumerate(dr.get("ids", [])):
-                        meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
-                        doc = dr["documents"][i] if dr.get("documents") else ""
-                        tag_mems.append({
-                            "id": mid, "document": doc, "metadata": meta,
-                            "summary": meta.get("summary", ""),
-                            "hit_count": meta.get("hit_count", 0) or 0,
-                            "distance": 0.5,
-                        })
-                    _add(tag_mems, "tag_match")
+            tag_ids = list(ctx_obj.inverted_index.query_tags(_cached_q_tags))[:20]
+            if not tag_ids:
+                return
+            dr = ctx_obj.chroma_service._read_collection.get(ids=tag_ids, include=["documents", "metadatas"])
+            local = []
+            for i, mid in enumerate(dr.get("ids", [])):
+                meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
+                doc = dr["documents"][i] if dr.get("documents") else ""
+                local.append(_make_mem(mid, meta, doc, 0.5, "tag_match"))
+            if local:
+                _merge(local)
         except Exception as exc:
             logger.debug("retrieve_all 标签匹配失败: %s", exc)
 
-    # ④ 实体索引
-    if hasattr(ctx_obj, 'inverted_index') and entity_n > 0 and _cached_q_tags:
+    def _path_entity():
+        """④ 实体索引。"""
+        if not (hasattr(ctx_obj, 'inverted_index') and entity_n > 0 and _cached_q_tags):
+            return
         try:
             from app.analysis.entity import extract_entities
             q_entities = extract_entities(user_message)
-            if q_entities:
-                entity_names = [
-                    e["text"] for e in q_entities
-                    if e.get("type") in ("PERSON", "LOCATION", "ORGANIZATION") and len(e["text"]) >= 2
-                ]
-                all_entity_ids: set[str] = set()
-                for ename in entity_names:
-                    ids = ctx_obj.inverted_index.get_exact(ename)
-                    all_entity_ids.update(ids)
-                all_entity_ids -= seen_ids
-                if all_entity_ids:
-                    dr = ctx_obj.chroma_service._read_collection.get(
-                        ids=list(all_entity_ids)[:20], include=["documents", "metadatas"])
-                    ent_mems = []
-                    for i, mid in enumerate(dr.get("ids", [])):
-                        meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
-                        doc = dr["documents"][i] if dr.get("documents") else ""
-                        ent_mems.append({
-                            "id": mid, "document": doc, "metadata": meta,
-                            "summary": meta.get("summary", ""),
-                            "hit_count": meta.get("hit_count", 0) or 0,
-                            "distance": 0.5,
-                        })
-                    _add(ent_mems, "entity_match")
+            if not q_entities:
+                return
+            entity_names = [e["text"] for e in q_entities
+                            if e.get("type") in ("PERSON", "LOCATION", "ORGANIZATION") and len(e["text"]) >= 2]
+            if not entity_names:
+                return
+            all_eids: set[str] = set()
+            for ename in entity_names:
+                all_eids.update(ctx_obj.inverted_index.get_exact(ename))
+            if not all_eids:
+                return
+            dr = ctx_obj.chroma_service._read_collection.get(
+                ids=list(all_eids)[:20], include=["documents", "metadatas"])
+            local = []
+            for i, mid in enumerate(dr.get("ids", [])):
+                meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
+                doc = dr["documents"][i] if dr.get("documents") else ""
+                local.append(_make_mem(mid, meta, doc, 0.5, "entity_match"))
+            if local:
+                _merge(local)
         except Exception as exc:
             logger.debug("retrieve_all 实体匹配失败: %s", exc)
 
-    # ⑤ 共现扩展
-    if hasattr(ctx_obj, 'co_tracker') and seen_ids:
-        try:
-            cooc = ctx_obj.co_tracker.query(list(seen_ids))
-            if cooc:
-                cooc_ids = [c["id"] for c in cooc if c["id"] not in seen_ids][:10]
-                if cooc_ids:
-                    dr = ctx_obj.chroma_service._read_collection.get(
-                        ids=cooc_ids, include=["documents", "metadatas"])
-                    cooc_mems = []
-                    for i, mid in enumerate(dr.get("ids", [])):
-                        meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
-                        doc = dr["documents"][i] if dr.get("documents") else ""
-                        cooc_mems.append({
-                            "id": mid, "document": doc, "metadata": meta,
-                            "summary": meta.get("summary", ""),
-                            "hit_count": meta.get("hit_count", 0) or 0,
-                            "distance": 0.45,
-                        })
-                    _add(cooc_mems, "co_occurrence")
-        except Exception as exc:
-            logger.debug("retrieve_all 共现扩展失败: %s", exc)
-
-    # ⑥ 时间触发
-    if hasattr(ctx_obj, 'temporal_pattern_index'):
+    def _path_temporal():
+        """⑥ 时间触发。"""
+        if not hasattr(ctx_obj, 'temporal_pattern_index'):
+            return
         try:
             tps = ctx_obj.temporal_pattern_index.query()
-            if tps:
-                tp_tags = [t[0] for t in tps[:5]]
-                tp_ids = ctx_obj.inverted_index.query_tags(tp_tags) if hasattr(ctx_obj, 'inverted_index') else set()
-                tp_ids = [mid for mid in tp_ids if mid not in seen_ids][:10]
-                if tp_ids:
-                    dr = ctx_obj.chroma_service._read_collection.get(
-                        ids=tp_ids, include=["documents", "metadatas"])
-                    time_mems = []
-                    for i, mid in enumerate(dr.get("ids", [])):
-                        meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
-                        doc = dr["documents"][i] if dr.get("documents") else ""
-                        time_mems.append({
-                            "id": mid, "document": doc, "metadata": meta,
-                            "summary": meta.get("summary", ""),
-                            "hit_count": meta.get("hit_count", 0) or 0,
-                            "distance": 0.5,
-                        })
-                    _add(time_mems, "time_triggered")
+            if not tps:
+                return
+            tp_tags = [t[0] for t in tps[:5]]
+            tp_ids = ctx_obj.inverted_index.query_tags(tp_tags) if hasattr(ctx_obj, 'inverted_index') else set()
+            tp_ids = list(tp_ids)[:10]
+            if not tp_ids:
+                return
+            dr = ctx_obj.chroma_service._read_collection.get(ids=tp_ids, include=["documents", "metadatas"])
+            local = []
+            for i, mid in enumerate(dr.get("ids", [])):
+                meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
+                doc = dr["documents"][i] if dr.get("documents") else ""
+                local.append(_make_mem(mid, meta, doc, 0.5, "time_triggered"))
+            if local:
+                _merge(local)
         except Exception as exc:
             logger.debug("retrieve_all 时间触发失败: %s", exc)
 
-    # ⑦ 话题树分支
-    if hasattr(ctx_obj, 'topic_tree') and ctx_obj.topic_tree and _cached_q_tags:
+    def _path_topic():
+        """⑦ 话题树分支。"""
+        if not (hasattr(ctx_obj, 'topic_tree') and ctx_obj.topic_tree and _cached_q_tags):
+            return
         try:
             expanded_tags = ctx_obj.topic_tree.expand(_cached_q_tags)
-            if expanded_tags:
-                topic_ids = ctx_obj.inverted_index.query_tags(expanded_tags) if hasattr(ctx_obj, 'inverted_index') else set()
-                topic_ids = [mid for mid in topic_ids if mid not in seen_ids][:10]
-                if topic_ids:
-                    dr = ctx_obj.chroma_service._read_collection.get(
-                        ids=topic_ids, include=["documents", "metadatas"])
-                    topic_mems = []
-                    for i, mid in enumerate(dr.get("ids", [])):
-                        meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
-                        doc = dr["documents"][i] if dr.get("documents") else ""
-                        topic_mems.append({
-                            "id": mid, "document": doc, "metadata": meta,
-                            "summary": meta.get("summary", ""),
-                            "hit_count": meta.get("hit_count", 0) or 0,
-                            "distance": 0.55,
-                        })
-                    _add(topic_mems, "topic_expand")
+            if not expanded_tags:
+                return
+            topic_ids = ctx_obj.inverted_index.query_tags(expanded_tags) if hasattr(ctx_obj, 'inverted_index') else set()
+            topic_ids = list(topic_ids)[:10]
+            if not topic_ids:
+                return
+            dr = ctx_obj.chroma_service._read_collection.get(ids=topic_ids, include=["documents", "metadatas"])
+            local = []
+            for i, mid in enumerate(dr.get("ids", [])):
+                meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
+                doc = dr["documents"][i] if dr.get("documents") else ""
+                local.append(_make_mem(mid, meta, doc, 0.55, "topic_expand"))
+            if local:
+                _merge(local)
         except Exception as exc:
             logger.debug("retrieve_all 话题树扩展失败: %s", exc)
 
-    # ⑧ 注意力漂移（最近 3 轮嵌入加权）
-    if hasattr(ctx_obj, 'chat_history'):
+    def _path_attention():
+        """⑧ 注意力漂移。"""
+        if not hasattr(ctx_obj, 'chat_history'):
+            return
         try:
             from app.llm.embed import local_embed_batch
             recent_msgs = []
@@ -552,37 +512,72 @@ def retrieve_all(
                     recent_msgs.append(msg)
                     if len(recent_msgs) >= 3:
                         break
-            if recent_msgs:
-                msg_embs = local_embed_batch([m for m in recent_msgs if m])
-                msg_embs = [e for e in msg_embs if e is not None]
-                if msg_embs:
-                    import numpy as np
-                    decay = 0.7
-                    n = len(msg_embs)
-                    weights = [decay ** (n - 1 - i) for i in range(n)]
-                    center = np.average(msg_embs, axis=0, weights=weights).tolist()
-                    attn_results = ctx_obj.chroma_service._read_collection.query(
-                        query_embeddings=[center],
-                        n_results=10,
-                        include=["documents", "metadatas", "distances"],
-                    )
-                    for i, mid in enumerate(attn_results.get("ids", [[]])[0]):
-                        if mid in seen_ids:
-                            continue
-                        dist = attn_results["distances"][0][i] if attn_results.get("distances") else 1.0
-                        sim = 1.0 - dist
-                        if sim < MIN_SIMILARITY:
-                            continue
-                        meta = dict(attn_results["metadatas"][0][i]) if attn_results.get("metadatas") else {}
-                        doc = attn_results["documents"][0][i] if attn_results.get("documents") else ""
-                        seen_ids.add(mid)
-                        candidates.append({
-                            "id": mid, "document": doc, "metadata": meta,
-                            "summary": meta.get("summary", ""),
-                            "hit_count": meta.get("hit_count", 0) or 0,
-                            "distance": dist, "source": "attention_drift",
-                        })
+            if not recent_msgs:
+                return
+            msg_embs = local_embed_batch([m for m in recent_msgs if m])
+            msg_embs = [e for e in msg_embs if e is not None]
+            if not msg_embs:
+                return
+            import numpy as np
+            decay = 0.7
+            n = len(msg_embs)
+            weights = [decay ** (n - 1 - i) for i in range(n)]
+            center = np.average(msg_embs, axis=0, weights=weights).tolist()
+            results = ctx_obj.chroma_service._read_collection.query(
+                query_embeddings=[center], n_results=10,
+                include=["documents", "metadatas", "distances"])
+            local = []
+            for i, mid in enumerate(results.get("ids", [[]])[0]):
+                dist = results["distances"][0][i] if results.get("distances") else 1.0
+                if 1.0 - dist < MIN_SIMILARITY:
+                    continue
+                meta = dict(results["metadatas"][0][i]) if results.get("metadatas") else {}
+                doc = results["documents"][0][i] if results.get("documents") else ""
+                local.append(_make_mem(mid, meta, doc, dist, "attention_drift"))
+            if local:
+                _merge(local)
         except Exception as exc:
             logger.debug("retrieve_all 注意力漂移失败: %s", exc)
+
+    # ── 第一阶段：6 路并行 ──
+    paths = [_path_semantic, _path_keyword, _path_tag,
+             _path_entity, _path_temporal, _path_topic, _path_attention]
+    with ThreadPoolExecutor(max_workers=min(len(paths), 7)) as executor:
+        futures = {executor.submit(p): p for p in paths}
+        for f in as_completed(futures):
+            try:
+                f.result()
+            except Exception:
+                pass
+
+    # ── 合并去重 ──
+    seen_ids: set[str] = set()
+    candidates: list[dict] = []
+    for batch in pool_results:
+        for m in batch:
+            mid = m.get("id", "")
+            if mid and mid not in seen_ids:
+                seen_ids.add(mid)
+                candidates.append(m)
+
+    # ── 第二阶段：⑤ 共现扩展（依赖 seen_ids） ──
+    if hasattr(ctx_obj, 'co_tracker') and seen_ids:
+        try:
+            cooc = ctx_obj.co_tracker.query(list(seen_ids))
+            if cooc:
+                cooc_ids = [c["id"] for c in cooc if c["id"] not in seen_ids][:10]
+                if cooc_ids:
+                    dr = ctx_obj.chroma_service._read_collection.get(
+                        ids=cooc_ids, include=["documents", "metadatas"])
+                    for i, mid in enumerate(dr.get("ids", [])):
+                        if not mid or mid in seen_ids:
+                            continue
+                        meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
+                        doc = dr["documents"][i] if dr.get("documents") else ""
+                        seen_ids.add(mid)
+                        candidates.append(
+                            _make_mem(mid, meta, doc, 0.45, "co_occurrence"))
+        except Exception as exc:
+            logger.debug("retrieve_all 共现扩展失败: %s", exc)
 
     return candidates
