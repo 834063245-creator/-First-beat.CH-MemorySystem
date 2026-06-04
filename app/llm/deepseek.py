@@ -8,8 +8,6 @@ from datetime import datetime
 from typing import List, Optional, TYPE_CHECKING
 
 import httpx
-import jieba
-import jieba.analyse
 import threading
 
 if TYPE_CHECKING:

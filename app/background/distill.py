@@ -58,8 +58,8 @@ def _extract_keywords(text: str, topk: int = 5) -> list[str]:
         if text in _keyword_cache:
             return _keyword_cache[text]
     try:
-        import jieba.analyse
-        kw = jieba.analyse.extract_tags(text, topK=topk)
+        from app.brain.semantic import extract_tags
+        kw = extract_tags(text, topk=topk)
         with _kw_cache_lock:
             _keyword_cache[text] = kw
         return kw

@@ -27,34 +27,6 @@ _backend_dir = os.path.join(os.path.dirname(__file__), "..", "..", "backend")
 if _backend_dir not in sys.path:
     sys.path.insert(0, os.path.abspath(_backend_dir))
 
-# ── 底层模块导入（后续逐步迁移到 app/） ──────────────────────
-import jieba.posseg as pseg  # 降级兜底
-
-# 话题 CNN 分类器（惰性单例）
-_TOPIC_CLASSIFIER = None
-_TC_INIT_ATTEMPTED = False
-_TC_LOCK = threading.Lock()
-
-
-def _get_topic_classifier():
-    """惰性获取话题分类器，失败返回 None（线程安全）。"""
-    global _TOPIC_CLASSIFIER, _TC_INIT_ATTEMPTED
-    if _TC_INIT_ATTEMPTED:
-        return _TOPIC_CLASSIFIER
-    with _TC_LOCK:
-        if _TC_INIT_ATTEMPTED:
-            return _TOPIC_CLASSIFIER
-        _TC_INIT_ATTEMPTED = True
-        try:
-            from app.brain.topic_classifier import get_topic_classifier
-            _TOPIC_CLASSIFIER = get_topic_classifier()
-            if _TOPIC_CLASSIFIER and _TOPIC_CLASSIFIER.available:
-                print("[TopicCNN] 话题分类器已启用（替代 jieba）")
-                return _TOPIC_CLASSIFIER
-        except Exception:
-            logger.debug("话题分类器加载失败，降级为 jieba", exc_info=True)
-    return None
-
 
 from app.config.settings import (                  # noqa: E402
     CHROMA_PERSIST_DIR, DATA_DIR, DEFAULT_TOP_K, MAX_MEMORIES_IN_PROMPT,
@@ -102,25 +74,9 @@ def _get_local_llm() -> "LocalLLM":
 
 
 def _extract_noun_tags(text: str, topk: int = 8) -> list[str]:
-    """提取标签：CNN 话题分类优先，jieba 降级兜底。"""
-    tc = _get_topic_classifier()
-    if tc and tc.available:
-        tags = tc.predict(text, top_k=5)
-        if tags:
-            return tags
-    # 降级：jieba posseg
-    words = pseg.cut(text)
-    nouns = []
-    for w, flag in words:
-        if flag.startswith(("n", "vn")) and len(w) >= 2 and w.lower() not in _STOP_WORDS:
-            nouns.append(w)
-    seen = set()
-    unique = []
-    for w in nouns:
-        if w not in seen:
-            seen.add(w)
-            unique.append(w)
-    return unique[:topk]
+    """提取标签：语义层关键词提取（bge-m3 KeyBERT）。"""
+    from app.brain.semantic import extract_tags
+    return extract_tags(text, topk=topk)
 
 
 # ===================================================================

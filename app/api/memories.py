@@ -5,10 +5,9 @@ import os
 import time
 import threading
 from fastapi import APIRouter, Depends, HTTPException
-import jieba
 
 from app.api.deps import AppContext, get_user_context
-from app.config.settings import CONTEXT_ROUNDS
+from app.brain.semantic import extract_tags
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["memories"], prefix="/api/memories")
@@ -96,7 +95,7 @@ def api_memories_correct(memory_id: str, body: dict, ctx: AppContext = Depends(g
         raise HTTPException(status_code=500, detail="Embedding 失败")
 
     client = ctx.chroma_service
-    tags = jieba.analyse.extract_tags(corrected, topK=5)
+    tags = extract_tags(corrected, topk=5)
     old_detail = client.get_memory_detail(memory_id)
     old_tags = old_detail.get("tags", []) if old_detail else []
 

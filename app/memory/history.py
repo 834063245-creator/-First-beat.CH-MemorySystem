@@ -5,7 +5,7 @@ import os
 import threading
 from typing import List
 
-import jieba.analyse
+from app.brain.semantic import extract_tags
 
 from app.tools.atomic import atomic_append
 
@@ -233,7 +233,7 @@ class ChatHistory:
                 continue
             # 取该组所有 user_message 拼接做关键词提取
             text = " ".join(r.get("user_message", "") for r in chunk)
-            keywords = jieba.analyse.extract_tags(text, topK=5)
+            keywords = extract_tags(text, topk=5)
             # 过滤单字词和基础停用词
             filtered = [kw for kw in keywords if len(kw) > 1 and kw not in
                         ("的", "了", "是", "我", "你", "他", "她", "它", "们", "在", "有", "和", "就", "不", "也", "这", "那", "都", "要")]

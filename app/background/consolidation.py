@@ -15,8 +15,7 @@ from datetime import datetime, date
 
 from app.tools.atomic import atomic_write
 
-import jieba
-import jieba.analyse
+from app.brain.semantic import extract_tags
 
 
 from app.config.settings import (
@@ -38,7 +37,7 @@ def _extract_keywords(text: str, topk: int = 10) -> list[str]:
     """用 jieba TF-IDF 提取关键词，过滤停用词和短词。"""
     if not text or not text.strip():
         return []
-    words = jieba.analyse.extract_tags(text, topK=topk * 2)
+    words = extract_tags(text, topk=topk * 2)
     return [w for w in words if len(w) >= 2 and w.lower() not in STOP_WORDS][:topk]
 
 
@@ -677,21 +676,11 @@ class ConsolidationEngine:
                     if not old_emb or len(old_emb) != len(new_emb):
                         continue
 
-                    # 第一层：CNN 事实域判断优先 → 话题树分支交集兜底
-                    old_branch = set(self._topic_tree.get_branch(old_tags[0]) if self._topic_tree else old_tags)
-                    first_pass = False
-                    try:
-                        from app.brain.fact_classifier import get_fact_classifier
-                        fc = get_fact_classifier()
-                        new_sum = new_meta.get("summary", "") or ""
-                        old_sum = old_meta.get("summary", "") or ""
-                        if fc.available:
-                            first_pass = fc.is_same_domain(new_sum, old_sum)
-                    except Exception:
-                        logger.debug("事实域CNN异常，降级为分支交集", exc_info=True)
+                    # 第一层：CNN 已移除，直接进入 cosine 精筛
+                    first_pass = True
 
-                    if not first_pass and not (new_branch & old_branch):
-                        continue
+                    if not first_pass:
+                        continue  # dead code — 保留结构供后续门控
 
                     # 第二层：embedding 语义精筛
                     dot = sum(a * b for a, b in zip(new_emb, old_emb))

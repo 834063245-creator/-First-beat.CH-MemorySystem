@@ -322,11 +322,10 @@ class PatternDiscovery:
             return []
 
     def _extract_tags(self, text: str) -> list[str]:
-        """从文本提取标签（基于 jieba TF-IDF）。"""
+        """从文本提取标签（语义层 bge-m3 KeyBERT）。"""
         try:
-            import jieba.analyse
-            tags = jieba.analyse.extract_tags(text, topK=3, withWeight=False)
-            return [t for t in tags if len(t) >= 2]
+            from app.brain.semantic import extract_tags
+            return extract_tags(text, topk=3)
         except Exception:
             return []
 

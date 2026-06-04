@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime
 
-import jieba.posseg as pseg
+from app.brain.semantic import extract_entities
 
 from app.analysis.emotion import analyze_emotion_2d
 from app.config.settings import TIME_PERIOD_MAP, TOPIC_KEYWORDS
@@ -31,14 +31,14 @@ def extract_topics(text: str) -> list[str]:
 
 
 def extract_persons(text: str) -> list[str]:
-    """jieba.posseg 识别人名 + 代词，去重。"""
-    words = list(pseg.cut(text))
-    persons = []
-    for w, flag in words:
-        if flag == "nr" and len(w) >= 2:
-            persons.append(w)
-        elif w in {"我", "你", "他", "她", "我们", "你们", "他们"}:
-            persons.append(w)
+    """语义实体抽取识别人名 + 代词，去重。Ollama 不可用时返回代词兜底。"""
+    entities = extract_entities(text)
+    persons = [e["text"] for e in entities if e.get("type") == "PERSON"]
+    # 代词兜底
+    pronouns = {"我", "你", "他", "她", "我们", "你们", "他们"}
+    for ch in text:
+        if ch in pronouns:
+            persons.append(ch)
     seen = set()
     unique = []
     for p in persons:

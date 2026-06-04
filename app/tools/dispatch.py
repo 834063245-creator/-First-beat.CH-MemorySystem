@@ -18,6 +18,7 @@ import re
 from datetime import datetime, timedelta
 
 from app.llm.embed import local_embed
+from app.brain.semantic import extract_tags, tokenize as _sem_tokenize
 
 logger = logging.getLogger(__name__)
 
@@ -323,8 +324,7 @@ def query_memory(collection, query: str = "", from_date: str = "", to_date: str 
         # 标签关键词补充检索：语义不足时用 jieba 关键词匹配 tags 字段
         if len(memories) < top_k:
             try:
-                import jieba, jieba.analyse
-                _kws = jieba.analyse.extract_tags(query, topK=5) if query else []
+                _kws = extract_tags(query, topk=5) if query else []
                 if _kws:
                     _all_meta = collection.get(include=["metadatas"])
                     _matched_ids = []
@@ -363,11 +363,10 @@ def query_memory(collection, query: str = "", from_date: str = "", to_date: str 
             if not docs_for_bm25:
                 raise ValueError("empty corpus")
             from rank_bm25 import BM25Okapi
-            import jieba
-            query_tokens = [t for t in jieba.cut(query.strip()) if t.strip()]
+            query_tokens = [t for t in _sem_tokenize(query.strip()) if t.strip()]
             if not query_tokens:
                 query_tokens = [query.strip()[:10]]
-            corpus_tokens = [list(jieba.cut(d)) for d in docs_for_bm25]
+            corpus_tokens = [_sem_tokenize(d) for d in docs_for_bm25]
             bm25 = BM25Okapi(corpus_tokens)
             scores = bm25.get_scores(query_tokens)
             for i, mem in enumerate(memories):
@@ -410,8 +409,7 @@ def query_memory(collection, query: str = "", from_date: str = "", to_date: str 
 
         # 关键词文本补充检索：截断后扫描全文，提取包含≥2个查询关键词的记忆（bonus）
         try:
-            import jieba, jieba.analyse
-            _kws = jieba.analyse.extract_tags(query, topK=5) if query else []
+            _kws = extract_tags(query, topk=5) if query else []
             if _kws:
                 _all_docs = collection.get(include=["documents", "metadatas"])
                 _existing_ids = {m["id"] for m in memories}
@@ -635,7 +633,6 @@ def query_explore(mode: str = "timeline", _collection=None, **kwargs) -> str:
             if parsed:
                 from_date = parsed["from_date"]
                 to_date = parsed["to_date"]
-        import jieba.analyse
         try:
             mid_ts = datetime.strptime(from_date, "%Y-%m-%d").timestamp() if from_date else 0
             end_ts = datetime.strptime(to_date, "%Y-%m-%d").timestamp() + 86400 if to_date else 0
@@ -653,7 +650,7 @@ def query_explore(mode: str = "timeline", _collection=None, **kwargs) -> str:
             if sp and ts < sp: bt += d + " "
             elif ts >= sp: at += d + " "
         if not bt or not at: return "数据不足"
-        bk = set(jieba.analyse.extract_tags(bt, topK=15)); ak = set(jieba.analyse.extract_tags(at, topK=15))
+        bk = set(extract_tags(bt, topk=15)); ak = set(extract_tags(at, topk=15))
         return (f"消失: {', '.join(list(bk-ak)[:8]) or '无'}\n新增: {', '.join(list(ak-bk)[:8]) or '无'}\n持续: {', '.join(list(bk&ak)[:8]) or '无'}")
 
     elif mode == "co_occurrence":
@@ -752,8 +749,7 @@ def query_explore(mode: str = "timeline", _collection=None, **kwargs) -> str:
         results = run_chat_retrieval(query, emb, ctx)
         if len(results) < 3:
             try:
-                import jieba.analyse
-                kws = jieba.analyse.extract_tags(query, topK=3)
+                kws = extract_tags(query, topk=3)
                 seen_ids = {r["id"] for r in results if r.get("id")}
                 for kw in kws:
                     if len(kw) < 2:

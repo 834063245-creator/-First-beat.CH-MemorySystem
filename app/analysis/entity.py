@@ -8,9 +8,7 @@ import json
 import logging
 import re
 
-import jieba
-import jieba.analyse
-import jieba.posseg as pseg
+from app.brain.semantic import extract_tags, extract_entities as _sem_extract_entities
 
 logger = logging.getLogger(__name__)
 
@@ -20,36 +18,31 @@ ENTITY_TYPES = ["PERSON", "LOCATION", "ORGANIZATION", "AMOUNT", "KEYWORD"]
 def extract_entities(text: str) -> list[dict]:
     """从文本中抽取命名实体和关键词。
 
-    返回实体列表，格式为 [{"text": str, "type": str}, ...]。
-    零 API 调用，纯 jieba 本地处理，永不失败。
+    实体：Ollama qwen2.5:3b（不可用时降级返回 []）。
+    关键词：语义层 bge-m3 KeyBERT。
+    金额/数字：正则提取。
     """
     if not text or not text.strip():
         return []
 
     entities = []
 
-    # 1. 人名（nr）、地名（ns）、组织名（nt）
-    words = pseg.cut(text)
-    for w, flag in words:
-        w = w.strip()
-        if len(w) < 2:
-            continue
-        if flag == "nr":
-            entities.append({"text": w, "type": "PERSON"})
-        elif flag == "ns":
-            entities.append({"text": w, "type": "LOCATION"})
-        elif flag == "nt":
-            entities.append({"text": w, "type": "ORGANIZATION"})
+    # 1. 命名实体（Ollama）
+    try:
+        ollama_entities = _sem_extract_entities(text)
+        entities.extend(ollama_entities)
+    except Exception:
+        pass
 
     # 2. 金额/数字+单位
     for m in re.finditer(r'(\d+[\.\d]*)\s*(万|亿|元|块|美元|欧元|日|天|小时|分钟|岁)', text):
         entities.append({"text": m.group(0).strip(), "type": "AMOUNT"})
 
-    # 3. 关键词（TF-IDF top 5）
+    # 3. 关键词（bge-m3 KeyBERT top 5）
     try:
-        tags = jieba.analyse.extract_tags(text, topK=5, withWeight=False)
+        tags = extract_tags(text, topk=5)
         for tag in tags:
-            if len(tag) >= 2 and not any(e["text"] == tag for e in entities):
+            if not any(e["text"] == tag for e in entities):
                 entities.append({"text": tag, "type": "KEYWORD"})
     except Exception:
         pass

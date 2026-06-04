@@ -1,11 +1,8 @@
 """回路调度器 — 用户消息的标准处理通路。
 
 编排顺序：意图分析 → 记忆检索 → 一致性校验 → 响应选控（门控）
-不重写现有模块，只编排"先走谁再走谁"。
 
-模型增强：analyze_user_message() 可通过 brain 参数使用小模型。
-用法：analyze_user_message(msg, brain=brain) → 模型优先+规则兜底
-     analyze_user_message(msg)              → 纯规则（原有行为）
+意图/情绪分类由 app.brain.semantic 驱动（bge-m3 原型匹配）。
 """
 
 import logging
@@ -13,45 +10,20 @@ import threading
 from dataclasses import dataclass, field
 from typing import Optional
 
-import jieba.analyse
-
 from app.core.state import UserMessageAnalysis, GatingDecision, UtteranceSpec
 from app.brain.keywords import (
     INTENT_KEYWORDS, EMOTION_KEYWORDS,
-    INTENSIFIERS, EMOTION_REPEAT_PATTERN, WORK_KEYWORDS, NEGATION_WORDS,
+    INTENSIFIERS, EMOTION_REPEAT_PATTERN, WORK_KEYWORDS,
+)
+from app.brain.semantic import (
+    classify_intent as _sem_classify_intent,
+    analyze_emotion as _sem_analyze_emotion,
+    classify_urgency as _sem_classify_urgency,
+    extract_tags as _sem_extract_tags,
+    detect_negation as _sem_detect_negation,
 )
 
 logger = logging.getLogger(__name__)
-
-# ── 模型增强开关 ──────────────────────────────────────
-
-_CHUCHEN_BRAIN = None
-_CHUCHEN_BRAIN_LOADED = False
-_BRAIN_LOCK = threading.Lock()
-
-def get_brain() -> Optional[object]:
-    """获取 ChuchenBrain 实例（ChuchuCNN > Ollama > 规则，失败返回 None）。"""
-    global _CHUCHEN_BRAIN, _CHUCHEN_BRAIN_LOADED
-    if _CHUCHEN_BRAIN_LOADED:
-        return _CHUCHEN_BRAIN
-    with _BRAIN_LOCK:
-        if _CHUCHEN_BRAIN_LOADED:
-            return _CHUCHEN_BRAIN
-        _CHUCHEN_BRAIN_LOADED = True
-        try:
-            from app.brain.models import ChuchenBrain
-            _CHUCHEN_BRAIN = ChuchenBrain(model_name="qwen2.5:3b")
-            status = _CHUCHEN_BRAIN.load_all()
-            loaded = [k for k, v in status.items() if v]
-            if any(status.values()):
-                logger.info("ChuchenBrain 模型已加载: %s", loaded)
-            else:
-                logger.info("ChuchenBrain 未加载模型，使用纯规则")
-            return _CHUCHEN_BRAIN
-        except Exception:
-            _CHUCHEN_BRAIN = None
-            return None
-
 
 # ── 回路①：用户消息分析 ────────────────────────────
 
@@ -61,101 +33,6 @@ _EMOTION_WORDS = EMOTION_KEYWORDS
 _INTENSIFIERS = INTENSIFIERS
 _EMOTION_REPEAT_PATTERN = EMOTION_REPEAT_PATTERN
 _WORK_KEYWORDS = WORK_KEYWORDS
-_NEGATION_WORDS = NEGATION_WORDS
-
-# ── Embedding 意图原型（惰性初始化） ──
-_INTENT_PROTOTYPES = {
-    "recall": [
-        "你还记得我之前说的吗",
-        "上次我们聊到那个事情",
-        "我之前提过一个项目",
-        "我记得你之前说过",
-    ],
-    "emotional_sharing": [
-        "我今天心情不太好",
-        "好开心啊终于搞定了",
-        "我觉得好累啊",
-        "最近压力好大",
-    ],
-    "conflict": [
-        "你说的不对",
-        "不是这样的",
-        "你搞错了",
-        "你理解错了",
-    ],
-    "ask_fact": [
-        "今天天气怎么样",
-        "你知道这个怎么用吗",
-        "这是什么意思",
-        "请问这个功能怎么用",
-    ],
-    "request": [
-        "帮我查一下这个",
-        "帮我写一段代码",
-        "能不能帮我看看这个问题",
-        "帮我改一下这个",
-    ],
-    "meta": [
-        "你是谁开发的",
-        "你能做什么事情",
-        "你都有什么功能",
-        "你是什么模型",
-    ],
-}
-
-# 惰性加载的 embedding
-_PROTO_EMBEDDINGS = None
-_INTENT_EMBED_LOCK = threading.Lock()
-
-
-def _get_proto_embeddings() -> dict[str, list[float]]:
-    """惰性计算所有意图原型的 embedding。"""
-    global _PROTO_EMBEDDINGS
-    if _PROTO_EMBEDDINGS is not None:
-        return _PROTO_EMBEDDINGS
-    with _INTENT_EMBED_LOCK:
-        if _PROTO_EMBEDDINGS is not None:
-            return _PROTO_EMBEDDINGS
-        try:
-            from local_embed import local_embed_batch
-
-            result = {}
-            for intent, examples in _INTENT_PROTOTYPES.items():
-                embs = local_embed_batch(examples)
-                valid = [e for e in embs if e is not None]
-                if valid:
-                    # 对每个意图所有原型 embedding 取均值
-                    import numpy as np
-                    result[intent] = np.mean(valid, axis=0).tolist()
-            _PROTO_EMBEDDINGS = result
-            logger.debug("意图原型 embedding 已计算: %d 个意图", len(result))
-        except Exception as exc:
-            logger.warning("意图原型 embedding 计算失败: %s", exc)
-            _PROTO_EMBEDDINGS = {}
-        return _PROTO_EMBEDDINGS
-
-
-def _detect_negation(text: str, emotion_words: list[str], brain=None) -> bool:
-    """检测情感词前是否出现否定词。
-
-    模型优先（ChuchuCNN），规则兜底。
-    """
-    if brain is not None:
-        try:
-            return brain.detect_negation(text)
-        except Exception:
-            pass
-    import re
-    for ew in emotion_words:
-        idx = text.find(ew)
-        if idx < 0:
-            continue
-        before = text[max(0, idx - 6):idx]
-        for neg in _NEGATION_WORDS:
-            if neg in before:
-                return True
-    return False
-
 
 def _compute_emotion_intensity(text: str) -> float:
     """根据感叹号、emoji、程度副词、重复字估算情绪强度 0~1。"""
@@ -182,219 +59,46 @@ def _compute_emotion_intensity(text: str) -> float:
     return min(score, 1.0)
 
 
-def analyze_user_message(user_message: str, chat_history=None,
-                         query_embedding: Optional[list] = None,
-                         brain: Optional[object] = None) -> UserMessageAnalysis:
-    """分析用户消息的意图和情绪。
+def analyze_user_message(user_message: str, chat_history=None) -> UserMessageAnalysis:
+    """分析用户消息的意图和情绪 — 纯语义层（bge-m3 原型匹配）。
 
-    决策优先级：ChuchuCNN(字符CNN) > Ollama > 关键词规则
-    - brain 参数传入时：先走小模型，intent 和 emotion 独立控制置信度
-    - 模型结果中任一字段置信度不足时，该字段降级到关键词兜底
-    - 模型完全不可用时（brain=None/异常），走原有 keyword+embedding 双路
+    Ollama 不可用时降级为默认值（casual / neutral），不崩溃。
     """
     if not user_message:
         return UserMessageAnalysis(intent="casual", emotion="neutral")
 
     _t0 = __import__('time').perf_counter()
     text = user_message.strip()
-    
-    urgency = _compute_urgency(text, brain=brain)
-    _t1 = __import__('time').perf_counter()
-    
-    topics = _extract_topics(text)
-    _t2 = __import__('time').perf_counter()
-    
+
+    # 语义层一步到位：意图、情绪、紧急度、关键词
+    intent = _sem_classify_intent(text)
+    emotion = _sem_analyze_emotion(text)
+    urgency = _sem_classify_urgency(text)
+    topics = _sem_extract_tags(text, topk=5)
     emotion_intensity = _compute_emotion_intensity(text)
-    _t3 = __import__('time').perf_counter()
+    _t1 = __import__('time').perf_counter()
 
-    # ── 模型路径（ChuchuCNN > Ollama > 规则，自带降级） ─────────
-    model_intent = None
-    model_emotion = None
-    if brain is not None:
-        try:
-            model_intent = brain.classify_intent(text)
-            model_emotion = brain.analyze_emotion(text)
-        except Exception:
-            pass  # 模型异常 → 走原有逻辑
-    _t4 = __import__('time').perf_counter()
-    
+    # 否定检测（情绪词被否定 → 回 neutral）
+    if emotion != "neutral":
+        target_words = _EMOTION_WORDS.get(emotion, [])
+        if any(_sem_detect_negation(text, w) for w in target_words):
+            emotion = "neutral"
+
+    # 置信度基线（embedding 原型匹配）
+    confidence = 0.7
+
     from app.core import bottleneck as _b
-    logger.debug(
-        "user_analysis 分步耗时: urgency=%.1fms topics=%.1fms intensity=%.1fms models=%.1fms total=%.1fms",
-        (_t1 - _t0) * 1000, (_t2 - _t1) * 1000, (_t3 - _t2) * 1000,
-        (_t4 - _t3) * 1000, (_t4 - _t0) * 1000,
-    )
-    if (_t4 - _t0) * 1000 > 500:
-        _b.record("user_analysis", (_t4 - _t0) * 1000)
-
-    if model_intent is not None and model_intent.source == "model":
-        # ── 独立置信度检查：各字段各自决策 ──
-        intent_ok = model_intent.confidence >= 0.6
-        emotion_ok = (model_emotion is not None
-                      and model_emotion.source == "model"
-                      and model_emotion.confidence >= 0.5)
-
-        if intent_ok or emotion_ok:
-            final_intent = model_intent.intent if intent_ok else _keyword_intent(text)
-            final_emotion = model_emotion.primary if emotion_ok else _keyword_emotion(text)
-            final_confidence = model_intent.confidence if intent_ok else 0.4
-
-            # 情绪否定检测
-            if final_emotion != "neutral":
-                target_words = _EMOTION_WORDS.get(final_emotion, [])
-                if _detect_negation(text, target_words, brain=brain):
-                    final_emotion = "neutral"
-
-            return UserMessageAnalysis(
-                intent=final_intent, emotion=final_emotion,
-                urgency=urgency, topics=topics, raw_text=text,
-                confidence=final_confidence,
-                emotion_intensity=emotion_intensity,
-            )
-
-    # ── 原有 keyword + embedding 双路（完整兜底） ──────────
-    kw_intent = _keyword_intent(text)
-    kw_emotion = _keyword_emotion(text)
-    if kw_emotion != "neutral":
-        target_words = _EMOTION_WORDS.get(kw_emotion, [])
-        if _detect_negation(text, target_words, brain=brain):
-            kw_emotion = "neutral"
-
-    kw_confidence = 0.3
-    if kw_intent != "casual":
-        kw_confidence = 0.6
-    if kw_intent != "casual" and kw_emotion != "neutral":
-        kw_confidence = 0.8
-
-    # ── embedding 路径 ────────────────────────────────────
-    emb_intent = None
-    emb_confidence = 0.0
-
-    if query_embedding is not None:
-        try:
-            import numpy as np
-            protos = _get_proto_embeddings()
-            if protos:
-                query_arr = np.array(query_embedding, dtype=np.float32)
-                best_intent = "casual"
-                best_sim = 0.0
-                for intent, proto_emb in protos.items():
-                    proto_arr = np.array(proto_emb, dtype=np.float32)
-                    sim = float(np.dot(query_arr, proto_arr))
-                    if sim > best_sim:
-                        best_sim = sim
-                        best_intent = intent
-                if best_sim >= 0.5:
-                    emb_intent = best_intent
-                    emb_confidence = min(0.5 + (best_sim - 0.5) * 2, 0.95)
-        except Exception as exc:
-            logger.debug("embedding 意图分类跳过: %s", exc)
-
-    # ── 双路投票 ──────────────────────────────────────────
-    if emb_intent is not None and emb_confidence > kw_confidence:
-        final_intent = emb_intent
-        final_emotion = kw_emotion if kw_emotion != "neutral" else _keyword_emotion(text)
-        if final_emotion != "neutral":
-            target_words = _EMOTION_WORDS.get(final_emotion, [])
-            if _detect_negation(text, target_words, brain=brain):
-                final_emotion = "neutral"
-        if _has_explicit_negation(text) and final_emotion != "neutral":
-            final_emotion = "neutral"
-    else:
-        final_intent = kw_intent
-        final_emotion = kw_emotion
-
-    if final_intent == "ask_fact" and "吗" in text:
-        has_emotion = any(kw in text for words in _EMOTION_WORDS.values() for kw in words)
-        if has_emotion and emb_intent is not None and emb_intent in ("emotional_sharing", "recall"):
-            final_intent = emb_intent
-            final_emotion = kw_emotion
-
-    if emb_intent is not None and emb_confidence > kw_confidence:
-        final_confidence = emb_confidence
-    else:
-        final_confidence = kw_confidence
+    elapsed = (_t1 - _t0) * 1000
+    logger.debug("user_analysis: %.1fms intent=%s emotion=%s urgency=%.2f topics=%s",
+                 elapsed, intent, emotion, urgency, topics)
+    if elapsed > 500:
+        _b.record("user_analysis", elapsed)
 
     return UserMessageAnalysis(
-        intent=final_intent, emotion=final_emotion, urgency=urgency,
-        topics=topics, raw_text=text, confidence=final_confidence,
+        intent=intent, emotion=emotion, urgency=urgency,
+        topics=topics, raw_text=text, confidence=confidence,
         emotion_intensity=emotion_intensity,
     )
-
-
-def _keyword_intent(text: str) -> str:
-    """纯关键词意图检测。"""
-    # 优先级：conflict > emotional_sharing > recall > ask_fact > request > meta > casual
-    for kw in _INTENT_MAP["conflict"]:
-        if kw in text:
-            return "conflict"
-    for kw in _INTENT_MAP["emotional_sharing"]:
-        if kw in text:
-            return "emotional_sharing"
-    for kw in _INTENT_MAP["recall"]:
-        if kw in text:
-            return "recall"
-    for kw in _INTENT_MAP["request"]:
-        if kw in text:
-            return "request"
-    for kw in _INTENT_MAP["ask_fact"]:
-        if kw in text:
-            return "ask_fact"
-    for kw in _INTENT_MAP["meta"]:
-        if kw in text:
-            return "meta"
-    return "casual"
-
-
-def _keyword_emotion(text: str) -> str:
-    """纯关键词情绪检测。intimate > frustrated > negative > positive > neutral。"""
-    # 优先匹配 intimate 和 frustrated（它们更具体）
-    for kw in _EMOTION_WORDS["intimate"]:
-        if kw in text:
-            return "intimate"
-    for kw in _EMOTION_WORDS["frustrated"]:
-        if kw in text:
-            return "frustrated"
-    for kw in _EMOTION_WORDS["negative"]:
-        if kw in text:
-            return "negative"
-    for kw in _EMOTION_WORDS["positive"]:
-        if kw in text:
-            return "positive"
-    return "neutral"
-
-
-def _has_explicit_negation(text: str) -> bool:
-    """检查是否有明确的否定句式。"""
-    import re
-    patterns = [
-        r"不\w*[难过开心高兴好累烦]",
-        r"没\w*[难过开心高兴好累烦]",
-        r"别\w*[说了提]",
-    ]
-    return any(re.search(p, text) for p in patterns)
-
-
-def _compute_urgency(text: str, brain=None) -> float:
-    """计算紧急度。模型优先，规则兜底。"""
-    if brain is not None:
-        try:
-            return brain.classify_urgency(text)
-        except Exception:
-            pass
-    urgency = 0.0
-    if "!" in text or "！！" in text:
-        urgency += 0.3
-    if len(text) > 100:
-        urgency += 0.2
-    if "急" in text or "马上" in text or "立刻" in text:
-        urgency += 0.4
-    return min(urgency, 1.0)
-def _extract_topics(text: str) -> list:
-    try:
-        return jieba.analyse.extract_tags(text, topK=5)
-    except Exception:
-        return []
 
 
 # ── 回路④：响应门控（门控决策） ────────────────────────────
@@ -537,12 +241,10 @@ class CircuitOrchestrator:
             _ticks.append((name, _t.perf_counter()))
         _log_step('prep')
 
-        # ① 先跑用户消息分析（ChuchuCNN 优先），拿到小模型意图
-        prefrontal = analyze_user_message(user_message, self._chat_history,
-                                           query_embedding=query_embedding,
-                                           brain=get_brain())
+        # ① 先跑用户消息分析（语义层 bge-m3 原型匹配）
+        prefrontal = analyze_user_message(user_message, self._chat_history)
 
-        # ② 若调用方未提供检索结果，自动补充（传 intent 让 pipeline 复用 ChuchuCNN 结果）
+        # ② 若调用方未提供检索结果，自动补充（传 intent 让 pipeline 复用语义结果）
         if memories is None:
             timeline_recent, session_context, personalities, memories = run_chat_retrieval(
                 user_message, query_embedding, ctx_obj,

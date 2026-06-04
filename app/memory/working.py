@@ -68,8 +68,8 @@ def _topic_shift_detected(recent_turns: list[dict], wm_topics: list[str]) -> boo
     )
     if not recent_text.strip():
         return False
-    import jieba.analyse
-    current_tags = jieba.analyse.extract_tags(recent_text, topK=8)
+    from app.brain.semantic import extract_tags
+    current_tags = extract_tags(recent_text, topk=8)
     current_tags = [w for w in current_tags if len(w) >= 2]
     if not current_tags:
         return False
@@ -147,12 +147,12 @@ def incremental_update(conversation_turns: list[dict], *, wm_path: str) -> bool:
             wm["version"] = wm.get("version", 0) + 1
 
             try:
-                import jieba.analyse
-                topics = jieba.analyse.extract_tags(new_summary, topK=5)
+                from app.brain.semantic import extract_tags
+                topics = extract_tags(new_summary, topk=5)
                 wm["topics"] = [t for t in topics if len(t) >= 2]
-                wm["recent_entities"] = jieba.analyse.extract_tags(new_summary, topK=5)
+                wm["recent_entities"] = extract_tags(new_summary, topk=5)
                 all_text = " ".join([t.get("user_message", "")[:200] for t in recent_turns if t.get("user_message")])
-                wm["recent_keywords"] = jieba.analyse.extract_tags(all_text, topK=8)
+                wm["recent_keywords"] = extract_tags(all_text, topk=8)
             except Exception:
                 pass
 

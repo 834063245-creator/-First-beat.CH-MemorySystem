@@ -8,8 +8,7 @@ import os
 import re
 import time
 
-import jieba
-import jieba.analyse
+from app.brain.semantic import extract_tags, tokenize as _sem_tokenize
 
 from app.config.settings import (
     RERANK_SEMANTIC_WEIGHT, RERANK_ATTENTION_WEIGHT, ATTENTION_WINDOW,
@@ -154,7 +153,7 @@ def run_chat_retrieval(
         DEFAULT_TOP_K,
         min(ctx_obj.chroma_service._read_collection.count() // 20, 100),
     )
-    _cached_q_tags = jieba.analyse.extract_tags(user_message, topK=5) or []
+    _cached_q_tags = extract_tags(user_message, topk=5) or []
     _ticks = [("start", time.perf_counter())]
     def _log_step(name):
         ms = (time.perf_counter() - _ticks[-1][1]) * 1000
@@ -488,9 +487,9 @@ def run_chat_retrieval(
 
     try:
         from rank_bm25 import BM25Okapi
-        qt = list(jieba.cut(user_message))
+        qt = _sem_tokenize(user_message)
         docs = [m.get("document", "") or m.get("summary", "") for m in memories]
-        corpus = [list(jieba.cut(d)) for d in docs]
+        corpus = [_sem_tokenize(d) for d in docs]
         bm25 = BM25Okapi(corpus)
         scores = bm25.get_scores(qt)
         for i, m in enumerate(memories):

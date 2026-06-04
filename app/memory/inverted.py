@@ -7,7 +7,7 @@
 import logging
 import threading
 
-import jieba
+from app.brain.semantic import tokenize as _sem_tokenize
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +26,8 @@ class InvertedIndex:
         self._lock = threading.Lock()
 
     def _tokenize(self, text: str) -> list[str]:
-        """jieba分词，滤掉长度<2的词。"""
-        words = jieba.cut(text)
+        """语义分词（字符2-gram + 英文token），滤掉长度<2的词。"""
+        words = _sem_tokenize(text)
         return [w.strip() for w in words if len(w.strip()) >= 2]
 
     def build(self, summaries: list[tuple[str, str]]):
