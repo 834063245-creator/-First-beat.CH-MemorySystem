@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import pytest
-from config import DATA_DIR
+from app.config.settings import DATA_DIR
 from app.memory.chroma import ChromaService
 
 

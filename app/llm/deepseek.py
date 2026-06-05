@@ -62,6 +62,8 @@ _CORE_RULES = (
     '5. 如果【自然浮现的念头】区有内容，顺着那个念头自然地开口。\n'
     "不需要解释它从哪里来，不需要加「我注意到」之类的引导语，"
     "就只是顺着心里的感觉自然地说话。\n"
+    "6. stale=true 的记忆是已被更新的旧信息——它代表「你过去这样说过/认为过」，"
+    "但已有更新版本取代它。你可以把它当背景理解变化过程，但不要当作当前事实引用。\n"
     "你有以下可用工具：search_web（实时搜索）、read_file（读文件）、"
     "list_files（列出文件）、grep_files（搜索文件内容）。"
     "需要时直接调用，不需请示。"
@@ -758,6 +760,7 @@ class LLMClient:
         """记忆格式化为 tool content（JSON 结构，保留时间戳和来源）。
 
         若有编织结果（woven_context），故事线优先展示，fact 记忆随后。
+        v2.1: stale_context 记忆标注 stale=true 一并注入，LLM 可参考但不引用。
         """
         items = []
 
@@ -810,6 +813,33 @@ class LLMClient:
                 "relevance": round(mem.get("score", 0) or 0, 3),
                 "stale": meta.get("stale", False),
             })
+
+        # v2.1: stale_context — 被取代但保留为背景参考的记忆
+        for mem in getattr(cognitive_state, 'stale_context', []) or []:
+            meta = mem.get("metadata") or {}
+            superseded_by = meta.get("superseded_by", "")
+            reason = meta.get("supersede_reason", "")
+            ts = meta.get("timestamp", 0)
+            rel = ""
+            if ts:
+                try:
+                    rel = LLMClient._relative_time(float(ts))
+                except (ValueError, TypeError):
+                    pass
+            ts_str = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M") if ts else ""
+            items.append({
+                "id": mem.get("id", ""),
+                "time": ts_str,
+                "relative_time": rel,
+                "summary": (meta.get("summary") or "")[:200],
+                "source": "stale_context",
+                "hit_count": meta.get("hit_count", 0) or 0,
+                "relevance": round(mem.get("score", 0) or 0, 3),
+                "stale": True,
+                "stale_reason": reason[:80] if reason else "",
+                "superseded_by": superseded_by[:8] if superseded_by else "",
+            })
+
         if not items:
             return json.dumps([], ensure_ascii=False)
         return json.dumps(items, ensure_ascii=False, indent=2)

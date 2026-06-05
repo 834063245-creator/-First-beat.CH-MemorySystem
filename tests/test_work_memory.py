@@ -2,7 +2,7 @@
 import os
 import pytest
 
-from chat_history import ChatHistory
+from app.memory.history import ChatHistory
 
 
 def _make_history(tmp_path, count=20, text_len=60):

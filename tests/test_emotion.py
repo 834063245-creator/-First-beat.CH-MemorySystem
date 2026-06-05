@@ -1,5 +1,5 @@
 """Tests for emotion analysis — analyze_emotion function."""
-from emotion import analyze_emotion
+from app.analysis.emotion import analyze_emotion
 
 
 class TestAnalyzeEmotion:

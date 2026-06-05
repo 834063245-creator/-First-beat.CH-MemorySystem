@@ -278,14 +278,20 @@ class CircuitOrchestrator:
         temp = CognitiveState()
         import math as _math
 
+        # v2.1: 收集 stale 记忆，不屏蔽只标记
+        stale_mems = []
+
         # ── 编织后的记忆直接作为 fact，跳过 CognitiveState 二次评分 ──
+        # v2.1: stale 记忆不屏蔽，收集到 stale_context 供 LLM 做背景参考
         if woven.should_speak and woven.fact_memories:
             for mem in woven.fact_memories:
                 meta = mem.get("metadata") or {}
                 if meta.get("stale", False):
-                    temp.suppressed_ids.add(mem.get("id", ""))
+                    stale_mems.append(mem)
                     continue
                 temp.add_fact(mem, certainty=0.7)
+            # v2.1: 编织器已把 stale 路由到 woven.stale_context
+            stale_mems.extend(woven.stale_context)
         else:
             for mem in memories:
                 meta = mem.get("metadata") or {}
@@ -293,7 +299,7 @@ class CircuitOrchestrator:
                 dist = mem.get("distance", 0.5)
                 stale = meta.get("stale", False)
                 if stale:
-                    temp.suppressed_ids.add(mem.get("id", ""))
+                    stale_mems.append(mem)
                     continue
 
                 # 连续置信度：组合语义距离 + hit_count + 来源可靠性
@@ -452,6 +458,7 @@ class CircuitOrchestrator:
             mirror_prediction=mirror_prediction or {},
             topic_notes=topic_notes,
             relationship=rs,
+            stale_context=stale_mems,
             woven_context=woven,
         )
 
@@ -473,12 +480,10 @@ class CircuitOrchestrator:
 
         wc = WovenContext(total_candidates=len(candidates))
 
-        # ── 预处理：去 stale + 取元数据 ──
+        # ── 预处理：取元数据（v2.1: 不再跳过 stale — 旧记忆只降权不屏蔽）──
         active = []
         for m in candidates:
             meta = m.get("metadata") or {}
-            if meta.get("stale", False):
-                continue
             tags = meta.get("tags", "")
             if isinstance(tags, str):
                 tags = [t.strip() for t in tags.split(",") if t.strip()]
@@ -491,6 +496,8 @@ class CircuitOrchestrator:
                 m["_ts"] = float(ts)
             except (ValueError, TypeError):
                 m["_ts"] = 0
+            m["_stale"] = meta.get("stale", False)
+            m["_archived"] = meta.get("archived", False)
             active.append(m)
 
         if not active:
@@ -566,6 +573,7 @@ class CircuitOrchestrator:
 
         # ═══════════════════════════════════════════════════
         # 层三：分层（fact / background / discard）
+        # v2.1: stale 记忆不屏蔽，进 stale_context 供 LLM 做背景参考
         # ═══════════════════════════════════════════════════
         MIN_FACT_DIST = 0.30  # 语义距离阈值
 
@@ -573,10 +581,14 @@ class CircuitOrchestrator:
             mid = m.get("id", "")
             dist = m.get("distance", 0.5)
             source = m.get("source", "semantic")
+            is_stale = m.get("_stale", False)
 
-            # story line 里的自动进 fact
+            # story line 里的：非 stale → fact，stale → stale_context
             if mid in used_in_narrative:
-                wc.fact_memories.append(m)
+                if is_stale:
+                    wc.stale_context.append(m)
+                else:
+                    wc.fact_memories.append(m)
                 continue
 
             # 语义距离判断 + 来源权重
@@ -588,7 +600,10 @@ class CircuitOrchestrator:
             effective_dist = dist * source_boost.get(source, 0.8)
 
             if effective_dist < MIN_FACT_DIST:
-                wc.fact_memories.append(m)
+                if is_stale:
+                    wc.stale_context.append(m)  # stale → 背景参考，不作为事实
+                else:
+                    wc.fact_memories.append(m)
             # elif effective_dist < 0.25:
             #     pass  # reference 级暂不实现
             # else: discard 级，不处理

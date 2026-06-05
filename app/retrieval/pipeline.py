@@ -257,6 +257,27 @@ def run_chat_retrieval(
         if "score" not in m or m.get("score") is None:
             sim = 1.0 - m.get("distance", 1.0)
             m["score"] = round(max(0.0, sim), 3)
+
+    # ── recency_weight（v2.1: 取代 archived 硬过滤，旧记忆只降权不屏蔽）──
+    _now_ts = time.time()
+    for m in memories:
+        meta = m.get("metadata") or {}
+        last_hit = meta.get("last_hit_time") or meta.get("timestamp", 0)
+        try:
+            last_hit = float(last_hit)
+        except (ValueError, TypeError):
+            last_hit = _now_ts
+        days_since = (_now_ts - last_hit) / 86400 if last_hit > 0 else 365
+        # 90 天线性衰减到 0.15，不归零
+        recency_weight = max(0.15, 1.0 - days_since / 90)
+        # archived / stale 加额外上限，但不屏蔽
+        if meta.get("archived", False):
+            recency_weight = min(recency_weight, 0.6)
+        if meta.get("stale", False):
+            recency_weight = min(recency_weight, 0.3)
+        m["recency_weight"] = round(recency_weight, 3)
+        # 将 recency 折入 score，让后续排序感知时间衰减
+        m["score"] = round(m.get("score", 0.5) * recency_weight, 3)
     # ── 兜底 ──
     if not memories:
         logger.warning("检索全部为空，回退到工作记忆兜底")
@@ -356,9 +377,9 @@ def retrieve_all(
         try:
             col = ctx_obj.chroma_service._collection
             local = []
-            # hot
+            # hot（v2.1: 移除 archived 硬过滤 — 旧记忆只降权不屏蔽）
             hot = col.query(query_embeddings=[query_embedding], n_results=min(sem_n, 200),
-                            where={"$and": [{"heat": "hot"}, {"archived": {"$ne": True}}]},
+                            where={"heat": "hot"},
                             include=["documents", "metadatas", "distances"])
             for i, mid in enumerate(hot.get("ids", [[]])[0]):
                 meta = dict(hot["metadatas"][0][i]) if hot.get("metadatas") else {}
@@ -368,8 +389,9 @@ def retrieve_all(
             # cool 兜底
             remain = sem_n
             if remain > 0:
+                # v2.1: 移除 archived 硬过滤 — 旧记忆只降权不屏蔽
                 cool = col.query(query_embeddings=[query_embedding], n_results=remain,
-                                 where={"$and": [{"heat": {"$in": ["warm", "cool"]}}, {"archived": {"$ne": True}}]},
+                                 where={"heat": {"$in": ["warm", "cool"]}},
                                  include=["documents", "metadatas", "distances"])
                 for i, mid in enumerate(cool.get("ids", [[]])[0]):
                     dist = cool["distances"][0][i] if cool.get("distances") else 1.0

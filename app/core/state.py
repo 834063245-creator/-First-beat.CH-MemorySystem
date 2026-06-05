@@ -288,4 +288,6 @@ class UtteranceSpec:
     emotional_reversals: list[dict] = dataclasses.field(default_factory=list)
     topic_notes: list[dict] = dataclasses.field(default_factory=list)
     relationship: Optional[RelationshipState] = None
+    stale_context: list = dataclasses.field(default_factory=list)
+    """v2.1: 被取代但保留为背景参考的记忆（stale=True 但不屏蔽）"""
     woven_context: Optional["WovenContext"] = None

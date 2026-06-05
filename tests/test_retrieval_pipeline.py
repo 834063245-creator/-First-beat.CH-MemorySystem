@@ -20,7 +20,7 @@ class TestInvertedIndex:
 
     @pytest.fixture
     def idx(self):
-        from inverted_index import InvertedIndex
+        from app.memory.inverted import InvertedIndex
         return InvertedIndex()
 
     def test_empty_query(self, idx):

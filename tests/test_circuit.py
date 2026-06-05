@@ -9,72 +9,72 @@ class TestAnalyzeUserMessage:
     """回路①：用户消息分析测试。"""
 
     def test_emotional_sharing_intimate(self):
-        from circuit import analyze_user_message
+        from app.core.circuit import analyze_user_message
         r = analyze_user_message("我昨晚梦到你了")
         assert r.intent == "emotional_sharing"
         assert r.emotion == "intimate"
         assert r.raw_text == "我昨晚梦到你了"
 
     def test_recall(self):
-        from circuit import analyze_user_message
+        from app.core.circuit import analyze_user_message
         r = analyze_user_message("还记得我们第一次聊了什么吗")
         assert r.intent == "recall"
 
     def test_casual(self):
-        from circuit import analyze_user_message
+        from app.core.circuit import analyze_user_message
         r = analyze_user_message("你好")
         assert r.intent == "casual"
 
     def test_ask_fact(self):
-        from circuit import analyze_user_message
+        from app.core.circuit import analyze_user_message
         r = analyze_user_message("今天的天气怎么样")
         assert r.intent == "ask_fact"
 
     def test_conflict(self):
-        from circuit import analyze_user_message
+        from app.core.circuit import analyze_user_message
         r = analyze_user_message("不对，你搞错了")
         assert r.intent == "conflict"
 
     def test_emotional_sharing_negative(self):
-        from circuit import analyze_user_message
+        from app.core.circuit import analyze_user_message
         r = analyze_user_message("今天心情很差，感觉很累")
         assert r.intent == "emotional_sharing"
         assert r.emotion == "negative"
 
     def test_empty_message(self):
-        from circuit import analyze_user_message
+        from app.core.circuit import analyze_user_message
         r = analyze_user_message("")
         assert r.intent == "casual"
         assert r.emotion == "neutral"
 
     def test_urgency_high(self):
-        from circuit import analyze_user_message
+        from app.core.circuit import analyze_user_message
         r = analyze_user_message("急! 快帮我看看这个bug!")
         assert r.urgency > 0.5
 
     def test_topics_extracted(self):
-        from circuit import analyze_user_message
+        from app.core.circuit import analyze_user_message
         r = analyze_user_message("我昨天写了个Python爬虫")
         assert len(r.topics) >= 1
 
     # ── M4 验证 user_mood / affective_context 映射 ──
 
     def test_user_mood_positive(self):
-        from circuit import analyze_user_message
+        from app.core.circuit import analyze_user_message
         pfc = analyze_user_message("好开心啊今天")
         mood_map = {"positive": "positive", "negative": "negative",
                     "frustrated": "negative", "intimate": "positive"}
         assert mood_map.get(pfc.emotion, "neutral") == "positive"
 
     def test_user_mood_negative(self):
-        from circuit import analyze_user_message
+        from app.core.circuit import analyze_user_message
         pfc = analyze_user_message("今天好难过，压力太大了")
         mood_map = {"positive": "positive", "negative": "negative",
                     "frustrated": "negative", "intimate": "positive"}
         assert mood_map.get(pfc.emotion, "neutral") == "negative"
 
     def test_affective_context_intimate(self):
-        from circuit import analyze_user_message
+        from app.core.circuit import analyze_user_message
         pfc = analyze_user_message("好想你啊，昨晚梦到你了")
         ctx_map = {"conflict": "conflict", "emotional_sharing": "casual_chat",
                    "recall": "casual_chat", "ask_fact": "focused_work",
@@ -85,7 +85,7 @@ class TestAnalyzeUserMessage:
         assert ctx == "intimate"
 
     def test_affective_context_focused_work(self):
-        from circuit import analyze_user_message
+        from app.core.circuit import analyze_user_message
         pfc = analyze_user_message("帮我查一下这个bug怎么修")
         ctx_map = {"conflict": "conflict", "emotional_sharing": "casual_chat",
                    "recall": "casual_chat", "ask_fact": "focused_work",
@@ -98,34 +98,34 @@ class TestBasalGangliaGate:
     """回路④：响应门控测试。"""
 
     def test_intimate_emotional_sharing(self):
-        from circuit import analyze_user_message, basal_ganglia_gate
+        from app.core.circuit import analyze_user_message, basal_ganglia_gate
         pfc = analyze_user_message("我昨晚梦到你了")
         gate = basal_ganglia_gate(pfc, [], [], [])
         assert gate.tone == "caring"
         assert gate.response_mode == "soothe"
 
     def test_conflict(self):
-        from circuit import analyze_user_message, basal_ganglia_gate
+        from app.core.circuit import analyze_user_message, basal_ganglia_gate
         pfc = analyze_user_message("不对，你搞错了")
         gate = basal_ganglia_gate(pfc, [], [], [])
         assert gate.tone == "soft"
         assert gate.response_mode == "confirm"
 
     def test_ask_fact(self):
-        from circuit import analyze_user_message, basal_ganglia_gate
+        from app.core.circuit import analyze_user_message, basal_ganglia_gate
         pfc = analyze_user_message("Python怎么读文件")
         gate = basal_ganglia_gate(pfc, [], [], [])
         assert gate.tone == "direct"
         assert gate.response_mode == "direct_answer"
 
     def test_casual(self):
-        from circuit import analyze_user_message, basal_ganglia_gate
+        from app.core.circuit import analyze_user_message, basal_ganglia_gate
         pfc = analyze_user_message("你好")
         gate = basal_ganglia_gate(pfc, [], [], [])
         assert gate.tone == "warm"
 
     def test_intimate_suppresses_work_impulses(self):
-        from circuit import analyze_user_message, basal_ganglia_gate
+        from app.core.circuit import analyze_user_message, basal_ganglia_gate
         from cognitive_state import ImpulseDirective
         pfc = analyze_user_message("好想你啊，你今天在干嘛呢")
         work_impulse = ImpulseDirective(
