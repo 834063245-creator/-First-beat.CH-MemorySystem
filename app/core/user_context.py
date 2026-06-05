@@ -14,12 +14,19 @@ class UserContextManager:
         self._lock = threading.Lock()
 
     def get_context(self, user_id: str, data_dir: str) -> "AppContext":
-        """获取用户上下文。不存在时懒创建。"""
-        # 先无锁检查
+        """获取用户上下文。不存在时懒创建，同时关闭其他用户的上下文避免线程堆积。"""
         if user_id in self._contexts:
             return self._contexts[user_id]
         with self._lock:
             if user_id not in self._contexts:
+                # 关闭所有旧上下文（单用户模式，切用户时释放旧资源）
+                for old_id in list(self._contexts.keys()):
+                    try:
+                        self._contexts[old_id].close()
+                        logger.info("用户上下文已关闭: %s", old_id)
+                    except Exception as exc:
+                        logger.warning("关闭旧上下文失败 %s: %s", old_id, exc)
+                self._contexts.clear()
                 from app.core.context import AppContext
                 ctx = AppContext(data_dir=data_dir)
                 self._contexts[user_id] = ctx
