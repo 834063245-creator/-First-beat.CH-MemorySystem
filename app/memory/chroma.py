@@ -486,57 +486,12 @@ class ChromaService:
     _EMB_CACHE_MAX = 10000  # 10K 条封顶，超出 memory 上限的旧数据不缓存
 
     def _build_embedding_cache(self):
-        """加载 embedding 到内存缓存，最多保留 _EMB_CACHE_MAX 条。
+        """构建 embedding 缓存 — ChromaDB get(include=["embeddings"]) 已知 bug。
 
-        按 last_hit_time（降序）优先缓存活跃记忆；无 last_hit_time 的
-        按 timestamp 降序。数据量远小于上限时全量加载。
-
-        注：ChromaDB 1.5.9 Rust 后端批量 get 带 embeddings 有 bug，
-        分两步避免：先拿 metadatas，再逐条读 embedding。
+        当前 skip 全量构建（每次 0 条，浪费 I/O），由 _get_embedding_cached
+        按需调用 local_embed 补齐。等 ChromaDB 修了再开。
         """
         self._emb_cache = {}
-        try:
-            meta_data = self._collection.get(include=["metadatas"])
-            ids = meta_data.get("ids", [])
-            metas = meta_data.get("metadatas", []) or []
-
-            if len(ids) <= self._EMB_CACHE_MAX:
-                target_ids = ids
-            else:
-                scored = []
-                for i, mid in enumerate(ids):
-                    meta = metas[i] if i < len(metas) else {}
-                    last_hit = meta.get("last_hit_time") or meta.get("timestamp", 0) or 0
-                    scored.append((last_hit, mid))
-                scored.sort(key=lambda x: x[0], reverse=True)
-                target_ids = [mid for _, mid in scored[:self._EMB_CACHE_MAX]]
-
-            # 分批批量查询（100 条/批），单条回退
-            _BATCH = 100
-            for batch_start in range(0, len(target_ids), _BATCH):
-                batch_ids = target_ids[batch_start:batch_start + _BATCH]
-                try:
-                    d = self._collection.get(ids=batch_ids, include=["embeddings"])
-                    for j, rid in enumerate(d.get("ids", [])):
-                        emb = d["embeddings"][j] if d.get("embeddings") and j < len(d["embeddings"]) else None
-                        if emb is not None:
-                            self._emb_cache[rid] = emb
-                except Exception:
-                    # 批量失败，逐条兜底
-                    for mid in batch_ids:
-                        try:
-                            d = self._collection.get(ids=[mid], include=["embeddings"])
-                            if d.get("embeddings") and d["embeddings"][0] is not None:
-                                self._emb_cache[mid] = d["embeddings"][0]
-                        except Exception:
-                            continue
-                logger.info(
-                    "Embedding 缓存: %d 条 (全量 %d, 截断至 %d)",
-                    len(self._emb_cache), len(ids), self._EMB_CACHE_MAX,
-                )
-        except Exception:
-            self._emb_cache = {}
-            logger.warning("Embedding 缓存构建失败", exc_info=True)
 
     def _get_embedding_cached(self, memory_id: str) -> list | None:
         return self._emb_cache.get(memory_id)
