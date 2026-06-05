@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-258%20passed-green.svg)]()
+[![Tests](https://img.shields.io/badge/tests-237%2B%20collected-green.svg)]()
 [中文文档](README.md)
 
 👉 [Quick Start](QUICKSTART.md) | 🔧 [Setup Guide](SETUP_EN.md) | [Environment Check](verify_env.py)
@@ -85,12 +85,15 @@ First Beat has two layers. The request-response pipeline handles each conversati
                        ┌─── Request-Response Pipeline ───┐
                        │                                  │
   User message         │                                  │       SSE streaming output
-  ───────→ Embedding ──→ 8-path parallel ──→ 2-stage ──→ CircuitOrchestrator
-            (bge-m3)    retrieval            rerank       │
-                        (semantic/BM25/tag/  (embed+hit)  ├─ Intent (bge-m3 prototype match)
-                         entity/keyword/                  ├─ Emotion (Russell circumplex)
-                         attention/time/                   ├─ Cognitive layering + gating
-                         co-occurrence)                    ├─ Impulse injection + mirror predict
+  ───────→ Embedding ──→ 9-path parallel ──→ weave_context ──→ CircuitOrchestrator
+            (bge-m3)    retrieval            (4-layer         │
+                        (semantic/BM25/tag/   decision engine) │
+                         entity/attention/                     ├─ Intent (bge-m3 prototype match)
+                         time/topic-tree/
+                         co-occurrence)
+                                                          ├─ Emotion (Russell circumplex)
+                                                          ├─ Cognitive layering + gating
+                                                          ├─ Impulse injection + mirror predict
                                                           ├─ Relationship state
                                                           └─ Output: UtteranceSpec
                                                                   │
@@ -134,7 +137,7 @@ First Beat has two layers. The request-response pipeline handles each conversati
 
 **① Embedding.** When a user message arrives, it is first converted into a 1024-dimensional vector by bge-m3 (Ollama, fully local). No external API calls at this stage.
 
-**② Retrieval.** The embedding triggers 8 parallel retrieval paths — semantic similarity, BM25 keyword, tag inverted index, entity match, attention drift, time-triggered, co-occurrence expansion, and topic tree branching. Each path independently recalls candidate memories, which then enter a two-stage rerank: first pass scores by embedding cosine similarity + hit_count weight, second pass sorts by source priority (semantic > preheat > entity > keyword > tag > time > co-occurrence). The top-K memories proceed to the next stage.
+**② Retrieval.** The embedding triggers 9 parallel retrieval paths — semantic hot, semantic cool, BM25 keyword, tag inverted index, entity match, attention drift, time-triggered, topic tree branching, and co-occurrence expansion. Paths run concurrently via ThreadPoolExecutor (max_workers=7), each independently recalling candidate memories. Candidates enter **weave_context** — a v2.0 4-layer decision engine replacing fixed TOP_K truncation: storyline weaving (cluster by entity/tag, detect cross-time narratives and emotional trends) → cognitive layering (fact / reference / background) → token budget allocation (2000-token soft limit) → source priority ranking. Zero LLM calls, < 150ms latency.
 
 **③ Circuit Orchestration (CircuitOrchestrator).** This is the cognitive core. After receiving retrieval results, it executes in sequence:
 - Intent analysis: bge-m3 semantically matches the user message against predefined intent prototypes — casual / question / emotional_sharing / request / command
@@ -149,15 +152,15 @@ All steps execute serially within a single method call. No microservices, no pip
 
 **④ LLM Generation.** UtteranceSpec is handed to LLMClient, which translates it into LLM-consumable format — memories formatted as tool-role JSON, impulses turned into natural language cues, gating decisions rendered as execution directives ("keep a warm tone, empathize before responding"), personality tags injected into the system prompt. It then calls the LLM API and streams the response. Tool calls (web search, file read/write, shell execution) are handled here — the LLM can invoke tools, results feed into the next generation round, up to two rounds.
 
-**⑤ Storage.** After the reply is generated, two storage paths trigger in parallel. The synchronous path writes to chat_history.jsonl (conversation log) and triggers an incremental working_memory update (a lightweight summary of the most recent N turns). The asynchronous path places the message into an in-memory queue, consumed by a dedicated worker: LLM generates a summary → bge-m3 extracts semantic tags → entity extraction (qwen2.5:3b) → emotion analysis → temporal feature annotation → write to ChromaDB. Conflict detection runs automatically during ingestion — if a new memory is semantically near-identical to an older one but more recent, the old one is marked stale and eventually replaced.
+**⑤ Storage.** After the reply is generated, two storage paths trigger in parallel. The synchronous path writes to chat_history.jsonl (conversation log) and triggers an incremental working_memory update (a lightweight summary of the most recent N turns). The asynchronous path places the message into an in-memory queue, consumed by a dedicated worker: local Ollama qwen2.5:3b generates a summary (zero API cost) → bge-m3 extracts semantic tags → entity extraction (reuses qwen2.5:3b) → emotion analysis → temporal feature annotation → write to ChromaDB. Conflict detection runs automatically during ingestion — if a new memory is semantically near-identical to an older one but more recent, the old one is marked stale and eventually replaced.
 
 ### The Autonomous Background: what happens when you're gone
 
 The background pipeline does not depend on user messages. When the engine starts, 10 daemon threads begin running independently, each with its own Poisson rhythm or fixed interval.
 
-**Impulse system (6 threads).** Five impulse sources run independently — Emotion Trend detects shifts in the user's emotional trajectory, Time Rhythm discovers behavioral patterns tied to specific times of day, Random Roam pulls old memories at random from the store, Curiosity explores topics that have never been discussed, and Behavior Pattern identifies paradigms in the user's behavior. Each source triggers on its own Poisson distribution, producing (content, priority) signals that pass through fatigue suppression into a PriorityQueue. The sixth thread — the impulse consumer — polls the queue: when the user has been idle for over 2 minutes, it pulls the highest-priority signal, calls the LLM to turn it into natural language, and stores the result as `[inner voice]` in both chat_history and ChromaDB. This is how the engine "speaks unprompted" — it doesn't wait for the user to send a message. When it has something to say, it says it.
+**Impulse system (6 threads).** Five impulse sources run independently — Emotion Trend detects shifts in the user's emotional trajectory, Time Rhythm discovers behavioral patterns tied to specific times of day, Random Roam pulls old memories at random from the store, Curiosity explores topics that have never been discussed, and Behavior Pattern identifies paradigms in the user's behavior. Each source starts with a 120s cooldown (to let the system warm up), then triggers on its own Poisson distribution, producing (content, priority) signals that pass through fatigue suppression into a PriorityQueue. The sixth thread — the impulse consumer — polls the queue: when the user has been idle for over 2 minutes, it pulls the highest-priority signal, calls the LLM to turn it into natural language, and stores the result as `[inner voice]` in both chat_history and ChromaDB. This is how the engine "speaks unprompted" — it doesn't wait for the user to send a message. When it has something to say, it says it.
 
-**Consolidation engine (2 threads).** Shallow consolidation triggers every 4 hours: rebuilds the topic tree, detects memory conflicts, and runs personality distillation (extracting behavior patterns, thinking patterns, preference patterns, communication patterns, and other tags from conversation). Deep consolidation triggers every 24 hours: extends shallow consolidation with cross-day pattern comparison, evolution trend detection, and cognitive profile refinement. A DMN thread handles idle detection — how long since the user last spoke, whether it's time to trigger consolidation.
+**Consolidation engine (2 threads).** Shallow consolidation triggers every 4 hours: rebuilds the topic tree, detects memory conflicts, and runs personality distillation (extracting behavior patterns, thinking patterns, preference patterns, communication patterns, and other tags from conversation). Includes a 60s startup cooldown to avoid resource contention with warmup and impulse sources. Deep consolidation triggers every 24 hours: extends shallow consolidation with cross-day pattern comparison, evolution trend detection, and cognitive profile refinement. A DMN thread handles idle detection — how long since the user last spoke, whether it's time to trigger consolidation.
 
 **AI consolidation (1 thread).** Independent of user memory, this analyzes the AI's own expression patterns — what tone the AI uses in which emotional contexts, whether the AI's expressive habits are shifting. The resulting AI personality tags are stored separately from user personality tags and injected into the system prompt's "my own expressive habits" section during LLM generation.
 
@@ -257,26 +260,28 @@ Pull the model on first run: `docker exec chuchen-ollama ollama pull bge-m3`
 
 ## Architecture
 
+> See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design decisions and module dependencies.
+
 ```
 app/
-├── core/          # Cognitive pipeline: orchestration · cognitive state · gating · context
+├── core/          # Cognitive pipeline: orchestration · cognitive state · gating · context · bottleneck monitoring · feedback
 ├── brain/         # Semantic engine core — semantic.py (~240 lines, zero model deps)
 │   ├── semantic.py        # 7 semantic functions: tags/intent/emotion/negation/urgency/tokenize/entities
 │   ├── models.py          # Compatibility shim (delegates to semantic.py)
 │   ├── keywords.py        # Keyword constants
 │   └── metrics.py         # Training metrics persistence
 ├── memory/        # ChromaDB + working memory + inverted/co-occurrence/temporal indices
-├── retrieval/     # 8-path parallel recall + BM25/embedding two-stage rerank
+├── retrieval/     # 9-path parallel recall + weave_context 4-layer decision engine
 ├── background/    # Autonomous: 4h/24h consolidation · 5-source impulse · distillation · conflict detection · lifecycle
 ├── analysis/      # Russell circumplex · entity extraction · pattern discovery · personality symmetry · behavior prediction
 ├── personality/   # Dual personality (user + AI, evolve independently)
-├── llm/           # Local embedding (bge-m3) + LLM chat generation + summarization
+├── llm/           # Local embedding (bge-m3) + LLM chat generation + local summarization (qwen2.5:3b)
 ├── api/           # REST endpoints: chat · memory management · personality · consolidation · distillation
 ├── tools/         # Atomic writes · tool dispatch · search · file operations
 ├── config/        # Central config
 └── models/        # Pydantic schemas
 
-tests/             # 320+ tests
+tests/             # 237+ tests (e2e regression, audit, fix verification)
 scripts/           # Audit suite + utility scripts
 ```
 
@@ -300,10 +305,11 @@ scripts/           # Audit suite + utility scripts
 - Embedding: bge-m3 via Ollama (1024-dim)
 - Semantic core: bge-m3 (keyword extraction / intent-emotion prototype matching)
 - Entity extraction: Ollama qwen2.5:3b (async during ingestion)
+- Summarization: Ollama qwen2.5:3b (reuses entity extraction model, zero API cost)
 - Negation detection: whitelist + distance rules (no model)
 - Urgency: 10-line ruleset (no model)
 - BM25 tokenization: character 2-gram + rank-bm25
-- Main LLM: configurable — DeepSeek / OpenAI / any OpenAI-compatible provider
+- Main LLM: configurable — DeepSeek / OpenAI / any OpenAI-compatible provider (1M context)
 - Deployment: Windows / macOS / Linux, Docker optional
 
 ---
@@ -318,8 +324,8 @@ scripts/           # Audit suite + utility scripts
 | `LLM_BASE_URL` | No | LLM API base URL, default `https://api.deepseek.com` |
 | `LLM_MODEL` | No | Model name, default `deepseek-v4-flash` |
 | `DEEPSEEK_API_KEY` | No | (Legacy — still works) Same as `LLM_API_KEY` |
-| `LOCAL_LLM_ENABLED` | No | Enable local LLM, default `true` |
-| `LOCAL_LLM_MODEL` | No | Local LLM model, default `qwen2.5:7b` |
+| `LOCAL_LLM_ENABLED` | No | Enable local LLM (summarization + entity extraction), default `true` |
+| `LOCAL_LLM_MODEL` | No | Local LLM model, default `qwen2.5:7b` (summarization reuses `qwen2.5:3b` internally) |
 | `BOCHA_API_KEY` | No | Bocha search API key |
 | `DATA_DIR` | No | Data directory, default `./data` |
 | `USERS` | No | Multi-user auth JSON |

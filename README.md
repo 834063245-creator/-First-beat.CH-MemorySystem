@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-258%20passed-green.svg)]()
+[![Tests](https://img.shields.io/badge/tests-237%2B%20collected-green.svg)]()
 [English](README_EN.md)
 
 👉 [快速上手](QUICKSTART.md) | 🔧 [安装排查](SETUP.md) | [环境诊断](verify_env.py)
@@ -90,10 +90,10 @@
                          ┌─── 请求-响应管线 ───┐
                          │                      │
   用户消息                 │                      │         SSE 流式输出
-  ───────→ Embedding ──→ 8路并行检索 ──→ 两级精排 ──→ CircuitOrchestrator
-            (bge-m3)    (语义/BM25/标签/    (嵌入+命中)    │
-                         实体/关键词/注意/                │
-                         时间/共现)                       ├─ 意图分析（bge-m3 原型匹配）
+  ───────→ Embedding ──→ 9路并行检索 ──→ 引擎编织 ──→ CircuitOrchestrator
+            (bge-m3)    (语义/BM25/标签/ (weave_context)   │
+                         实体/注意/时间/   4层决策机制      │
+                         话题树/共现)                      ├─ 意图分析（bge-m3 原型匹配）
                                                          ├─ 情绪分析（Russell 二维环）
                                                          ├─ 认知分层 + 门控决策
                                                          ├─ 冲动注入 + 行为预测
@@ -137,7 +137,7 @@
 
 **① Embedding。** 用户消息到达后，首先通过 bge-m3（Ollama 本地推理）转为 1024 维向量。这一步完全本地，不消耗任何外部 API。
 
-**② 检索。** 向量同时触发 8 条检索路径——语义相似、BM25 关键词、标签倒排、实体匹配、注意力漂移、时间触发、共现扩展、话题树分支。每条路径独立召回候选记忆，然后进入两级精排：第一级按 embedding 余弦相似度 + hit_count 加权评分，第二级按来源优先级（语义 > 预热 > 实体 > 关键词 > 标签 > 时间 > 共现）统一排序。最终选出 top-K 条记忆进入下一阶段。
+**② 检索。** 向量同时触发 9 条检索路径——语义 hot、语义 cool、BM25 关键词、标签倒排、实体匹配、注意力漂移、时间触发、话题树分支、共现扩展。在 ThreadPoolExecutor 中并发执行（max_workers=7），各路独立召回候选记忆。候选记忆进入**引擎编织（weave_context）**——v2.0 引入的四层决策机制，替代固定的 TOP_K 截断：故事线编织（按实体/标签聚类，识别跨时间叙事和情绪趋势）→ 认知分层（fact / reference / background）→ Token 预算分配（2000 token 软限制）→ 来源优先级排序。全程零 LLM 调用，延迟 < 150ms。
 
 **③ 回路编排（CircuitOrchestrator）。** 这是引擎的认知核心。它拿到检索结果后，依次执行：
 - 意图分析：bge-m3 将用户消息与预定义的意图原型做语义匹配，判断是 casual / question / emotional_sharing / request / command
@@ -152,15 +152,15 @@
 
 **④ LLM 生成。** UtteranceSpec 交到 LLMClient。LLMClient 负责把它翻译成 LLM 能消费的格式——记忆格式化为 tool role 的 JSON、冲动转为自然语言提示、门控决策转为执行指令（"语气要温暖，先共情再回应"）、人格标签注入 system prompt。然后调 LLM API，流式返回文本。工具调用（搜索、读写文件、执行 shell）在这一步处理——LLM 可以调用工具，工具结果注入下一轮生成，最多两轮。
 
-**⑤ 存储。** 回复生成后，两条存储路径并行触发。同步路径写 chat_history.jsonl（对话记录）和触发 working_memory 增量更新（最近 N 条对话的轻量摘要）。异步路径将消息放入内存队列，由队列 worker 消费：调用 LLM 生成摘要 → bge-m3 提取语义标签 → 实体抽取（qwen2.5:3b）→ 情绪分析 → 时间特征标注 → 写入 ChromaDB。入库时自动触发冲突检测——如果新记忆与旧记忆语义高度相似且时间更新，旧记忆被标记为 stale 并最终被替换。
+**⑤ 存储。** 回复生成后，两条存储路径并行触发。同步路径写 chat_history.jsonl（对话记录）和触发 working_memory 增量更新（最近 N 条对话的轻量摘要）。异步路径将消息放入内存队列，由队列 worker 消费：本地 Ollama qwen2.5:3b 生成摘要（零 API 费用）→ bge-m3 提取语义标签 → 实体抽取（复用 qwen2.5:3b）→ 情绪分析 → 时间特征标注 → 写入 ChromaDB。入库时自动触发冲突检测——如果新记忆与旧记忆语义高度相似且时间更新，旧记忆被标记为 stale 并最终被替换。
 
 ### 后台自主节律：用户不在时做什么
 
 后台管线不依赖用户消息。引擎启动后，10 个 daemon 线程独立运行，各自拥有自己的泊松节律或定时周期。
 
-**冲动系统（6 个线程）。** 5 个冲动源各自独立运行——情绪趋势检测用户最近的情绪走向变化，时间节律发现用户在特定时段的行为模式，随机漫游从记忆库中随机抽取旧记忆，好奇心探索从未被提起过的话题，行为模式识别用户的行为范式。每个源按泊松分布独立触发，产出 (content, priority) 信号，经疲劳抑制后进入 PriorityQueue。第 6 个线程——冲动消费者——轮询队列：当用户空闲超过 2 分钟，取出优先级最高的信号，调用 LLM 将其转为自然语言发言，存为 `[内心独白]` 写入 chat_history 和 ChromaDB。引擎就是这样"主动开口"的——不等用户发消息，自己想说了就说。
+**冲动系统（6 个线程）。** 5 个冲动源各自独立运行——情绪趋势检测用户最近的情绪走向变化，时间节律发现用户在特定时段的行为模式，随机漫游从记忆库中随机抽取旧记忆，好奇心探索从未被提起过的话题，行为模式识别用户的行为范式。每个源启动时先经过 120s 冷却期（等系统预热完），然后按泊松分布独立触发，产出 (content, priority) 信号，经疲劳抑制后进入 PriorityQueue。第 6 个线程——冲动消费者——轮询队列：当用户空闲超过 2 分钟，取出优先级最高的信号，调用 LLM 将其转为自然语言发言，存为 `[内心独白]` 写入 chat_history 和 ChromaDB。引擎就是这样"主动开口"的——不等用户发消息，自己想说了就说。
 
-**巩固引擎（2 个线程）。** 浅巩固每 4 小时触发一次：重建话题树、检测记忆冲突、执行人格蒸馏（从对话中提炼用户的行为模式、思维模式、偏好模式、沟通模式等标签）。深巩固每 24 小时触发一次：在浅巩固的基础上，进行跨天级别的模式对比、演变趋势检测、认知画像提炼。DMN 线程负责空闲检测——用户多久没说话了，是否到了该触发巩固的时间点。
+**巩固引擎（2 个线程）。** 浅巩固每 4 小时触发一次：重建话题树、检测记忆冲突、执行人格蒸馏（从对话中提炼用户的行为模式、思维模式、偏好模式、沟通模式等标签）。含 60s 启动冷却，避免与预热和冲动源同时抢占资源。深巩固每 24 小时触发一次：在浅巩固的基础上，进行跨天级别的模式对比、演变趋势检测、认知画像提炼。DMN 线程负责空闲检测——用户多久没说话了，是否到了该触发巩固的时间点。
 
 **AI 巩固（1 个线程）。** 独立于用户记忆，分析 AI 自己的表达模式——AI 在什么情绪下用什么语气回复、AI 的表达习惯是否在变化。产出的 AI 人格标签与用户人格标签分开存储，在 LLM 生成时注入 system prompt 的"我自己的表达习惯"区。
 
@@ -260,26 +260,28 @@ docker compose up -d   # Ollama + 引擎一键启动
 
 ## 架构
 
+> 详细设计决策和模块依赖见 [ARCHITECTURE.md](ARCHITECTURE.md)。
+
 ```
 app/
-├── core/          # 认知管线：回路编排 · 认知状态 · 门控决策 · 上下文管理
+├── core/          # 认知管线：回路编排 · 认知状态 · 门控决策 · 上下文管理 · 瓶颈监控 · 反馈
 ├── brain/         # 语义引擎核心 semantic.py（~240 行，零模型依赖）
 │   ├── semantic.py        # 7 个语义函数：标签/意图/情绪/否定/紧急度/分词/实体
 │   ├── models.py          # 兼容外壳（调 semantic.py）
 │   ├── keywords.py        # 关键词常量
 │   └── metrics.py         # 训练指标持久化
 ├── memory/        # ChromaDB 记忆库 + 工作记忆 + 倒排/共现/时间索引
-├── retrieval/     # 8 路并行检索 + BM25/Embedding 两级精排
+├── retrieval/     # 9 路并行检索 + 引擎编织（weave_context）四层决策
 ├── background/    # 后台节律：4h/24h 巩固 · 5 源冲动 · 蒸馏 · 冲突检测 · 生命周期
 ├── analysis/      # Russell 情绪环 · 实体提取 · 模式发现 · 人格对称性 · 行为预测
 ├── personality/   # 双人格系统（用户 + AI 独立演化）
-├── llm/           # 本地 embedding (bge-m3) + DeepSeek 对话生成 + 摘要
+├── llm/           # 本地 embedding (bge-m3) + LLM 对话生成 + 本地摘要（qwen2.5:3b）
 ├── api/           # REST 端点：聊天 · 记忆管理 · 人格 · 巩固 · 蒸馏
 ├── tools/         # 原子写入 · 工具分发 · 搜索 · 文件操作
 ├── config/        # 中央配置
 └── models/        # Pydantic schemas
 
-tests/             # 320+ 测试
+tests/             # 237+ 测试（含 e2e 回归、审计、修复验证）
 scripts/           # 审计套件 + 工具脚本
 ```
 
@@ -303,10 +305,11 @@ scripts/           # 审计套件 + 工具脚本
 - Embedding: bge-m3 via Ollama（1024 维）
 - 语义核: bge-m3（关键词抽取 / 意图情绪原型匹配）
 - 实体抽取: Ollama qwen2.5:3b（入库异步，零感知）
+- 摘要生成: Ollama qwen2.5:3b（复用实体抽取模型，零 API 费用）
 - 否定检测: 白名单 + 距离规则（无模型）
 - 紧急度: 10 行规则（无模型）
 - BM25 分词: 字符 2-gram + rank-bm25
-- 主 LLM: DeepSeek API（deepseek-v4-flash, 1M 上下文）
+- 主 LLM: DeepSeek API（deepseek-v4-flash, 1M 上下文，可替换为任意 OpenAI 兼容供应商）
 - 部署: Windows / macOS / Linux, Docker 可选
 
 ---
@@ -321,8 +324,8 @@ scripts/           # 审计套件 + 工具脚本
 | `LLM_BASE_URL` | 否 | LLM API 地址，默认 `https://api.deepseek.com` |
 | `LLM_MODEL` | 否 | 模型名，默认 `deepseek-v4-flash` |
 | `DEEPSEEK_API_KEY` | 否 | （旧名，仍可用）等同 `LLM_API_KEY` |
-| `LOCAL_LLM_ENABLED` | 否 | 启用本地 LLM，默认 `true` |
-| `LOCAL_LLM_MODEL` | 否 | 本地 LLM 模型名，默认 `qwen2.5:7b` |
+| `LOCAL_LLM_ENABLED` | 否 | 启用本地 LLM（摘要 + 实体抽取），默认 `true` |
+| `LOCAL_LLM_MODEL` | 否 | 本地 LLM 模型名，默认 `qwen2.5:7b`（实际摘要复用 qwen2.5:3b） |
 | `BOCHA_API_KEY` | 否 | 博查搜索 API Key |
 | `DATA_DIR` | 否 | 数据目录，默认 `./data` |
 | `USERS` | 否 | 多用户认证 JSON |
