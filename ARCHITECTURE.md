@@ -118,7 +118,7 @@
 | `background` | 上下文相关 | 用来调语气，不需要提及 |
 | `suppressed` | 引擎已过滤 | 不给 LLM 看到 |
 
-LLM 收到的 prompt 里没有置信度标签、没有来源标注、没有情绪元数据——只有"这件事你可以直接引用"或者"这件事你提一下但要核实"。
+LLM 收到的 prompt 里没有文字标签——置信度是连续值 `relevance`，情绪是原始值 `emotional_intensity` + `valence`，不做"高/中/低"或"情绪·正向/负向"的分类。LLM 自己判断权重。
 
 ### UtteranceSpec 的构建过程
 
@@ -198,7 +198,7 @@ v2.0 引入：替代固定的 TOP_K 截断，全程零 LLM 调用，延迟目标
     │     └─ background/discard：其余按规则过滤
     │
     └─ 层四：Token 预算分配
-          ├─ MAX_TOKENS = 2000（软限制）
+          ├─ MAX_TOKENS = 20000（软限制）
           └─ 按叙事摘要截断，非硬截断
 ```
 
@@ -209,7 +209,7 @@ v2.0 引入：替代固定的 TOP_K 截断，全程零 LLM 调用，延迟目标
 | 叙事识别 | 按实体+标签聚类，提取跨时间模式 |
 | 情绪趋势 | 检测正负情绪变化（同一实体的多次提及） |
 | 来源感知 | semantic_hot(1.0) > entity(0.85) > kw(0.7) > ... |
-| Token 控制 | 不是固定数量，而是 2000 token 软预算 |
+| Token 控制 | 不是固定数量，而是 20000 token 软预算 |
 
 ---
 
@@ -257,7 +257,7 @@ v2.0 引入：替代固定的 TOP_K 截断，全程零 LLM 调用，延迟目标
 ## 记忆生命周期
 
 ```
-hot（刚创建/活跃命中）          warm（正常）           cool（冷）
+hot（刚创建 / 情绪强度≥2）     warm（正常）          cool（冷）
      │                            │                    │
      │ hit_count 增长              │ 14天无人问津         │
      │                            ▼                    │
@@ -265,13 +265,53 @@ hot（刚创建/活跃命中）          warm（正常）           cool（冷�
      │                                                 │
      │ 情绪翻转 / 事实更新                               │
      ▼                                                 ▼
-  stale（被取代）                              archived（归档）
+  stale（被取代，软降权）                       archived（归档）
 ```
 
-- **hot → warm**：自然过渡，由 hit_count 和活跃时间决定
-- **warm → cool**：14 天内 hit_count=0，浅巩固时自动冷却
-- **stale**：新记忆与旧记忆语义相似且情绪翻转 / 事实更新，旧的被标记 stale
-- **archived**：话题簇中位数最后命中时间超过阈值（默认 30 天）
+### 状态转换
+
+| 转换 | 触发条件 | 行为 |
+|------|---------|------|
+| 新建 → hot | `emotional_intensity >= 2` 或已有高情感 | 初始热度设为 hot |
+| 新建 → warm | 上述条件不满足 | 初始热度设为 warm |
+| hot → cool | hit_count >= 3 自动升级为 hot；14 天无命中自动冷却 | 浅巩固时检查 |
+| → stale | 新记忆与旧记忆语义相似 + 情绪翻转 / 事实更新 | 旧记忆标记 `stale=True`，记录 `superseded_by` |
+| → archived | 话题簇中位数最后命中时间超过阈值 | 默认 90 天 |
+
+### v2.1: stale 软降权（不再硬屏蔽）
+
+旧逻辑：`stale=True` 的记忆直接从候选集中**移除**，LLM 完全看不到。
+新逻辑：stale 记忆**保留**在候选集中，但：
+
+1. **编织层**：stale 记忆不进入 `fact_memories`，路由到 `stale_context`
+2. **注入层**：`stale_context` 以 `"stale": true` 标记注入 LLM，带 `stale_reason` 和 `superseded_by`
+3. **LLM**：核心规则第 6 条指示——stale 记忆可作背景理解变化过程，但不得作为当前事实引用
+
+### V2 prompt 注入格式
+
+v2.0 采用 JSON + tool role 注入（替代 v1 的纯文本 `【记忆】` 段落）：
+
+```json
+{
+  "id": "mem_003",
+  "time": "2026-06-04 15:35",
+  "relative_time": "1天前",
+  "summary": "用户自称痞老板，喜欢深夜写代码，每天喝三杯咖啡",
+  "document": "完整原文，不再截断",
+  "source": "semantic_hot",
+  "hit_count": 12,
+  "relevance": 0.92,
+  "stale": false,
+  "emotional_intensity": 3,
+  "emotion_valence": "positive"
+}
+```
+
+**关键设计原则：**
+- 引擎只筛选（编织层 token 预算），不截断——`summary` 和 `document` 完整透传，无硬编码 `[:N]` 截断
+- 情绪和置信度给原始值（`relevance: 0.92`、`emotional_intensity: 3`），不做文字标签——LLM 自己判断权重
+- 记忆走 `tool` role 注入（API 原生识别为外部事实），与历史对话 `user/assistant` 分离
+- system prompt + 历史对话构成稳定前缀，可被 DeepSeek prompt 缓存命中
 
 ---
 
