@@ -413,7 +413,7 @@ def retrieve_all(
             kw_ids = ctx_obj.inverted_index.query(_cached_q_tags, min_match=1)
             if not kw_ids:
                 return
-            kw_ids = kw_ids[:20]
+            kw_ids = kw_ids[:100]
             dr = ctx_obj.chroma_service._collection.get(ids=kw_ids, include=["documents", "metadatas"])
             local = []
             for i, mid in enumerate(dr.get("ids", [])):
@@ -430,7 +430,7 @@ def retrieve_all(
         if not (hasattr(ctx_obj, 'inverted_index') and tag_n > 0 and _cached_q_tags):
             return
         try:
-            tag_ids = list(ctx_obj.inverted_index.query_tags(_cached_q_tags))[:20]
+            tag_ids = list(ctx_obj.inverted_index.query_tags(_cached_q_tags))[:100]
             if not tag_ids:
                 return
             dr = ctx_obj.chroma_service._collection.get(ids=tag_ids, include=["documents", "metadatas"])
@@ -463,7 +463,7 @@ def retrieve_all(
             if not all_eids:
                 return
             dr = ctx_obj.chroma_service._collection.get(
-                ids=list(all_eids)[:20], include=["documents", "metadatas"])
+                ids=list(all_eids)[:100], include=["documents", "metadatas"])
             local = []
             for i, mid in enumerate(dr.get("ids", [])):
                 meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
@@ -482,9 +482,9 @@ def retrieve_all(
             tps = ctx_obj.temporal_pattern_index.query()
             if not tps:
                 return
-            tp_tags = [t[0] for t in tps[:5]]
+            tp_tags = [t[0] for t in tps[:50]]
             tp_ids = ctx_obj.inverted_index.query_tags(tp_tags) if hasattr(ctx_obj, 'inverted_index') else set()
-            tp_ids = list(tp_ids)[:10]
+            tp_ids = list(tp_ids)[:50]
             if not tp_ids:
                 return
             dr = ctx_obj.chroma_service._collection.get(ids=tp_ids, include=["documents", "metadatas"])
@@ -507,7 +507,7 @@ def retrieve_all(
             if not expanded_tags:
                 return
             topic_ids = ctx_obj.inverted_index.query_tags(expanded_tags) if hasattr(ctx_obj, 'inverted_index') else set()
-            topic_ids = list(topic_ids)[:10]
+            topic_ids = list(topic_ids)[:50]
             if not topic_ids:
                 return
             dr = ctx_obj.chroma_service._collection.get(ids=topic_ids, include=["documents", "metadatas"])
@@ -546,7 +546,7 @@ def retrieve_all(
             weights = [decay ** (n - 1 - i) for i in range(n)]
             center = np.average(msg_embs, axis=0, weights=weights).tolist()
             results = ctx_obj.chroma_service._collection.query(
-                query_embeddings=[center], n_results=10,
+                query_embeddings=[center], n_results=50,
                 include=["documents", "metadatas", "distances"])
             local = []
             for i, mid in enumerate(results.get("ids", [[]])[0]):
@@ -587,7 +587,7 @@ def retrieve_all(
         try:
             cooc = ctx_obj.co_tracker.query(list(seen_ids))
             if cooc:
-                cooc_ids = [c["id"] for c in cooc if c["id"] not in seen_ids][:10]
+                cooc_ids = [c["id"] for c in cooc if c["id"] not in seen_ids][:50]
                 if cooc_ids:
                     dr = ctx_obj.chroma_service._collection.get(
                         ids=cooc_ids, include=["documents", "metadatas"])
