@@ -180,6 +180,12 @@ class LLMClient:
         messages = [{"role": "system", "content": system_prompt}]
         if timeline_recent:
             messages.extend(self._timeline_to_messages(timeline_recent))
+        # 动态内容放独立 system message（session_context + 时间，不破坏前缀缓存）
+        _dyn_parts = []
+        if session_context:
+            _dyn_parts.append(session_context)
+        _dyn_parts.append(now_hint())
+        messages.append({"role": "system", "content": "\n\n".join(_dyn_parts)})
         # 记忆走 tool role（API 原生识别为外部事实）
         if cognitive_state:
             memories_text = self._build_memories_for_tool(cognitive_state)
@@ -321,6 +327,12 @@ class LLMClient:
         messages = [{"role": "system", "content": system_prompt}]
         if timeline_recent:
             messages.extend(self._timeline_to_messages(timeline_recent))
+        # 动态内容放独立 system message（session_context + 时间，不破坏前缀缓存）
+        _dyn_parts = []
+        if session_context:
+            _dyn_parts.append(session_context)
+        _dyn_parts.append(now_hint())
+        messages.append({"role": "system", "content": "\n\n".join(_dyn_parts)})
         # 记忆走 tool role（API 原生识别为外部事实）
         if cognitive_state:
             memories_text = self._build_memories_for_tool(cognitive_state)
@@ -649,8 +661,7 @@ class LLMClient:
         sections = [load_system_prompt()]
         # 核心规则（稳定，放前面最大化缓存命中）
         sections.append(_CORE_RULES)
-        if session_context:
-            sections.append(session_context)
+        # 注：session_context 和 now_hint() 已移到 generate() 中独立 system message
         # 人格洞察（变化频率低，归入稳定段）
         if cognitive_state.personality_notes:
             type_tag = {
@@ -683,8 +694,6 @@ class LLMClient:
                     ai_lines.append(f"- {note}")
             sections.append("\n".join(ai_lines))
 
-        # 时间提示（放末尾，不干扰前缀缓存）
-        sections.append(now_hint())
         return "\n\n".join(sections)
 
     @staticmethod
