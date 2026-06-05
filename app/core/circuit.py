@@ -611,7 +611,7 @@ class CircuitOrchestrator:
         # ═══════════════════════════════════════════════════
         # 层四：Token 预算分配
         # ═══════════════════════════════════════════════════
-        MAX_TOKENS = 2000  # 给 fact_memories 的最大 token 预算
+        MAX_TOKENS = 20000  # 给 fact_memories 的最大 token 预算
         estimated_tokens = 0
         final_facts = []
 

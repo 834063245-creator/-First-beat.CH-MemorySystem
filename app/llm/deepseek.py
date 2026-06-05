@@ -787,9 +787,16 @@ class LLMClient:
                     "id": m.memory_id,
                     "summary": m.summary,
                     "document": getattr(m, 'document', ''),
-                    "metadata": {},
-                    "display_source": "",
+                    "metadata": {
+                        "summary": m.summary,
+                        "source": getattr(m, 'source', ''),
+                        "emotional_intensity": getattr(m, 'emotional_intensity', 0) or 0,
+                        "emotion_valence_bin": getattr(m, 'emotion_valence_bin', '') or '',
+                    },
+                    "display_source": getattr(m, 'source', ''),
                     "score": getattr(m, 'certainty', 0) or 0,
+                    "emotional_intensity": getattr(m, 'emotional_intensity', 0) or 0,
+                    "emotion_valence_bin": getattr(m, 'emotion_valence_bin', '') or '',
                 }
                 for m in _mems
             ]
@@ -803,15 +810,19 @@ class LLMClient:
                 except (ValueError, TypeError):
                     pass
             ts_str = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M") if ts else ""
+            doc_text = mem.get("document", "") or ""
             items.append({
                 "id": mem.get("id", ""),
                 "time": ts_str,
                 "relative_time": rel,
-                "summary": (meta.get("summary") or "")[:200],
+                "summary": (mem.get("summary") or meta.get("summary") or ""),
+                "document": doc_text,
                 "source": mem.get("display_source", ""),
                 "hit_count": meta.get("hit_count", 0) or 0,
                 "relevance": round(mem.get("score", 0) or 0, 3),
                 "stale": meta.get("stale", False),
+                "emotional_intensity": mem.get("emotional_intensity", 0) or meta.get("emotional_intensity", 0) or 0,
+                "emotion_valence": meta.get("emotion_valence_bin", "") or mem.get("emotion_valence_bin", "") or "",
             })
 
         # v2.1: stale_context — 被取代但保留为背景参考的记忆
@@ -831,7 +842,7 @@ class LLMClient:
                 "id": mem.get("id", ""),
                 "time": ts_str,
                 "relative_time": rel,
-                "summary": (meta.get("summary") or "")[:200],
+                "summary": (mem.get("summary") or meta.get("summary") or ""),
                 "source": "stale_context",
                 "hit_count": meta.get("hit_count", 0) or 0,
                 "relevance": round(mem.get("score", 0) or 0, 3),

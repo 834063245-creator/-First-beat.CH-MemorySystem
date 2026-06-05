@@ -69,6 +69,9 @@ class MemoryDirective:
     # 认知来源——这条记忆是怎么被想起来的，用于 prompt 分维度展示
     source: str = "semantic"
 
+    # 情绪原始值——不给标签，LLM 自己判断
+    emotional_intensity: int = 0
+    emotion_valence_bin: str = ""
 
 # ── 冲动指令 ────────────────────────────────────────────────
 
@@ -205,13 +208,15 @@ class CognitiveState:
 
         return MemoryDirective(
             memory_id=mem.get("id", ""),
-            summary=meta.get("summary", "") or (mem.get("document", "") or "")[:80],
+            summary=meta.get("summary", "") or mem.get("document", "") or "",
             document=mem.get("document", "") or "",
             role=role,
             certainty=certainty,
             emotional_context=emotional_context,
             time_hint=time_hint,
             source=mem.get("source", "semantic"),
+            emotional_intensity=ei,
+            emotion_valence_bin=valence,
         )
 
     def add_conflict(self, tag: str, old: str, new: str):
