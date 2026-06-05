@@ -23,12 +23,18 @@ class LocalLLM:
     def __init__(self, model: str | None = None):
         self._model = model or _SUMMARIZE_MODEL
 
-    def summarize(self, text: str, max_chars: int = 200) -> str:
-        """通过本地 Ollama 生成文本摘要，零 API 费用。"""
+    def summarize(self, text: str, max_chars: int = 200, *, fast: bool = False) -> str:
+        """通过本地 Ollama 生成文本摘要，零 API 费用。
+
+        fast=True 时跳过 LLM，直接用截断回退（benchmark / 极速场景）。
+        """
         if not text or not text.strip():
             return ""
 
         clean = text.strip()[:1500]
+        if fast:
+            return self._fallback(text, max_chars)
+
         prompt = (
             f"请用一句话概括以下对话的核心内容（不超过{max_chars}字）：\n\n{clean}"
         )

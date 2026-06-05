@@ -136,3 +136,10 @@ class InvertedIndex:
                 self._exact_entities[w].discard(memory_id)
                 if not self._exact_entities[w]:
                     del self._exact_entities[w]
+
+    def clear(self):
+        """清空所有索引（benchmark reset 用）。"""
+        with self._lock:
+            self._index.clear()
+            self._exact_entities.clear()
+            self._tag_index.clear()

@@ -143,6 +143,12 @@ class CoOccurrenceTracker:
                 self._save_nolock(data)
                 self._cache = None
 
+    def clear(self):
+        """清空所有共现记录（benchmark reset 用）。"""
+        with self._lock:
+            self._cache = {}
+            atomic_write(self._file, {})
+
     def get_co_count(self, memory_id: str) -> int:
         data = self._load()
         return sum(1 for k in data if memory_id in k)

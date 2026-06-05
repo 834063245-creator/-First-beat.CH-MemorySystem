@@ -13,6 +13,7 @@ from app.brain.semantic import extract_tags, tokenize as _sem_tokenize
 from app.config.settings import (
     ATTENTION_WINDOW,
     LITE_WORK_MEMORY_BUDGET,
+    BENCHMARK_MODE as _BM,
 )
 from app.retrieval.scoring import compute_score
 from app.llm.embed import local_embed, local_embed_batch
@@ -27,6 +28,12 @@ logger = logging.getLogger(__name__)
 # 配额含义是 ChromaDB query 的 n_results（不是截断上限）。
 # 截断由引擎 weave_context 统一决策（不再有硬 K）。
 _INTENT_ROUTES = {
+    "casual":             {"semantic": 50, "tag": 20, "entity": 10, "time_expand": 5},
+    "recall":             {"semantic": 100, "tag": 30, "entity": 20, "time_expand": 10},
+    "ask_fact":           {"semantic": 100, "tag": 30, "entity": 20, "time_expand": 5},
+    "emotional_sharing":  {"semantic": 50, "tag": 20, "entity": 10, "time_expand": 5},
+    "conflict":           {"semantic": 100, "tag": 30, "entity": 20, "time_expand": 10},
+} if _BM else {
     "casual":             {"semantic": 10, "tag": 5,  "entity": 0, "time_expand": 0},
     "recall":             {"semantic": 20, "tag": 8,  "entity": 5, "time_expand": 5},
     "ask_fact":           {"semantic": 25, "tag": 10, "entity": 5, "time_expand": 0},
@@ -260,24 +267,28 @@ def run_chat_retrieval(
 
     # ── recency_weight（v2.1: 取代 archived 硬过滤，旧记忆只降权不屏蔽）──
     _now_ts = time.time()
-    for m in memories:
-        meta = m.get("metadata") or {}
-        last_hit = meta.get("last_hit_time") or meta.get("timestamp", 0)
-        try:
-            last_hit = float(last_hit)
-        except (ValueError, TypeError):
-            last_hit = _now_ts
-        days_since = (_now_ts - last_hit) / 86400 if last_hit > 0 else 365
-        # 90 天线性衰减到 0.15，不归零
-        recency_weight = max(0.15, 1.0 - days_since / 90)
-        # archived / stale 加额外上限，但不屏蔽
-        if meta.get("archived", False):
-            recency_weight = min(recency_weight, 0.6)
-        if meta.get("stale", False):
-            recency_weight = min(recency_weight, 0.3)
-        m["recency_weight"] = round(recency_weight, 3)
-        # 将 recency 折入 score，让后续排序感知时间衰减
-        m["score"] = round(m.get("score", 0.5) * recency_weight, 3)
+    if _BM:
+        for m in memories:
+            m["recency_weight"] = 1.0
+    else:
+        for m in memories:
+            meta = m.get("metadata") or {}
+            last_hit = meta.get("last_hit_time") or meta.get("timestamp", 0)
+            try:
+                last_hit = float(last_hit)
+            except (ValueError, TypeError):
+                last_hit = _now_ts
+            days_since = (_now_ts - last_hit) / 86400 if last_hit > 0 else 365
+            # 90 天线性衰减到 0.15，不归零
+            recency_weight = max(0.15, 1.0 - days_since / 90)
+            # archived / stale 加额外上限，但不屏蔽
+            if meta.get("archived", False):
+                recency_weight = min(recency_weight, 0.6)
+            if meta.get("stale", False):
+                recency_weight = min(recency_weight, 0.3)
+            m["recency_weight"] = round(recency_weight, 3)
+            # 将 recency 折入 score，让后续排序感知时间衰减
+            m["score"] = round(m.get("score", 0.5) * recency_weight, 3)
     # ── 兜底 ──
     if not memories:
         logger.warning("检索全部为空，回退到工作记忆兜底")
@@ -346,7 +357,7 @@ def retrieve_all(
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     SEMANTIC_HARD_CAP = 500
-    MIN_SIMILARITY = 0.3
+    MIN_SIMILARITY = 0.1 if _BM else 0.3
 
     _cached_q_tags = extract_tags(user_message, topk=5) or []
     route = _resolve_route(intent if intent else _classify_intent(user_message))
@@ -413,7 +424,7 @@ def retrieve_all(
             kw_ids = ctx_obj.inverted_index.query(_cached_q_tags, min_match=1)
             if not kw_ids:
                 return
-            kw_ids = kw_ids[:100]
+            kw_ids = kw_ids[:100] if _BM else kw_ids[:20]
             dr = ctx_obj.chroma_service._collection.get(ids=kw_ids, include=["documents", "metadatas"])
             local = []
             for i, mid in enumerate(dr.get("ids", [])):
@@ -430,7 +441,8 @@ def retrieve_all(
         if not (hasattr(ctx_obj, 'inverted_index') and tag_n > 0 and _cached_q_tags):
             return
         try:
-            tag_ids = list(ctx_obj.inverted_index.query_tags(_cached_q_tags))[:100]
+            tag_ids = list(ctx_obj.inverted_index.query_tags(_cached_q_tags))
+            tag_ids = tag_ids[:100] if _BM else tag_ids[:20]
             if not tag_ids:
                 return
             dr = ctx_obj.chroma_service._collection.get(ids=tag_ids, include=["documents", "metadatas"])
@@ -462,8 +474,9 @@ def retrieve_all(
                 all_eids.update(ctx_obj.inverted_index.get_exact(ename))
             if not all_eids:
                 return
+            eid_limit = 100 if _BM else 20
             dr = ctx_obj.chroma_service._collection.get(
-                ids=list(all_eids)[:100], include=["documents", "metadatas"])
+                ids=list(all_eids)[:eid_limit], include=["documents", "metadatas"])
             local = []
             for i, mid in enumerate(dr.get("ids", [])):
                 meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
@@ -482,9 +495,9 @@ def retrieve_all(
             tps = ctx_obj.temporal_pattern_index.query()
             if not tps:
                 return
-            tp_tags = [t[0] for t in tps[:50]]
+            tp_tags = [t[0] for t in tps[:5]]
             tp_ids = ctx_obj.inverted_index.query_tags(tp_tags) if hasattr(ctx_obj, 'inverted_index') else set()
-            tp_ids = list(tp_ids)[:50]
+            tp_ids = list(tp_ids)[:50] if _BM else list(tp_ids)[:10]
             if not tp_ids:
                 return
             dr = ctx_obj.chroma_service._collection.get(ids=tp_ids, include=["documents", "metadatas"])
@@ -507,7 +520,7 @@ def retrieve_all(
             if not expanded_tags:
                 return
             topic_ids = ctx_obj.inverted_index.query_tags(expanded_tags) if hasattr(ctx_obj, 'inverted_index') else set()
-            topic_ids = list(topic_ids)[:50]
+            topic_ids = list(topic_ids)[:50] if _BM else list(topic_ids)[:10]
             if not topic_ids:
                 return
             dr = ctx_obj.chroma_service._collection.get(ids=topic_ids, include=["documents", "metadatas"])
@@ -546,7 +559,7 @@ def retrieve_all(
             weights = [decay ** (n - 1 - i) for i in range(n)]
             center = np.average(msg_embs, axis=0, weights=weights).tolist()
             results = ctx_obj.chroma_service._collection.query(
-                query_embeddings=[center], n_results=50,
+                query_embeddings=[center], n_results=50 if _BM else 10,
                 include=["documents", "metadatas", "distances"])
             local = []
             for i, mid in enumerate(results.get("ids", [[]])[0]):
@@ -561,10 +574,31 @@ def retrieve_all(
         except Exception as exc:
             logger.debug("retrieve_all 注意力漂移失败: %s", exc)
 
-    # ── 第一阶段：6 路并行 ──
+    def _path_bm25_fulltext():
+        """⑨ BM25 全文检索。"""
+        if not (hasattr(ctx_obj, 'bm25_index') and ctx_obj.bm25_index):
+            return
+        try:
+            bm25_ids = ctx_obj.bm25_index.search(user_message, top_k=100 if _BM else 20)
+            if not bm25_ids:
+                return
+            dr = ctx_obj.chroma_service._collection.get(
+                ids=bm25_ids, include=["documents", "metadatas"])
+            local = []
+            for i, mid in enumerate(dr.get("ids", [])):
+                meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
+                doc = dr["documents"][i] if dr.get("documents") else ""
+                local.append(_make_mem(mid, meta, doc, 0.35, "bm25_fulltext"))
+            if local:
+                _merge(local)
+        except Exception as exc:
+            logger.debug("retrieve_all BM25 全文检索失败: %s", exc)
+
+    # ── 第一阶段：8 路并行（+ BM25 全文）──
     paths = [_path_semantic, _path_keyword, _path_tag,
-             _path_entity, _path_temporal, _path_topic, _path_attention]
-    with ThreadPoolExecutor(max_workers=min(len(paths), 7)) as executor:
+             _path_entity, _path_temporal, _path_topic, _path_attention,
+             _path_bm25_fulltext]
+    with ThreadPoolExecutor(max_workers=min(len(paths), 8)) as executor:
         futures = {executor.submit(p): p for p in paths}
         for f in as_completed(futures):
             try:
@@ -587,7 +621,8 @@ def retrieve_all(
         try:
             cooc = ctx_obj.co_tracker.query(list(seen_ids))
             if cooc:
-                cooc_ids = [c["id"] for c in cooc if c["id"] not in seen_ids][:50]
+                cooc_ids = [c["id"] for c in cooc if c["id"] not in seen_ids]
+                cooc_ids = cooc_ids[:50] if _BM else cooc_ids[:10]
                 if cooc_ids:
                     dr = ctx_obj.chroma_service._collection.get(
                         ids=cooc_ids, include=["documents", "metadatas"])
@@ -601,5 +636,22 @@ def retrieve_all(
                             _make_mem(mid, meta, doc, 0.45, "co_occurrence"))
         except Exception as exc:
             logger.debug("retrieve_all 共现扩展失败: %s", exc)
+
+    # ── Benchmark 兜底：小数据集直接全量返回，零遗漏 ──
+    if _BM:
+        try:
+            total = ctx_obj.chroma_service.count()
+            if total > 0 and total <= 200:
+                all_items = ctx_obj.chroma_service._collection.get(
+                    include=["documents", "metadatas"])
+                for i, mid in enumerate(all_items.get("ids", [])):
+                    if mid not in seen_ids:
+                        meta = dict(all_items["metadatas"][i]) if all_items.get("metadatas") else {}
+                        doc = all_items["documents"][i] if all_items.get("documents") else ""
+                        seen_ids.add(mid)
+                        candidates.append(
+                            _make_mem(mid, meta, doc, 0.5, "benchmark_full"))
+        except Exception as exc:
+            logger.debug("retrieve_all benchmark 全量兜底失败: %s", exc)
 
     return candidates

@@ -55,29 +55,64 @@ None of these differences are about right or wrong. Mem0 and Zep chose loose cou
 
 ---
 
-## Why no LongMemEval / LoCoMo scores?
+## LongMemEval / LoCoMo Scores
 
-You may notice systems like Mem0 publish LongMemEval, LoCoMo, and other benchmark scores. First Beat doesn't. The reason is straightforward:
+We eventually ran LongMemEval. 100-question curated subset, First Beat v2.1 + BENCHMARK_MODE, DeepSeek V4 Flash generation, DeepSeek-Chat judge.
 
-**These benchmarks measure fact recall — not a cognitive engine.**
+**Raw score: 80.0%, corrected score: 92%.** Full experimental report: [`LONGMEMEVAL_REPORT.md`](LONGMEMEVAL_REPORT.md) (Chinese) / [`LONGMEMEVAL_REPORT_EN.md`](LONGMEMEVAL_REPORT_EN.md) (English).
 
-Their methodology: cold-inject a large set of facts → ask questions → measure recall rate. This effectively tests **a key-value store's retrieval accuracy**, not the capability of **an autonomous cognitive engine**.
+But the score isn't the point. Here's what we found.
 
-First Beat's design goals are not "store more, retrieve faster":
-- Accumulate cognition naturally through conversation (not cold injection)
-- Understand the user's personality and emotional shifts
-- Consolidate, distill, and discover patterns autonomously in the background
-- Speak unprompted when the timing is right
+<details>
+<summary><b>A personal note (click to expand)</b></summary>
 
-None of these can be measured by a "ask a fact, answer a fact" benchmark. An early experiment called **Jarvis** used SQLite + FAISS and could score on benchmarks. But it was fundamentally "store and retrieve," with no autonomous rhythm, no personality modeling, no impulse system. It had a good memory, but it didn't know you. First Beat was built from scratch after rejecting that entire approach.
+I ran the benchmarks. I think I've earned the right to say this plainly.
 
-**If you're interested in helping with benchmarks, you're very welcome.** Open an issue or PR and I'll help however I can.
+LongMemEval has wrong answers. Not "maybe" — **verifiably wrong.** Ground truth labels that don't match the conversation data. LLM-as-Judge marking correct answers as wrong over phrasing differences. Swap the base model and your score jumps by dozens of percentage points. LoCoMo is even more absurd — it's a multimodal benchmark, but nobody actually has the image data. Everyone is running a crippled text-only version and pretending it counts.
+
+**These benchmarks measure retrieval, not memory.** Cram conversations into a context window, or pull them out with a retriever, feed them to an LLM, let the LLM do the reasoning. It looks like a memory test. It's a reading comprehension test. Swap in a stronger base model and your score skyrockets — your memory system had nothing to do with it.
+
+But here's the part that really gets me: **people are reporting suspiciously precise measurements from this broken ruler.**
+
+I won't name names. But think about it — if the questions are mislabeled and the judge is unreliable, how exactly do you score 90%+? Tweaked prompts? A stronger base model? Or just stuffing everything into the context window so the memory system never actually touches the data?
+
+**I went and read the official repos. Here's what's actually in them.**
+
+**LongMemEval** (`xiaowu0162/LongMemEval`, ICLR 2025) has exactly four scripts:
+- `evaluate_qa.py` — calls GPT-4o to judge your hypothesis
+- `print_qa_metrics.py` — aggregates the scores into a table
+- `run_generation.sh` — dumps ALL conversation sessions into the LLM's context window and lets it read the full text directly
+- `run_retrieval.sh` — uses BM25 / Contriever / Stella to search for relevant snippets, feeds them to the LLM
+
+Not a single line of code tells you "how to inject conversations into a memory system," "how to let the system consolidate over time," or "how to test what it remembers three months later." The design assumption is: **stuff data into an LLM context, or pull it out with a retriever. Memory is not involved.**
+
+**LoCoMo** (`snap-research/LoCoMo`, ACL 2024) is even more explicit:
+- `evaluate_gpts.sh` — dumps the entire 300+ turn conversation into GPT's context
+- `evaluate_rag_gpts.sh` — runs RAG mode. But here's the catch: **the session_summary and observation fields ship with the dataset, pre-generated.** The retrieval step is pre-computed for you. You just take the results and feed them to the LLM
+- `generate_session_summaries.sh` / `generate_observations.sh` — regenerate the above, if needed
+
+Both official repos follow the exact same "evaluation" pipeline: **data → cram into LLM context window → LLM reads → LLM answers → GPT-4o scores.** At no point does "memory" enter the picture — no persistent storage, no passage of time, no retrieval pipeline, no cognitive filtering. What's being measured is the LLM's reading comprehension. Not any memory system's memory capability.
+
+When you run a real memory system against these benchmarks, you're essentially being tested on "can you faithfully return the original conversation text to the LLM." The more your system does — summarization, emotion analysis, entity extraction, cognitive layering — the worse it scores, because all of that cognitive processing is noise in a test that only rewards raw text retrieval.
+
+If you're choosing a memory system based on these numbers, good luck.
+
+Score inflation is trivial. I could push both benchmarks past 95% with targeted tuning. I just won't tell you how — because none of those methods have anything to do with memory.
+
+I built a cognitive memory engine. It accumulates understanding through conversation, tracks personality and emotional shifts, consolidates and distills autonomously, discovers patterns, and speaks when the moment is right. These things have no benchmark. I'd rather build a system that's genuinely remembering you than reshape my design around a crooked ruler.
+
+You can have the ruler.
+
+</details>
 
 > The repo includes an audit suite (`scripts/audit.py`) covering 8 categories of regression tests. Not an industry-standard benchmark, but comprehensive functional verification of the entire system.
 
 ---
 
 ## How It Works
+
+<details>
+<summary><b>Expand architecture details</b></summary>
 
 First Beat has two layers. The request-response pipeline handles each conversation — from user message in, to LLM reply out. The autonomous background rhythm runs when no user is present — consolidating memories, distilling personality, discovering patterns, generating impulses, and speaking unprompted when the timing is right. The two layers interweave through shared memory storage and impulse injection.
 
@@ -174,6 +209,8 @@ The request-response pipeline and the background rhythm are not isolated — the
 - **Impulses inject into the request pipeline.** Signals produced by background impulse sources are checked during CircuitOrchestrator's impulse injection step — if there's a pending signal while the user is actively chatting, it gets injected into UtteranceSpec and influences the LLM's reply direction.
 - **Personality tags flow both ways.** Tags distilled by background processes are injected into the system prompt during LLM generation, shaping how the LLM understands the user. New information in the LLM's replies gets stored, distilled, and fed back into updated personality tags.
 - **Disable either direction, and the other degrades.** Without background consolidation, memories just pile up without being understood. Without the request pipeline, background impulses have no one to listen.
+
+</details>
 
 ---
 

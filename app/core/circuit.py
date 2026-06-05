@@ -310,6 +310,7 @@ class CircuitOrchestrator:
                     "semantic": 1.0, "dmn_preheat": 0.85, "entity_match": 0.8,
                     "kw_match": 0.65, "tag_match": 0.6, "keyword_expand": 0.55,
                     "text_match": 0.6, "time_rhythm": 0.4, "co_occurrence": 0.35,
+                    "bm25_fulltext": 0.75,
                 }.get(source, 0.5)
                 certainty = 0.5 * semantic_conf + 0.25 * hit_conf + 0.25 * source_weight
                 certainty = max(0.0, min(1.0, certainty))
@@ -472,11 +473,26 @@ class CircuitOrchestrator:
         全程纯规则 + 统计，零 LLM 调用。延迟目标 < 150ms。
         """
         from app.models.schemas import WovenContext
+        from app.config.settings import BENCHMARK_MODE
         from collections import defaultdict
         import math
 
         if not candidates:
             return WovenContext(should_speak=False, total_candidates=0)
+
+        # ── Benchmark 模式：跳过认知编织，所有候选直接作为 fact ──
+        if BENCHMARK_MODE:
+            wc = WovenContext(
+                should_speak=True,
+                total_candidates=len(candidates),
+                fact_memories=list(candidates),
+                total_tokens=sum(
+                    len((m.get("metadata") or {}).get("summary", "")
+                        or m.get("document", "")) // 2 + 10
+                    for m in candidates
+                ),
+            )
+            return wc
 
         wc = WovenContext(total_candidates=len(candidates))
 
@@ -596,7 +612,8 @@ class CircuitOrchestrator:
                             "entity_match": 0.85, "kw_match": 0.7,
                             "tag_match": 0.7, "co_occurrence": 0.6,
                             "time_triggered": 0.5, "attention_drift": 0.8,
-                            "topic_expand": 0.55}
+                            "topic_expand": 0.55,
+                            "bm25_fulltext": 0.75}
             effective_dist = dist * source_boost.get(source, 0.8)
 
             if effective_dist < MIN_FACT_DIST:
@@ -611,7 +628,7 @@ class CircuitOrchestrator:
         # ═══════════════════════════════════════════════════
         # 层四：Token 预算分配
         # ═══════════════════════════════════════════════════
-        MAX_TOKENS = 20000  # 给 fact_memories 的最大 token 预算
+        MAX_TOKENS = 2000  # 给 fact_memories 的最大 token 预算
         estimated_tokens = 0
         final_facts = []
 

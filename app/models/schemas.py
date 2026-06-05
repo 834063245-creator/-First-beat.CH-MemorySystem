@@ -7,6 +7,7 @@ class ChatRequest(BaseModel):
     debug: bool = False
     debug_include_prompt: bool = False
     test_mode: bool = False
+    benchmark_inject: bool = False
 
 
 class TraceItem(BaseModel):

@@ -31,6 +31,7 @@ from app.config.settings import (                  # noqa: E402
     IMPULSE_ACTIVE_PATH_B,
     IS_LITE, LITE_DISABLE_BACKGROUND_TASKS, LITE_DISABLE_IMPULSE,
     LITE_WORK_MEMORY_BUDGET, USER_DATA_DIRS,
+    BENCHMARK_MODE,
     STOP_WORDS as _STOP_WORDS,
 )
 from app.memory.chroma import ChromaService
@@ -108,6 +109,13 @@ class AppContext:
             logger.info('标签索引构建完成: %d 个标签', len(self.inverted_index._tag_index))
         except Exception:
             pass
+
+        # BM25 全文索引（benchmark 模式下启用）
+        if BENCHMARK_MODE:
+            from app.retrieval.bm25_fulltext import BM25FullTextIndex
+            self.bm25_index = BM25FullTextIndex(self.chroma_service)
+        else:
+            self.bm25_index = None
 
         self.topic_affinity = TopicAffinity(data_dir=data_dir)
         self.temporal_pattern_index = TemporalPatternIndex(data_dir=data_dir)
@@ -440,6 +448,44 @@ class AppContext:
         from app.analysis.entity import extract_entities
         _STORE_FAILURES_PATH = f"{self.data_dir}/store_failures.jsonl"
         last_exc = None
+
+        # ── Benchmark 极速路径：只做 embed + 标签 + 写库 ──
+        if BENCHMARK_MODE:
+            try:
+                full_text = f"用户：{user_message}\nAI：{ai_message}"
+                summary = (user_message + " | " + ai_message)[:200]
+                tags = _extract_noun_tags(user_message) or ["对话"]
+                embedding = local_embed(full_text)
+                # 解析原始时间戳，让 LLM 看到真实日期
+                ts_float = time.time()
+                date_tag = None
+                if timestamp:
+                    from datetime import datetime as _dt
+                    for fmt in ["%Y/%m/%d (%a) %H:%M", "%Y-%m-%d %H:%M", "%Y/%m/%d"]:
+                        try:
+                            ts_float = _dt.strptime(timestamp.strip(), fmt).timestamp()
+                            date_tag = timestamp.strip().split(" ")[0]
+                            break
+                        except (ValueError, OSError):
+                            continue
+                memory_id = self.chroma_service.add_memory(
+                    user_message=user_message, ai_message=ai_message,
+                    summary=summary, tags=tags, embedding=embedding,
+                    date_tag=date_tag,
+                    source="user",
+                )
+                # 覆盖 timestamp 为原始日期
+                self.chroma_service._collection.update(
+                    ids=[memory_id],
+                    metadatas=[{"timestamp": ts_float}],
+                )
+                self.inverted_index.add(memory_id, summary)
+                if hasattr(self, 'bm25_index') and self.bm25_index is not None:
+                    self.bm25_index._doc_count = -1
+                return
+            except Exception as exc:
+                logger.error("benchmark 入库失败: %s", exc)
+                return
 
         for attempt in range(1, 4):
             try:

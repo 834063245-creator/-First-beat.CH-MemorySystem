@@ -64,6 +64,16 @@
 **为什么：**
 - 摘要丢失细节。一旦原文被丢弃，那些细节永远回不来
 - 检索用摘要+embedding，但 LLM 看到的 prompt 里是原文
+- **教训：** v2.0 的缓存优化曾错误地让 LLM 只看到摘要——单 session 事实召回从 ~96% 跌到 79%。修复后（原文 + 摘要同时传 LLM）回归正常。这个 bug 在生产环境跑了两个月未被察觉，直到 LongMemEval benchmark 把盖子掀开。
+
+### 决策 6：Benchmark 模式与认知管线隔离
+
+`BENCHMARK_MODE=true` 环境变量触发。不影响正常代码路径，所有改动在 flag 后隔离。
+
+**为什么：**
+- Benchmark 测的是"搜出原文喂给 LLM"，系统的认知层（摘要、情绪、实体、编织、衰减）在这种场景下是噪音
+- 通过 feature flag 做适配，而不是靠改代码或特调 prompt
+- 保留检索管线的完整参与（8 路并行 + BM25 全文 + 全量兜底），只 bypass 认知过滤层
 
 ---
 
@@ -75,7 +85,7 @@
 用户消息                          5 冲动源  ——→ PriorityQueue
   │                               情绪趋势/时间节律/
   ├─ Embedding (bge-m3)           随机漫游/好奇心/行为模式
-  ├─ 8路并行检索                   │
+  ├─ 9路并行检索                   │
   ├─ 两级精排                     冲动消费者（空闲>2min）
   ├─ CircuitOrchestrator            │
   │   ├─ 意图分析                 LLM 生成 → [内心独白]
@@ -142,37 +152,41 @@ CircuitOrchestrator.process()
 
 位于 `app/retrieval/pipeline.py`。
 
-### 8 路检索
+### 9 路检索（8 路语义 + BM25 全文）
 
 | 路径 | 方法 | 特点 |
 |------|------|------|
 | ① 语义 hot | ChromaDB (heat=hot) | 高活跃记忆优先 |
 | ② 语义 cool | ChromaDB (warm/cool) | 低活跃兜底，sim≥0.3 |
-| ③ 关键词 | BM25 + 倒排索引 | AND → OR 退化 |
+| ③ 关键词 | BM25 + 倒排索引（摘要） | AND → OR 退化 |
 | ④ 标签 | 标签倒排索引 | 精确匹配 ≥1 个标签 |
 | ⑤ 实体 | 实体名精确匹配 | PERSON/LOCATION/ORG |
 | ⑥ 共现 | 共现矩阵扩展 | 跟已命中记忆共现过的 |
 | ⑦ 时间触发 | TemporalPatternIndex | 当前时段的历史模式 |
 | ⑧ 话题树 | 话题树分支扩展 | 同一话题簇的其他记忆 |
 | ⑨ 注意力漂移 | 最近 3 轮加权 embedding | 模拟注意力惯性 |
+| ⑩ **BM25 全文** | 全文 BM25Okapi 索引 | 对 ChromaDB 全部 document 建索引 |
+
+路径 ⑩ 是 v2.2 新增——原来的③关键词用倒排索引建在摘要上，容易漏。BM25 全文直接对完整对话建索引，适合精确关键词匹配。
 
 ### 意图门控
 
-不同意图分配不同的检索路径配额：
+不同意图分配不同的检索路径配额（括号内为 benchmark 模式）：
 
 | intent | semantic | tag | entity | time_expand |
 |--------|----------|-----|--------|-------------|
-| casual | 10 | 5 | 0 | 0 |
-| recall | 20 | 8 | 5 | 5 |
-| ask_fact | 25 | 10 | 5 | 0 |
-| emotional_sharing | 12 | 5 | 0 | 3 |
-| conflict | 25 | 10 | 5 | 5 |
+| casual | 10 (50) | 5 (20) | 0 (10) | 0 (5) |
+| recall | 20 (100) | 8 (30) | 5 (20) | 5 (10) |
+| ask_fact | 25 (100) | 10 (30) | 5 (20) | 0 (5) |
+| emotional_sharing | 12 (50) | 5 (20) | 0 (10) | 3 (5) |
+| conflict | 25 (100) | 10 (30) | 5 (20) | 5 (10) |
 
 ### 去重和排序
 
 1. 各路结果按 `id` 去重
 2. 两级精排：embedding cosine + hit_count 加权
-3. 来源优先级：semantic > dmn_preheat > entity > keyword > tag > time > co_occurrence
+3. 来源优先级：semantic > bm25_fulltext > entity > keyword > tag > time > co_occurrence
+4. **Benchmark 全量兜底：** 当 BENCHMARK_MODE=true 且 ChromaDB 记忆 ≤ 200 条时，直接全量返回，零检索遗漏
 
 ### 引擎编织（weave_context）
 
@@ -341,6 +355,10 @@ v2.0 采用 JSON + tool role 注入（替代 v1 的纯文本 `【记忆】` 段�
 - `ArchivalManager` — 归档评估和执行（~80 行）
 - `ConsolidationEngine` — 保留核心调度 + 预热 + 空闲触发
 
+### 各路检索限额设计缺陷（P1）
+
+当前 9 路检索各有独立的 n_results 限额（kw_match[:20]、entity_match[:20] 等）。合并去重时，如果一条记忆在所有路径都没进前 N，就会从合并池丢失。正确设计应该是各路宽口径召回 → 统一池打分 → weave_context 做最后截断。**但合并池已经很大（8路 × 20-100 = 几百条），benchmark 场景下有全量兜底覆盖，生产环境下实际丢失概率低。暂不处理。**
+
 ### O(n²) 全量扫描（P1 — 部分修复）
 
 语义重复检测已从双层 for 循环改为 ChromaDB query（O(n log n)）。但 `_check_conflicts`（冲突预扫描）和 `_assess_archival`（归档评估）仍用 `list_all()` 全量扫描。记忆量 < 5000 条时影响不大，超过后需要分页或增量处理。
@@ -389,8 +407,9 @@ app/
 │   └── tree.py          话题树（层次聚类）
 │
 ├── retrieval/     ← 检索管线（依赖 memory/ + brain/）
-│   ├── pipeline.py      8 路检索 + 门控
-│   └── scoring.py       两级精排
+│   ├── pipeline.py      9 路检索 + 门控 + benchmark 全量兜底
+│   ├── scoring.py       两级精排
+│   └── bm25_fulltext.py BM25 全文索引（内存，benchmark 启用）
 │
 ├── analysis/      ← 分析层（依赖 brain/）
 │   ├── emotion.py       Russell 二维情绪环
@@ -412,7 +431,12 @@ app/
 │
 ├── api/           ← REST 层（依赖所有上层）
 │   ├── app.py           FastAPI 工厂
-│   ├── chat.py          聊天端点
+│   ├── chat.py          聊天端点 + benchmark 注入 + 管理重置
+│   │   ├─ /chat             普通对话
+│   │   ├─ /chat/stream      流式对话
+│   │   ├─ /v1/chat/completions  OpenAI 兼容
+│   │   ├─ /benchmark/inject  benchmark 直接入库（走存储管线，不调 LLM）
+│   │   └─ /admin/reset       清空所有记忆和索引
 │   ├── system.py        系统/健康/状态端点
 │   └── ...
 │
@@ -425,4 +449,4 @@ app/
 
 ---
 
-*最后更新：2026-06-05*
+*最后更新：2026-06-06*

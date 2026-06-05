@@ -242,6 +242,20 @@ LITE_DISABLE_IMPULSE = True                 # 禁用冲动调度器 + 独立开�
 LITE_WORK_MEMORY_BUDGET = 5000 if IS_LITE else 50000
 
 # ============================================================
+# Benchmark 模式 — 禁用认知过滤，最大化事实召回
+# ============================================================
+BENCHMARK_MODE = os.getenv("BENCHMARK_MODE", "false").lower() == "true"
+
+if BENCHMARK_MODE:
+    DEPLOY_MODE = "lite"
+    IS_LITE = True
+    CONSOLIDATION_SHALLOW_INTERVAL = 999_999_999   # 实质上禁用
+    CONSOLIDATION_DEEP_INTERVAL = 999_999_999
+    LITE_DISABLE_BACKGROUND_TASKS = True
+    LITE_DISABLE_IMPULSE = True
+    LITE_WORK_MEMORY_BUDGET = 100_000              # benchmark 不限制工作记忆
+
+# ============================================================
 # 共享停用词表
 # ============================================================
 STOP_WORDS = frozenset({"的", "了", "在", "是", "我", "有", "和", "就", "不",

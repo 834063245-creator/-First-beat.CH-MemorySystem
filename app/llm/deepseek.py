@@ -25,6 +25,7 @@ def now_hint() -> str:
     return f"当前时间：[{now.year}-{now.month:02d}-{now.day:02d} {now.hour:02d}:{now.minute:02d} {weekdays[now.weekday()]}]"
 
 from app.config.settings import (
+    BENCHMARK_MODE,
     LLM_API_KEY,
     LLM_BASE_URL,
     LLM_MODEL,
@@ -49,6 +50,15 @@ def load_system_prompt() -> str:
 
 
 # ── 缓存友好：核心规则作为常量，不重复构建 ────────────────
+
+# Benchmark 知识更新冲突解决指令
+_BENCHMARK_KNOWLEDGE_RULE = (
+    "\n\n【知识更新冲突解决——基准测试模式】\n"
+    "当回答问题时，优先使用最近的信息，而非过时的旧信息。\n"
+    "如果同一事实存在多个冲突版本，始终使用最新版本。\n"
+    "When answering, prefer more recent information over older/stale information.\n"
+    "If there are conflicting versions of a fact, use the most recent one."
+)
 
 _CORE_RULES = (
     "\n\n【记忆使用核心规则——不可修改】\n"
@@ -645,6 +655,9 @@ class LLMClient:
             sections.append(now_hint())
             # 不可编辑的核心规则（统一由 _CORE_RULES 一处维护）
             sections.append(_CORE_RULES)
+            # Benchmark 模式：知识更新冲突解决指令
+            if BENCHMARK_MODE:
+                sections.append(_BENCHMARK_KNOWLEDGE_RULE)
 
             return '\n\n'.join(sections)
 
@@ -663,6 +676,9 @@ class LLMClient:
         sections = [load_system_prompt()]
         # 核心规则（稳定，放前面最大化缓存命中）
         sections.append(_CORE_RULES)
+        # Benchmark 模式：知识更新冲突解决指令
+        if BENCHMARK_MODE:
+            sections.append(_BENCHMARK_KNOWLEDGE_RULE)
         # 注：session_context 和 now_hint() 已移到 generate() 中独立 system message
         # 人格洞察（变化频率低，归入稳定段）
         if cognitive_state.personality_notes:

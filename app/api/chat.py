@@ -233,6 +233,12 @@ async def chat_stream(req: ChatRequest, user_ctx = Depends(get_user_context)):
         if full_text:
             if req.test_mode:
                 logger.debug("test mode enabled, skipping storage")
+            elif req.benchmark_inject:
+                # benchmark 注入：存 ChromaDB 但不写 chat_history / working memory
+                logger.debug("benchmark inject: storing to ChromaDB only")
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(user_ctx.storage_executor, user_ctx._enqueue_store_task, user_message, full_text, timestamp)
             else:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 loop = asyncio.get_running_loop()
@@ -309,6 +315,11 @@ async def chat(req: ChatRequest, user_ctx = Depends(get_user_context)):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if req.test_mode:
         logger.debug("test mode enabled, skipping storage")
+    elif req.benchmark_inject:
+        # benchmark 注入：存 ChromaDB 但不写 chat_history / working memory
+        logger.debug("benchmark inject: storing to ChromaDB only")
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(user_ctx.storage_executor, user_ctx._enqueue_store_task, user_message, ai_response, timestamp)
     else:
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(user_ctx.storage_executor, user_ctx.chat_history.append, user_message, ai_response, timestamp)
@@ -495,3 +506,60 @@ async def openai_chat_completions(raw: dict, user_ctx = Depends(get_user_context
         content=format_openai_response(model, final_text),
         media_type="application/json",
     )
+
+
+# ── POST /benchmark/inject ─────────────────────────────────────
+
+from pydantic import BaseModel as _PydanticBase
+
+class BenchmarkInjectRequest(_PydanticBase):
+    user_message: str
+    ai_message: str
+    timestamp: str = ""
+
+@router.post("/benchmark/inject")
+async def benchmark_inject(req: BenchmarkInjectRequest, user_ctx = Depends(get_user_context)):
+    """注入完整对话轮次：走 embed → summarize → tag → ChromaDB，不调 LLM。
+
+    Benchmark 用：将数据集中的完整对话（user + assistant）作为成品记忆存储。
+    跳过 LLM 生成和认知管线，但完整经过系统的存储管线。
+    """
+    ts = req.timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(
+        user_ctx.storage_executor,
+        user_ctx._store_conversation,
+        req.user_message, req.ai_message, ts,
+    )
+    return {"status": "ok", "message": "memory stored"}
+
+
+# ── POST /admin/reset ──────────────────────────────────────────
+
+@router.post("/admin/reset")
+async def admin_reset(user_ctx = Depends(get_user_context)):
+    """清空当前用户的 ChromaDB 和 chat history（benchmark 用）。"""
+    try:
+        # 清空主 ChromaDB
+        user_ctx.chroma_service.clear_all()
+        # 清空 AI ChromaDB
+        user_ctx.ai_chroma_service.clear_all()
+        # 清空聊天历史
+        user_ctx.chat_history.clear()
+        # 清空倒排索引
+        user_ctx.inverted_index.clear()
+        # 清空共现矩阵
+        user_ctx.co_tracker.clear()
+        # 清空 AI 共现矩阵
+        user_ctx.ai_co_tracker.clear()
+        # 重建 BM25 索引（如果启用）
+        if user_ctx.bm25_index is not None:
+            user_ctx.bm25_index.clear()
+        logger.info("admin/reset: 已清空所有记忆和聊天历史 for %s", user_ctx.data_dir)
+        return {"status": "ok", "message": "ChromaDB + chat history cleared"}
+    except Exception as exc:
+        logger.error("admin/reset 失败: %s", exc)
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "message": str(exc)},
+        )
