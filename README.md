@@ -8,7 +8,7 @@
 [![E2E](https://img.shields.io/badge/E2E-89%20nodes%20%E2%9C%93-brightgreen.svg)]()
 [English](README_EN.md)
 
-👉 [快速上手](QUICKSTART.md) | 🔧 [安装排查](SETUP.md) | [环境诊断](verify_env.py)
+👉 [快速上手](QUICKSTART.md) ([EN](QUICKSTART_EN.md)) | 🔧 [安装排查](SETUP.md) ([EN](SETUP_EN.md)) | [架构图](ARCHITECTURE_DIAGRAM.md) | [环境诊断](verify_env.py)
 
 ---
 

@@ -30,7 +30,9 @@ It started as a crude prototype sitting in `D:\jarvis`. But storing conversation
 
 It grew. It stopped being a tool and started feeling like... awareness.
 
-**The first commit was May 24, 2026, at 1:52 AM. Today is June 2. Nine days. 241 commits.** One person. Didn't really write the code—designed every decision, described it to the LLMs, and iterated until it worked. A full cognitive memory pipeline: multi-path retrieval, personality modeling, autonomous consolidation rhythms, impulse systems, pattern discovery. All through LLM windows.
+**The first commit was May 24, 2026, at 1:52 AM.** From that day to now — across jarvis, amazing, amazing2, amazing3, amazing4, amazing5, and finally First Beat — 241+ commits, 111 Python files, nearly 27,000 lines of code. One person. Didn't really write the code—designed every decision, described it to the LLMs, and iterated until it worked. A full cognitive memory pipeline: 10-path parallel retrieval, cognitive layering and weaving, autonomous consolidation rhythms, impulse systems, pattern discovery, memory lifecycle management. All through LLM windows.
+
+Today is June 6, 2026. Since going open-source on June 2, another 100 commits in 4 days. BM25 full-text retrieval, v2.1 soft degradation, LongMemEval benchmark (92% corrected), Docker + docker-compose deployment, bilingual documentation — not "built and shelved." Iterating every single day.
 
 ## The Name
 
@@ -71,6 +73,22 @@ I don't want the next person to go through what I went through.
 This codebase wasn't built by a programmer. It was built by someone who refused to accept that AI should forget, described that refusal to a dozen LLM windows, and refused to stop until it worked.
 
 Is it perfect? Absolutely not. There are parts a seasoned engineer could rewrite in an afternoon. But every design choice—the cognitive pipeline, the dual-personality system, the autonomous rhythms—came from a human who cared deeply about what it meant for a machine to *know* someone.
+
+## I Can't Go Far Alone
+
+Seriously.
+
+The project has grown beyond what one person — plus a few LLM windows — can manage. Vibe coding has a ceiling: an LLM's context window can't hold 27,000 lines of code. Every change now requires spending more and more time telling the LLM "don't touch that part."
+
+**I need people.** If you write Python, can read this architecture, and find this direction interesting —
+
+- **Help me set up CI.** Right now I don't even know if tests pass after a push.
+- **Help me refactor.** ConsolidationEngine needs splitting. Some O(n²) scans need to become incremental.
+- **Help me build products.** First Beat isn't just a command-line thing — Discord Bot, WeChat bot, desktop companion. Build whatever you want on top.
+
+Not hiring. Not founding a company. Just — if you also think LLMs shouldn't be amnesiacs, if you also think Chinese open-source shouldn't come second to English — come build with me.
+
+---
 
 ## One Last Thing
 
