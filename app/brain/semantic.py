@@ -37,7 +37,7 @@ _OLLAMA_CHAT_MODEL = "qwen2.5:3b"
 
 # 候选 n-gram 上限（控制 batch embedding 大小）
 _MAX_NGRAM_CHARS = 200
-_MAX_CANDIDATES = 32
+_MAX_CANDIDATES = 64
 # ═════════════════════════════════════════════════════════════
 
 _INTENT_PROTOTYPES = {
@@ -216,11 +216,24 @@ def extract_tags(text: str, topk: int = 5) -> list[str]:
     if not candidates:
         return []
     candidates = list(dict.fromkeys(candidates))
-    # 限制候选数，避免 Ollama batch embedding 超时
+    # 限制候选数，避免 Ollama batch embedding 超时。
+    # 策略：中文语义单元以 2-3 字为主 → 优先保留短 n-gram，
+    # 短词（如"宠物""调味"）不能被长词挤掉。
     if len(candidates) > _MAX_CANDIDATES:
-        # 优先保留长的 n-gram（更可能是完整词）
-        candidates.sort(key=lambda x: -len(x))
-        candidates = candidates[:_MAX_CANDIDATES]
+        by_len: dict[int, list[str]] = {}
+        for c in candidates:
+            by_len.setdefault(len(c), []).append(c)
+        selected: list[str] = []
+        # 从短到长依次填充
+        for n in sorted(by_len.keys()):
+            group = by_len[n]
+            remaining = _MAX_CANDIDATES - len(selected)
+            if remaining <= 0:
+                break
+            # 每组内按首次出现顺序（保持原文顺序更自然）
+            take = group[:remaining]
+            selected.extend(take)
+        candidates = selected
 
     to_embed = [text] + candidates
     embs = local_embed_batch(to_embed)
@@ -427,30 +440,31 @@ def extract_entities(text: str) -> list[dict]:
     prompt = _ENTITY_PROMPT + text
 
     try:
-        with httpx.Client(timeout=httpx.Timeout(10.0, connect=3.0)) as client:
-            resp = client.post(
-                f"{_OLLAMA_URL}/api/chat",
-                json={
-                    "model": _OLLAMA_CHAT_MODEL,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "stream": False,
-                    "options": {"temperature": 0, "num_predict": 256},
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            content = data.get("message", {}).get("content", "").strip()
+        from app.llm.embed import _get_embed_client
+        client = _get_embed_client()
+        resp = client.post(
+            f"{_OLLAMA_URL}/api/chat",
+            json={
+                "model": _OLLAMA_CHAT_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+                "options": {"temperature": 0, "num_predict": 256},
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        content = data.get("message", {}).get("content", "").strip()
 
-            # 提取 JSON 数组
-            json_match = re.search(r'\[.*\]', content, re.DOTALL)
-            if json_match:
-                entities = _json.loads(json_match.group())
-                if isinstance(entities, list):
-                    return [
-                        {"text": e["text"], "type": e["type"]}
-                        for e in entities
-                        if isinstance(e, dict) and "text" in e and "type" in e
-                    ]
+        # 提取 JSON 数组
+        json_match = re.search(r'\[.*\]', content, re.DOTALL)
+        if json_match:
+            entities = _json.loads(json_match.group())
+            if isinstance(entities, list):
+                return [
+                    {"text": e["text"], "type": e["type"]}
+                    for e in entities
+                    if isinstance(e, dict) and "text" in e and "type" in e
+                ]
     except Exception as e:
         logger.debug("实体抽取失败（Ollama 不可用或超时）: %s", e)
 

@@ -84,6 +84,24 @@ _CORE_RULES = (
 # LLM Client — 主模型回答（通用，不绑死供应商）
 # ===================================================================
 
+# ── 共享 httpx 客户端单例（避免多个 AppContext 耗尽文件句柄）──
+_shared_async_client: Optional[httpx.AsyncClient] = None
+_shared_async_client_lock = threading.Lock()
+
+
+def _get_shared_async_client() -> httpx.AsyncClient:
+    """获取或创建模块级 httpx.AsyncClient 单例。"""
+    global _shared_async_client
+    if _shared_async_client is None or _shared_async_client.is_closed:
+        with _shared_async_client_lock:
+            if _shared_async_client is None or _shared_async_client.is_closed:
+                _shared_async_client = httpx.AsyncClient(
+                    timeout=httpx.Timeout(60.0, connect=10.0),
+                    limits=httpx.Limits(max_connections=50, max_keepalive_connections=20),
+                )
+    return _shared_async_client
+
+
 class LLMClient:
     """通用 LLM 客户端：基于记忆上下文生成回答。"""
 
@@ -91,15 +109,16 @@ class LLMClient:
         self.api_key = LLM_API_KEY
         self.base_url = LLM_BASE_URL
         self.model = LLM_MODEL
-        self._client = httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0))
+        self._client = _get_shared_async_client()
+        self._own_client = False  # 标记非自有，close 时不关闭共享实例
         self._pattern_discovery: Optional["PatternDiscovery"] = None
 
     def set_pattern_discovery(self, pd: "PatternDiscovery"):
         self._pattern_discovery = pd
 
     async def aclose(self):
-        """关闭底层 httpx 客户端。"""
-        if self._client:
+        """关闭底层 httpx 客户端（仅当自有实例时）。"""
+        if self._client and self._own_client:
             try:
                 await self._client.aclose()
             except Exception:

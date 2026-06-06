@@ -482,6 +482,9 @@ class AppContext:
                     metadatas=[{"timestamp": ts_float}],
                 )
                 self.inverted_index.add(memory_id, summary)
+                # 同时更新标签倒排索引（benchmark 路径之前漏了这一步）
+                tags_str = ",".join(tags) if tags else ""
+                self.inverted_index.add_tags(memory_id, tags_str)
                 if hasattr(self, 'bm25_index') and self.bm25_index is not None:
                     self.bm25_index._doc_count = -1
                 return

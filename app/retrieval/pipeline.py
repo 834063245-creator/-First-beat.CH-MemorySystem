@@ -417,11 +417,18 @@ def retrieve_all(
             logger.debug("retrieve_all 语义检索失败: %s", exc)
 
     def _path_keyword():
-        """② 关键词匹配。"""
+        """② 关键词匹配。将提取的标签分词后匹配倒排索引的 token 级 key。"""
         if not (hasattr(ctx_obj, 'inverted_index') and _cached_q_tags):
             return
         try:
-            kw_ids = ctx_obj.inverted_index.query(_cached_q_tags, min_match=1)
+            # 将整词标签拆成 2-gram token，匹配倒排索引的 token 级 key
+            all_tokens = []
+            for tag in _cached_q_tags:
+                all_tokens.extend(ctx_obj.inverted_index._tokenize(tag))
+            all_tokens = list(dict.fromkeys(all_tokens))  # 去重保序
+            if not all_tokens:
+                return
+            kw_ids = ctx_obj.inverted_index.query(all_tokens, min_match=1)
             if not kw_ids:
                 return
             kw_ids = kw_ids[:100] if _BM else kw_ids[:20]

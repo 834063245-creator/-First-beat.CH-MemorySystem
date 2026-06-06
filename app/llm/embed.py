@@ -113,26 +113,41 @@ def _ngram_sim(a: dict[str, float], b: dict[str, float]) -> float:
     return dot / (na * nb)
 
 
+# ── 模块级 httpx 客户端单例（避免每次调用创建新连接耗尽文件句柄）──
+_embed_client: Optional[httpx.Client] = None
+_embed_client_lock = threading.Lock()
+
+
+def _get_embed_client() -> httpx.Client:
+    """获取或创建模块级 httpx.Client 单例。"""
+    global _embed_client
+    if _embed_client is None:
+        with _embed_client_lock:
+            if _embed_client is None:
+                _embed_client = httpx.Client(timeout=httpx.Timeout(30.0, connect=5.0))
+    return _embed_client
+
+
 def _embed_via_ollama(text: str) -> Optional[List[float]]:
     """通过 Ollama API 嵌入（GPU 推理）。"""
     text = text.strip()[:2000]
     if not text:
         return None
     try:
-        with httpx.Client(timeout=httpx.Timeout(30.0, connect=5.0)) as client:
-            resp = client.post(
-                f"{_OLLAMA_URL}/api/embeddings",
-                json={"model": _OLLAMA_EMBED_MODEL, "prompt": text, "keep_alive": "30m"},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            emb = data.get("embedding")
-            if emb and isinstance(emb, list):
-                arr = np.array(emb, dtype=np.float32)
-                norm = np.linalg.norm(arr)
-                if norm > 0:
-                    arr = arr / norm
-                return arr.tolist()
+        client = _get_embed_client()
+        resp = client.post(
+            f"{_OLLAMA_URL}/api/embeddings",
+            json={"model": _OLLAMA_EMBED_MODEL, "prompt": text, "keep_alive": "30m"},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        emb = data.get("embedding")
+        if emb and isinstance(emb, list):
+            arr = np.array(emb, dtype=np.float32)
+            norm = np.linalg.norm(arr)
+            if norm > 0:
+                arr = arr / norm
+            return arr.tolist()
     except Exception as e:
         logger.warning("Ollama embedding 失败: %s", e)
     return None
@@ -177,14 +192,14 @@ def local_embed_batch(texts: List[str]) -> List[Optional[List[float]]]:
         _mb_indices = to_embed[_mb_start:_mb_end]
 
         try:
-            with httpx.Client(timeout=httpx.Timeout(60.0, connect=5.0)) as client:
-                resp = client.post(
-                    f"{_OLLAMA_URL}/api/embed",
-                    json={"model": _OLLAMA_EMBED_MODEL, "input": _mb_texts, "keep_alive": "30m"},
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                raw_embs = data.get("embeddings", [])
+            client = _get_embed_client()
+            resp = client.post(
+                f"{_OLLAMA_URL}/api/embed",
+                json={"model": _OLLAMA_EMBED_MODEL, "input": _mb_texts, "keep_alive": "30m"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            raw_embs = data.get("embeddings", [])
         except Exception as e:
             logger.warning("Ollama batch embed 失败 (%d 条), 回退逐条: %s", len(_mb_texts), e)
             for idx in _mb_indices:
