@@ -4,7 +4,8 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-237%2B%20collected-green.svg)]()
+[![Tests](https://img.shields.io/badge/tests-680%2B%20passed-green.svg)]()
+[![Coverage](https://img.shields.io/badge/line%20coverage-53%25-yellow.svg)]()
 [![E2E](https://img.shields.io/badge/E2E-89%20nodes%20%E2%9C%93-brightgreen.svg)]()
 [中文文档](README.md)
 
@@ -321,8 +322,8 @@ app/
 ├── config/        # Central config
 └── models/        # Pydantic schemas
 
-tests/             # 237+ tests + E2E (6 files, 89 nodes, 5 chains) + audit suite
-E2E/               # End-to-end full-chain regression (write / retrieve+weave+cognition / cross-turn / evolution / background rhythm)
+tests/             # 680+ unit tests (36 files, 53% line coverage, 98% module coverage)
+E2E/               # End-to-end full-chain regression (6 files, 89 nodes, 5 chains)
 ```
 
 ---

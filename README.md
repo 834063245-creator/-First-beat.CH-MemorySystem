@@ -4,7 +4,8 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-237%2B%20collected-green.svg)]()
+[![Tests](https://img.shields.io/badge/tests-680%2B%20passed-green.svg)]()
+[![Coverage](https://img.shields.io/badge/line%20coverage-53%25-yellow.svg)]()
 [![E2E](https://img.shields.io/badge/E2E-89%20nodes%20%E2%9C%93-brightgreen.svg)]()
 [English](README_EN.md)
 
@@ -319,8 +320,8 @@ app/
 ├── config/        # 中央配置
 └── models/        # Pydantic schemas
 
-tests/             # 237+ 测试 + E2E (6 文件 89 节点 5 链路) + 审计套件
-E2E/               # 端到端全链路回归（写入/检索+编织+认知/跨轮/演化/后台节律）
+tests/             # 680+ 单元测试（36 文件，行覆盖率 53%，模块覆盖率 98%）
+E2E/               # 端到端全链路回归（6 文件 89 节点 5 链路）
 ```
 
 ---
