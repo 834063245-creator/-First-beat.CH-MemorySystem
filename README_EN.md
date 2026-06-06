@@ -5,6 +5,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-237%2B%20collected-green.svg)]()
+[![E2E](https://img.shields.io/badge/E2E-89%20nodes%20%E2%9C%93-brightgreen.svg)]()
 [中文文档](README.md)
 
 👉 [Quick Start](QUICKSTART.md) | 🔧 [Setup Guide](SETUP_EN.md) | [Environment Check](verify_env.py)
@@ -14,6 +15,8 @@
 **Others bolt memory plugins onto LLMs. First Beat treats the LLM as its mouth.**
 
 First Beat provides a self-contained memory infrastructure. The engine runs consolidation, impulse generation, distillation, and pattern discovery in the background — then speaks naturally through the LLM when the timing is right. What you build on top — a chat app, a desktop companion, an AI pet — is up to you. First Beat handles the memory and the voice.
+
+**v2.2 current**: 10-path parallel retrieval + weave_context + v2.1 soft degradation + E2E 89 nodes all green. Iterating daily.
 
 ---
 
@@ -25,7 +28,7 @@ First Beat provides a self-contained memory infrastructure. The engine runs cons
 
 **The price of not being a "plugin"** is that if you want it to have Agent-like capabilities, you can only develop them from inside the closed loop — a workload far beyond what I can handle alone right now.
 
-**If you can help, I would be deeply grateful**.
+**I need people.** If you write Python, can read this architecture, and find this direction interesting — come help. Not hiring. Not founding a company. Just building something together. See [AUTHOR_EN.md](AUTHOR_EN.md).
 
 Whether this direction is the right one — the path is far from paved. But it is genuinely not "yet another memory plugin."
 
@@ -120,7 +123,7 @@ First Beat has two layers. The request-response pipeline handles each conversati
                        ┌─── Request-Response Pipeline ───┐
                        │                                  │
   User message         │                                  │       SSE streaming output
-  ───────→ Embedding ──→ 9-path parallel ──→ weave_context ──→ CircuitOrchestrator
+  ───────→ Embedding ──→ 10-path parallel ──→ weave_context ──→ CircuitOrchestrator
             (bge-m3)    retrieval            (4-layer         │
                         (semantic/BM25/tag/   decision engine) │
                          entity/attention/                     ├─ Intent (bge-m3 prototype match)
@@ -172,7 +175,7 @@ First Beat has two layers. The request-response pipeline handles each conversati
 
 **① Embedding.** When a user message arrives, it is first converted into a 1024-dimensional vector by bge-m3 (Ollama, fully local). No external API calls at this stage.
 
-**② Retrieval.** The embedding triggers 9 parallel retrieval paths — semantic hot, semantic cool, BM25 keyword, tag inverted index, entity match, attention drift, time-triggered, topic tree branching, and co-occurrence expansion. Paths run concurrently via ThreadPoolExecutor (max_workers=7), each independently recalling candidate memories. Candidates enter **weave_context** — a v2.0 4-layer decision engine replacing fixed TOP_K truncation: storyline weaving (cluster by entity/tag, detect cross-time narratives and emotional trends) → cognitive layering (fact / reference / background) → token budget allocation (2000-token soft limit) → source priority ranking. Zero LLM calls, < 150ms latency.
+**② Retrieval.** The embedding triggers 10 parallel retrieval paths — semantic hot, semantic cool, BM25 keyword, tag inverted index, entity match, attention drift, time-triggered, topic tree branching, and co-occurrence expansion. Paths run concurrently via ThreadPoolExecutor (max_workers=7), each independently recalling candidate memories. Candidates enter **weave_context** — a v2.0 4-layer decision engine replacing fixed TOP_K truncation: storyline weaving (cluster by entity/tag, detect cross-time narratives and emotional trends) → cognitive layering (fact / reference / background / suppressed) → token budget allocation (20000-token soft limit) → source priority ranking. Zero LLM calls, < 150ms latency. v2.1 soft degradation: 90-day linear decay + archived cap 0.6 + stale cap 0.3 — no memory is ever hard-blocked.
 
 **③ Circuit Orchestration (CircuitOrchestrator).** This is the cognitive core. After receiving retrieval results, it executes in sequence:
 - Intent analysis: bge-m3 semantically matches the user message against predefined intent prototypes — casual / question / emotional_sharing / request / command
@@ -307,19 +310,19 @@ app/
 │   ├── models.py          # Compatibility shim (delegates to semantic.py)
 │   ├── keywords.py        # Keyword constants
 │   └── metrics.py         # Training metrics persistence
-├── memory/        # ChromaDB + working memory + inverted/co-occurrence/temporal indices
-├── retrieval/     # 9-path parallel recall + weave_context 4-layer decision engine
-├── background/    # Autonomous: 4h/24h consolidation · 5-source impulse · distillation · conflict detection · lifecycle
+├── memory/        # ChromaDB (user + AI dual collections) + working memory digest + inverted/co-occurrence/entity-pair/temporal indices
+├── retrieval/     # 10-path parallel recall + weave_context 4-layer decision engine + v2.1 soft degradation
+├── background/    # Autonomous: 4h/24h consolidation · 5-source impulse · distillation · 1h AI consolidation · lifecycle
 ├── analysis/      # Russell circumplex · entity extraction · pattern discovery · personality symmetry · behavior prediction
 ├── personality/   # Dual personality (user + AI, evolve independently)
 ├── llm/           # Local embedding (bge-m3) + LLM chat generation + local summarization (qwen2.5:3b)
-├── api/           # REST endpoints: chat · memory management · personality · consolidation · distillation
+├── api/           # REST endpoints: chat · memory management · personality · consolidation · distillation · feedback
 ├── tools/         # Atomic writes · tool dispatch · search · file operations
 ├── config/        # Central config
 └── models/        # Pydantic schemas
 
-tests/             # 237+ tests (e2e regression, audit, fix verification)
-scripts/           # Audit suite + utility scripts
+tests/             # 237+ tests + E2E (6 files, 89 nodes, 5 chains) + audit suite
+E2E/               # End-to-end full-chain regression (write / retrieve+weave+cognition / cross-turn / evolution / background rhythm)
 ```
 
 ---

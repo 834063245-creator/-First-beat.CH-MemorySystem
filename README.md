@@ -5,6 +5,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-237%2B%20collected-green.svg)]()
+[![E2E](https://img.shields.io/badge/E2E-89%20nodes%20%E2%9C%93-brightgreen.svg)]()
 [English](README_EN.md)
 
 👉 [快速上手](QUICKSTART.md) | 🔧 [安装排查](SETUP.md) | [环境诊断](verify_env.py)
@@ -15,6 +16,8 @@
 
 初痕提供的是一个自循环的记忆基础设施。引擎自己在后台跑巩固、冲动、蒸馏、模式发现——然后在合适的时机，通过 LLM 自然地开口说话。上面想搭什么——聊天应用、桌宠、陪伴型 Agent——是你的事。初痕只管记忆和说话。
 
+**v2.2 当前状态**：10 路并行检索 + 引擎编织 + v2.1 软降权 + E2E 89 节点全绿。每天在迭代。
+
 ---
 
 ## 不是记忆插件，是一个记忆体
@@ -23,11 +26,11 @@
 
 **初痕选了一条不同的方向**。它不提供 SDK、不开 API、不嵌到别人的系统里。它自己就是一个完整的可运行系统——认知、记忆、情感、冲动、语言输出全在一个进程里。用户填一个 LLM API Key，`python run.py`，就能跟它对话。
 
-**不做“插件”的代价**之一就是，如果想要让它有“Agent”一样的工作能力，只能从整个闭环内部进行二次开发，这个工作量已经远远超过了我目前的能力。
+**不做”插件”的代价**之一就是，如果想要让它有”Agent”一样的工作能力，只能从整个闭环内部进行二次开发，这个工作量已经远远超过了我目前的能力。
 
-**如果你能提供一些帮助的话“非常感谢”**。
+**我需要人。** 如果你会写 Python，看得明白这套架构，觉得这个方向有意思——来帮我。不是招人，不是雇人。就一起做。详见 [AUTHOR.md](AUTHOR.md)。
 
-这个方向对不对，路还远远没趟平。但它确实不是"又一个记忆插件"。
+这个方向对不对，路还远远没趟平。但它确实不是”又一个记忆插件”。
 
 
 ### 设计选择：紧耦合
@@ -123,7 +126,7 @@ LongMemEval 有错题。不是"可能"有，是**实打实的有**——标准�
                          ┌─── 请求-响应管线 ───┐
                          │                      │
   用户消息                 │                      │         SSE 流式输出
-  ───────→ Embedding ──→ 9路并行检索 ──→ 引擎编织 ──→ CircuitOrchestrator
+  ───────→ Embedding ──→ 10路并行检索 ──→ 引擎编织 ──→ CircuitOrchestrator
             (bge-m3)    (语义/BM25/标签/ (weave_context)   │
                          实体/注意/时间/   4层决策机制      │
                          话题树/共现)                      ├─ 意图分析（bge-m3 原型匹配）
@@ -170,7 +173,7 @@ LongMemEval 有错题。不是"可能"有，是**实打实的有**——标准�
 
 **① Embedding。** 用户消息到达后，首先通过 bge-m3（Ollama 本地推理）转为 1024 维向量。这一步完全本地，不消耗任何外部 API。
 
-**② 检索。** 向量同时触发 9 条检索路径——语义 hot、语义 cool、BM25 关键词、标签倒排、实体匹配、注意力漂移、时间触发、话题树分支、共现扩展。在 ThreadPoolExecutor 中并发执行（max_workers=7），各路独立召回候选记忆。候选记忆进入**引擎编织（weave_context）**——v2.0 引入的四层决策机制，替代固定的 TOP_K 截断：故事线编织（按实体/标签聚类，识别跨时间叙事和情绪趋势）→ 认知分层（fact / reference / background）→ Token 预算分配（2000 token 软限制）→ 来源优先级排序。全程零 LLM 调用，延迟 < 150ms。
+**② 检索。** 向量同时触发 10 条检索路径——语义 hot、语义 cool、BM25 关键词、标签倒排、实体匹配、注意力漂移、时间触发、话题树分支、共现扩展。在 ThreadPoolExecutor 中并发执行（max_workers=7），各路独立召回候选记忆。候选记忆进入**引擎编织（weave_context）**——v2.0 引入的四层决策机制，替代固定的 TOP_K 截断：故事线编织（按实体/标签聚类，识别跨时间叙事和情绪趋势）→ 认知分层（fact / reference / background / suppressed）→ Token 预算分配（20000 token 软限制）→ 来源优先级排序。全程零 LLM 调用，延迟 < 150ms。v2.1 新增软降权体系：90 天线性衰减 + archived 上限 0.6 + stale 上限 0.3，不再硬屏蔽任何记忆。
 
 **③ 回路编排（CircuitOrchestrator）。** 这是引擎的认知核心。它拿到检索结果后，依次执行：
 - 意图分析：bge-m3 将用户消息与预定义的意图原型做语义匹配，判断是 casual / question / emotional_sharing / request / command
@@ -305,19 +308,19 @@ app/
 │   ├── models.py          # 兼容外壳（调 semantic.py）
 │   ├── keywords.py        # 关键词常量
 │   └── metrics.py         # 训练指标持久化
-├── memory/        # ChromaDB 记忆库 + 工作记忆 + 倒排/共现/时间索引
-├── retrieval/     # 9 路并行检索 + 引擎编织（weave_context）四层决策
-├── background/    # 后台节律：4h/24h 巩固 · 5 源冲动 · 蒸馏 · 冲突检测 · 生命周期
+├── memory/        # ChromaDB（用户+AI 双集合）+ 工作记忆摘要 + 倒排/共现/实体对/时间索引
+├── retrieval/     # 10 路并行检索 + 引擎编织（weave_context）四层决策 + v2.1 软降权
+├── background/    # 后台节律：4h/24h 巩固 · 5 源冲动 · 蒸馏 · 1h AI 巩固 · 生命周期
 ├── analysis/      # Russell 情绪环 · 实体提取 · 模式发现 · 人格对称性 · 行为预测
 ├── personality/   # 双人格系统（用户 + AI 独立演化）
 ├── llm/           # 本地 embedding (bge-m3) + LLM 对话生成 + 本地摘要（qwen2.5:3b）
-├── api/           # REST 端点：聊天 · 记忆管理 · 人格 · 巩固 · 蒸馏
+├── api/           # REST 端点：聊天 · 记忆管理 · 人格 · 巩固 · 蒸馏 · 反馈
 ├── tools/         # 原子写入 · 工具分发 · 搜索 · 文件操作
 ├── config/        # 中央配置
 └── models/        # Pydantic schemas
 
-tests/             # 237+ 测试（含 e2e 回归、审计、修复验证）
-scripts/           # 审计套件 + 工具脚本
+tests/             # 237+ 测试 + E2E (6 文件 89 节点 5 链路) + 审计套件
+E2E/               # 端到端全链路回归（写入/检索+编织+认知/跨轮/演化/后台节律）
 ```
 
 ---
