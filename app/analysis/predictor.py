@@ -10,7 +10,7 @@ import os
 from collections import defaultdict, deque
 from typing import Optional
 
-from app.core.circuit import analyze_user_message
+from app.retrieval.pipeline import _classify_intent
 
 logger = logging.getLogger(__name__)
 
@@ -55,47 +55,34 @@ class BehaviorPredictor:
             return
 
         intents = []
-        topic_sets = []
         for msg in msgs:
-            pfc = analyze_user_message(msg)
-            intents.append(pfc.intent)
-            topic_sets.append(set(pfc.topics))
+            # 关键词分类替代语义分析（微秒级，~50μs vs ~300ms）
+            # learn_from 在后台批量处理大量消息，统计模型靠大数定律，
+            # 个别消息的分类偏差会被平滑，不影响转移概率表质量
+            intents.append(_classify_intent(msg))
 
         # ── 增量更新 n 步转移概率 ──
         n_transitions = self._table.get("n_transitions", {})
-        new_pairs = 0
         for i in range(len(intents) - MARKOV_ORDER):
             # 构建 n 步 key: "intentA|intentB|intentC"
             key = "|".join(intents[i:i + MARKOV_ORDER])
             next_intent = intents[i + MARKOV_ORDER]
             if key not in n_transitions:
                 n_transitions[key] = {}
-                new_pairs += 1
             n_transitions[key][next_intent] = n_transitions[key].get(next_intent, 0) + 1
 
-        # ── 增量更新话题关联 ──
-        affinity = self._table.get("topic_affinity", {})
-        for i in range(len(topic_sets) - 1):
-            for t1 in topic_sets[i]:
-                if not t1:
-                    continue
-                for t2 in topic_sets[i + 1]:
-                    if not t2 or t2 == t1:
-                        continue
-                    if t1 not in affinity:
-                        affinity[t1] = {}
-                    affinity[t1][t2] = affinity[t1].get(t2, 0) + 1
+        # 话题关联由主检索管线维护，learn_from 不再重复计算
+        # （避免在批量消息上调用 Ollama 造成雪崩）
 
         self._table["n_transitions"] = n_transitions
-        self._table["topic_affinity"] = affinity
         self._table["total_sequences"] = max(
             self._table.get("total_sequences", 0), len(msgs)
         )
         self._save()
 
         logger.info(
-            "行为预测器增量学习: %d 条序列, %d 个 n 步模式, %d 个话题关联",
-            len(msgs), len(n_transitions), len(affinity),
+            "行为预测器增量学习: %d 条序列, %d 个 n 步模式",
+            len(msgs), len(n_transitions),
         )
 
     # ── 推理（多步预测）──────────────────────────────────────

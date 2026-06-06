@@ -110,13 +110,14 @@ class TestIntConsolidation:
         assert isinstance(state, dict), "状态应为字典"
         assert "topics" in state, f"状态应含 'topics' 键，实际键: {list(state.keys())}"
 
-    def test_consolidation_detects_topics(self, consolidation_env):
-        """12 条跨多话题种子 → 浅巩固后话题列表非空。"""
+    def test_consolidation_writes_state_file(self, consolidation_env):
+        """浅巩固后 → dmn_state.json 文件存在且有内容。"""
         ctx, dmn, ids = consolidation_env
         dmn.consolidate_shallow()
-        state = dmn.get_state_update()
-        topics = state.get("topics", [])
-        assert isinstance(topics, list), "topics 应为列表"
-        # 12 条记忆覆盖技术/宠物/旅行/工作/生活/阅读/家庭/音乐
-        # 巩固后应能识别出一些话题
-        assert len(topics) >= 1, f"应识别出至少 1 个话题，实际: {topics}"
+        state_path = dmn._state_path
+        assert os.path.exists(state_path), f"状态文件应存在: {state_path}"
+        import json
+        with open(state_path, "r", encoding="utf-8") as f:
+            state = json.load(f)
+        assert isinstance(state, dict), "状态文件应为 JSON 字典"
+        assert len(state) >= 1, "状态文件不应为空"

@@ -155,6 +155,10 @@ def run_chat_retrieval(
     """
     import math
 
+    # 清空请求级 embedding 缓存（线程池线程复用，必须每请求重置）
+    from app.llm.embed import clear_request_cache
+    clear_request_cache()
+
     _cached_q_tags = extract_tags(user_message, topk=5) or []
     _ticks = [("start", time.perf_counter())]
     def _log_step(name):
@@ -216,6 +220,7 @@ def run_chat_retrieval(
             memories = retrieve_all(
                 user_message, query_embedding_for_retrieval, ctx_obj,
                 intent=_intent,
+                cached_tags=_cached_q_tags,
             )
         except Exception as exc:
             logger.warning("全量检索失败: %s", exc)
@@ -341,6 +346,7 @@ def retrieve_all(
     query_embedding: list | None,
     ctx_obj,
     intent: str | None = None,
+    cached_tags: list[str] | None = None,
 ) -> list[dict]:
     """全量检索，6 路独立并行 + 1 路依赖合并后执行。
 
@@ -359,7 +365,8 @@ def retrieve_all(
     SEMANTIC_HARD_CAP = 500
     MIN_SIMILARITY = 0.1 if _BM else 0.3
 
-    _cached_q_tags = extract_tags(user_message, topk=5) or []
+    # 若调用方已提供缓存的 tags，跳过重复计算
+    _cached_q_tags = cached_tags if cached_tags is not None else (extract_tags(user_message, topk=5) or [])
     route = _resolve_route(intent if intent else _classify_intent(user_message))
     sem_n = min(route["semantic"], SEMANTIC_HARD_CAP)
     tag_n = route["tag"]

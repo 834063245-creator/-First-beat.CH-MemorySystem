@@ -270,10 +270,11 @@ def extract_tags(text: str, topk: int = 5) -> list[str]:
     return result[:topk]
 
 
-def classify_intent(text: str) -> str:
+def classify_intent(text: str, embedding: Optional[List[float]] = None) -> str:
     """意图分类 — embedding 原型匹配。
 
     返回: recall | emotional_sharing | conflict | ask_fact | request | meta | casual
+    若提供 embedding 则跳过 local_embed 调用。
     """
     if not text or not text.strip():
         return "casual"
@@ -282,7 +283,7 @@ def classify_intent(text: str) -> str:
     if not protos:
         return "casual"
 
-    vec = local_embed(text)
+    vec = embedding if embedding is not None else local_embed(text)
     if vec is None:
         return "casual"
 
@@ -300,10 +301,11 @@ def classify_intent(text: str) -> str:
     return best_label
 
 
-def analyze_emotion(text: str) -> str:
+def analyze_emotion(text: str, embedding: Optional[List[float]] = None) -> str:
     """情绪分析 — embedding 原型匹配。
 
     返回: intimate | positive | negative | frustrated | neutral
+    若提供 embedding 则跳过 local_embed 调用。
     """
     if not text or not text.strip():
         return "neutral"
@@ -312,7 +314,7 @@ def analyze_emotion(text: str) -> str:
     if not protos:
         return "neutral"
 
-    vec = local_embed(text)
+    vec = embedding if embedding is not None else local_embed(text)
     if vec is None:
         return "neutral"
 
@@ -428,11 +430,14 @@ _ENTITY_PROMPT = (
 )
 
 
-def extract_entities(text: str) -> list[dict]:
+def extract_entities(text: str, timeout: float = 2.0) -> list[dict]:
     """实体抽取 — 调用本地 Ollama qwen2.5:3b。
 
     返回: [{"text": "...", "type": "PERSON|PROJECT|TOOL|ORG"}, ...]
     Ollama 不可用或超时 → 返回 []。
+
+    timeout=2.0s 确保实体抽取不阻塞检索管线。
+    实体匹配是 10 路检索中优先级最低的一路，超时跳过不影响响应质量。
     """
     if not text or not text.strip():
         return []
@@ -450,6 +455,7 @@ def extract_entities(text: str) -> list[dict]:
                 "stream": False,
                 "options": {"temperature": 0, "num_predict": 256},
             },
+            timeout=timeout,
         )
         resp.raise_for_status()
         data = resp.json()

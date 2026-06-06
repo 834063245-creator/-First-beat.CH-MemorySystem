@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+.coverage
 .venv/
 venv/
 dist/
@@ -54,6 +55,7 @@ Thumbs.db
 .codebuddy/
 .codegraph/
 .claude/
+.qoder/
 
 # Reasonix
 .reasonix/

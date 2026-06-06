@@ -71,9 +71,13 @@ def analyze_user_message(user_message: str, chat_history=None) -> UserMessageAna
     _t0 = __import__('time').perf_counter()
     text = user_message.strip()
 
+    # 预先计算一次 embedding，复用于意图分类和情绪分析（省 2 次 Ollama HTTP 往返）
+    from app.llm.embed import local_embed
+    _text_emb = local_embed(text)
+
     # 语义层一步到位：意图、情绪、紧急度、关键词
-    intent = _sem_classify_intent(text)
-    emotion = _sem_analyze_emotion(text)
+    intent = _sem_classify_intent(text, embedding=_text_emb)
+    emotion = _sem_analyze_emotion(text, embedding=_text_emb)
     urgency = _sem_classify_urgency(text)
     topics = _sem_extract_tags(text, topk=5)
     emotion_intensity = _compute_emotion_intensity(text)
