@@ -19,10 +19,11 @@ Read in order:
 
 | Priority | Task | Est. time | Requires |
 |:--------:|------|:---------:|---------|
-| 🔴 P0 | **Add GitHub Actions CI** — Create `.github/workflows/test.yml` to auto-run tests on push. Needs to cover both `tests/` and `E2E/` (E2E depends on Ollama + bge-m3, may need pre-install on runner) | 1 hour | GitHub Actions + Python |
-| 🟡 P1 | **Split ConsolidationEngine** — `app/background/consolidation.py` does too much. Suggest extracting `TopicNoteManager`, `ConflictDetector`, `ArchivalManager` | 2-4 hours | Python · refactoring |
+| 🔴 P0 | **Add GitHub Actions CI** — Create `.github/workflows/test.yml` to auto-run tests on push. Needs to cover `tests/` (56 files, 708 cases) and `E2E/` (5 files, 89 nodes). E2E depends on Ollama + bge-m3, may need pre-install on runner | 1 hour | GitHub Actions + Python |
+| 🟡 P1 | **Split ConsolidationEngine** — `app/background/consolidation.py` (1,076 lines) does too much. Suggest extracting `TopicNoteManager`, `ConflictDetector`, `ArchivalManager` | 2-4 hours | Python · refactoring |
 | 🟡 P1 | **O(n²) → incremental** — `_check_conflicts` and `_assess_archival` still use `list_all()` full scans. Needs pagination or incremental processing when memory > 5,000 | 2 hours | Python · algorithms |
 | 🟢 P2 | **Prometheus metrics** — `app/core/bottleneck.py` tracks full-pipeline latency. Expose as metrics | 1 hour | Prometheus · FastAPI |
+| 🟢 P2 | **Refactor tool dispatch** — `app/tools/dispatch.py` (812 lines) has tight coupling in registration/routing/execution. Consider splitting into registry + router + executor | 2-3 hours | Python · refactoring |
 | 🟢 P2 | **Product builds** — Discord Bot / Telegram Bot / desktop companion. First Beat is infrastructure — build anything you want on top | open-ended | Whatever you want |
 
 ### Not sure where to start?
@@ -89,10 +90,18 @@ app/
 ├── memory/
 │   ├── chroma.py        ← ChromaDB wrapper. User + AI dual collections.
 │   ├── working.py       ← Working memory digest. Incremental conversation context.
-│   └── inverted.py      ← Inverted index. Word/tag → memory ID.
+│   ├── inverted.py      ← Inverted index. Word/tag → memory ID.
+│   ├── cooccur.py       ← Co-occurrence matrix. Entity/tag association strength.
+│   ├── temporal.py      ← Temporal pattern index.
+│   ├── tag_index.py     ← Multi-dimensional tag index.
+│   ├── tree.py          ← Topic tree structure.
+│   ├── entity_pair.py   ← Entity pair relationship graph.
+│   └── affinity.py      ← Topic affinity computation.
 ├── retrieval/
 │   ├── pipeline.py      ← 10-path parallel retrieval + weaving. Most complex file.
-│   └── scoring.py       ← Ranking formula + v2.1 soft degradation.
+│   ├── scoring.py       ← Ranking formula + v2.1 soft degradation.
+│   ├── bm25_fulltext.py ← BM25 full-text retrieval.
+│   └── reranker.py      ← Re-ranking module.
 ├── background/
 │   ├── consolidation.py ← Consolidation engine (⚠️ needs splitting — see tech debt)
 │   ├── impulse.py       ← Impulse system (5 sources + consumer + fatigue suppression)
@@ -100,7 +109,18 @@ app/
 │   └── lifecycle.py     ← Thread lifecycle (crash restart + rate limiting)
 ├── analysis/
 │   ├── emotion.py       ← Russell circumplex model
-│   └── pattern_discovery.py ← Pattern discovery (6h, zero-LLM, 5 modes)
+│   ├── entity.py        ← Entity extraction & analysis
+│   ├── pattern_discovery.py ← Pattern discovery (6h, zero-LLM, 5 modes)
+│   ├── predictor.py     ← Behavior prediction (Markov chain)
+│   └── symmetry.py      ← Personality symmetry analysis
+├── personality/
+│   ├── behavior.py      ← Behavior pattern management
+│   └── store.py         ← Dual personality storage (user + AI independent evolution)
+├── tools/
+│   ├── dispatch.py      ← Tool dispatch system (LLM tool call routing/registration/execution)
+│   ├── search.py        ← Search tool
+│   ├── workspace.py     ← File/workspace operations
+│   └── atomic.py        ← Atomic write tool
 ├── llm/
 │   ├── deepseek.py      ← Main LLM client (OpenAI-compatible)
 │   ├── embed.py         ← Local bge-m3 embedding
@@ -108,12 +128,12 @@ app/
 └── api/
     └── chat.py          ← Chat endpoint + benchmark injection + admin
 
-tests/                   # Unit + component tests
-E2E/                     # End-to-end full-chain regression (89 nodes, real env)
+tests/                   # Unit + component tests (56 files, 708 cases, 53% line coverage, 98% module coverage)
+E2E/                     # End-to-end full-chain regression (5 files, 89 nodes, 5 links)
 scripts/                 # Audit suite + utility scripts
 ```
 
-**Suggested reading order:** `state.py` → `circuit.py` → `pipeline.py` → `consolidation.py` → `impulse.py`
+**Suggested reading order:** `state.py` → `circuit.py` → `pipeline.py` → `consolidation.py` → `impulse.py` → `dispatch.py`
 
 ---
 
