@@ -6,11 +6,11 @@ class TestHandleToolCallExists:
     """验证 _handle_tool_call 函数存在且可调用。"""
 
     def test_function_exists(self):
-        from main import _handle_tool_call
+        from app.api.chat import _handle_tool_call
         assert callable(_handle_tool_call)
 
     def test_is_async(self):
-        from main import _handle_tool_call
+        from app.api.chat import _handle_tool_call
         import asyncio
         assert asyncio.iscoroutinefunction(_handle_tool_call)
 
@@ -21,7 +21,7 @@ class TestHandleToolCallContract:
     @pytest.mark.asyncio
     async def test_reasoning_content_preserved(self):
         """传入 reasoning_content 时应出现在 assistant 消息中。"""
-        from main import _handle_tool_call
+        from app.api.chat import _handle_tool_call
         tc = {
             "id": "call_test_003",
             "type": "function",
@@ -35,7 +35,7 @@ class TestHandleToolCallContract:
     @pytest.mark.asyncio
     async def test_unknown_tool_no_crash(self):
         """未知工具名不崩溃，静默跳过。"""
-        from main import _handle_tool_call
+        from app.api.chat import _handle_tool_call
         tc = {
             "id": "call_test_004",
             "type": "function",
@@ -53,7 +53,7 @@ class TestHandleToolCallToolNames:
 
     def test_all_registered_tools_have_handler(self):
         """检查 V3 注册的工具名列表和 _handle_tool_call 中的分支是否一致。"""
-        from main import (
+        from app.core.tools import (
             SEARCH_WEB_TOOL, READ_FILE_TOOL, LIST_FILES_TOOL, GREP_FILES_TOOL,
         )
         registered_names = {
@@ -63,7 +63,7 @@ class TestHandleToolCallToolNames:
             GREP_FILES_TOOL["function"]["name"],
         }
         import inspect
-        from main import _handle_tool_call
+        from app.api.chat import _handle_tool_call
         source = inspect.getsource(_handle_tool_call)
         # 检查每个注册的工具名是否在函数体中被引用
         for name in registered_names:

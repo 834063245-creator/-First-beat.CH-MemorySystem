@@ -96,7 +96,7 @@ class TestCoOccurrenceTracker:
 
     @pytest.fixture
     def tracker(self):
-        from retrieval import CoOccurrenceTracker
+        from app.memory.cooccur import CoOccurrenceTracker
         tmpf = tempfile.mktemp(suffix=".json")
         ct = CoOccurrenceTracker(file_path=tmpf)
         yield ct

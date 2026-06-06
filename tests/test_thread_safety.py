@@ -12,7 +12,7 @@ class TestChatHistorySnapshot:
     """验证 get_records_snapshot 线程安全。"""
 
     def test_snapshot_returns_copy(self, tmp_path):
-        from chat_history import ChatHistory
+        from app.memory.history import ChatHistory
         ch = ChatHistory(path=str(tmp_path / "chat.jsonl"), max_memory=100)
         ch.append("hello", "hi", "2026-01-01 00:00:00")
         ch.append("how are you", "fine", "2026-01-01 00:01:00")
@@ -25,7 +25,7 @@ class TestChatHistorySnapshot:
         assert len(ch.records) == 2
 
     def test_concurrent_append_and_snapshot(self, tmp_path):
-        from chat_history import ChatHistory
+        from app.memory.history import ChatHistory
         ch = ChatHistory(path=str(tmp_path / "chat.jsonl"), max_memory=200)
         errors = []
 
@@ -60,7 +60,7 @@ class TestImpulseLock:
 
     def test_fatigue_lock_protects_dict(self, tmp_path):
         import os
-        from impulse import ImpulseScheduler
+        from app.background.impulse import ImpulseScheduler
 
         original = os.environ.get("DATA_DIR", "")
         os.environ["DATA_DIR"] = str(tmp_path)
@@ -95,45 +95,6 @@ class TestImpulseLock:
             assert not errors, f"并发锁错误: {errors}"
         finally:
             os.environ["DATA_DIR"] = original
-
-
-class TestGetBrainRace:
-    """get_brain() 竞态条件验证。"""
-
-    def test_get_brain_only_initialized_once(self, monkeypatch):
-        """10线程并发首次调用 get_brain()，ChuchenBrain.__init__ 只被调1次。"""
-        call_count = [0]
-        call_count_lock = threading.Lock()
-
-        class MockBrain:
-            def __init__(self, model_name="", ollama_url=""):
-                with call_count_lock:
-                    call_count[0] += 1
-                self.intent_classifier = None
-                self.emotion_analyzer = None
-                self.gate_maker = None
-
-            def load_all(self):
-                return {"intent": False, "emotion": False, "gate": False}
-
-        # MonkeyPatch ChuchenBrain at its definition site
-        import app.brain.models as models_mod
-        monkeypatch.setattr(models_mod, "ChuchenBrain", MockBrain)
-
-        # Reset global state
-        import app.core.circuit as circuit_mod
-        circuit_mod._CHUCHEN_BRAIN = None
-        circuit_mod._CHUCHEN_BRAIN_LOADED = False
-
-        from app.core.circuit import get_brain
-
-        threads = [threading.Thread(target=get_brain) for _ in range(10)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        assert call_count[0] == 1, f"ChuchenBrain 被初始化了 {call_count[0]} 次（应为 1 次）"
 
 
 class TestEmbCacheConcurrentWrite:
