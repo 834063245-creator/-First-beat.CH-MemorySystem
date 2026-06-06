@@ -218,7 +218,7 @@ IDLE_LEVEL3_HOURS = 12         # 触发 Level 3 的空闲阈值（小时）
 # ============================================================
 CONSOLIDATION_SHALLOW_INTERVAL = 14400
 CONSOLIDATION_DEEP_INTERVAL = 86400
-ARCHIVAL_THRESHOLD_DAYS = 90
+ARCHIVAL_THRESHOLD_DAYS = 30
 
 # ============================================================
 # 自主触发冲动系统

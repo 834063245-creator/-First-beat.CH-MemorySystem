@@ -594,10 +594,32 @@ def retrieve_all(
         except Exception as exc:
             logger.debug("retrieve_all BM25 全文检索失败: %s", exc)
 
-    # ── 第一阶段：8 路并行（+ BM25 全文）──
+    def _path_ai_memory():
+        """⑩ AI 表达记忆检索 — 语义相似的 AI 历史表达。"""
+        if not (query_embedding and hasattr(ctx_obj, 'ai_chroma_service')):
+            return
+        try:
+            ai_col = ctx_obj.ai_chroma_service._collection
+            ai_results = ai_col.query(
+                query_embeddings=[query_embedding], n_results=20 if _BM else 5,
+                include=["documents", "metadatas", "distances"])
+            local = []
+            for i, mid in enumerate(ai_results.get("ids", [[]])[0]):
+                dist = ai_results["distances"][0][i] if ai_results.get("distances") else 1.0
+                if 1.0 - dist < MIN_SIMILARITY:
+                    continue
+                meta = dict(ai_results["metadatas"][0][i]) if ai_results.get("metadatas") else {}
+                doc = ai_results["documents"][0][i] if ai_results.get("documents") else ""
+                local.append(_make_mem(mid, meta, doc, dist, "ai_expression"))
+            if local:
+                _merge(local)
+        except Exception as exc:
+            logger.debug("retrieve_all AI表达检索失败: %s", exc)
+
+    # ── 第一阶段：9 路并行（+ BM25 全文 + AI 表达）──
     paths = [_path_semantic, _path_keyword, _path_tag,
              _path_entity, _path_temporal, _path_topic, _path_attention,
-             _path_bm25_fulltext]
+             _path_bm25_fulltext, _path_ai_memory]
     with ThreadPoolExecutor(max_workers=min(len(paths), 8)) as executor:
         futures = {executor.submit(p): p for p in paths}
         for f in as_completed(futures):

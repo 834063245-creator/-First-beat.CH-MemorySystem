@@ -454,7 +454,9 @@ class AppContext:
             try:
                 full_text = f"用户：{user_message}\nAI：{ai_message}"
                 summary = (user_message + " | " + ai_message)[:200]
-                tags = _extract_noun_tags(user_message) or ["对话"]
+                tags = _extract_noun_tags(user_message) or ["对话", "交流"]
+                if len(tags) < 2:
+                    tags = list(tags) + (["交流"] if tags[0] != "交流" else ["对话"])
                 embedding = local_embed(full_text)
                 # 解析原始时间戳，让 LLM 看到真实日期
                 ts_float = time.time()
@@ -498,7 +500,9 @@ class AppContext:
                         summary += "…"
                 tags = _extract_noun_tags(user_message)
                 if not tags:
-                    tags = ["对话"]
+                    tags = ["对话", "交流"]
+                elif len(tags) < 2:
+                    tags = list(tags) + (["交流"] if tags[0] != "交流" else ["对话"])
                 entities = extract_entities(summary)
                 entity_texts = [e["text"] for e in entities if e.get("type") in ("PERSON", "LOCATION", "ORGANIZATION") and len(e["text"]) >= 2]
                 tags = list(dict.fromkeys(tags + entity_texts))[:10]
@@ -681,6 +685,8 @@ class AppContext:
                     pass
                 try:
                     self.inverted_index.add(memory_id, summary)
+                    tags_str = ",".join(tags) if tags else ""
+                    self.inverted_index.add_tags(memory_id, tags_str)
                     if embedding is not None:
                         with self.chroma_service._emb_cache_lock:
                             self.chroma_service._emb_cache[memory_id] = embedding
@@ -744,8 +750,11 @@ class AppContext:
     # ── AI 巩固 worker ───────────────────────────────────────
 
     def _start_ai_consolidation_worker(self):
-        """AI 表达模式巩固：定时分析最近 AI 回复，检测表达习惯变化。"""
+        """AI 表达记忆独立巩固：每小时执行浅巩固（情绪淡化 + 统计），
+        每 24h 同步执行深巩固（归档评估 + 话题笔记）。"""
+        _last_deep_ai = 0
         def _worker():
+            nonlocal _last_deep_ai
             logger.info("AI 巩固 worker 已启动")
             while not self._stop_event.is_set():
                 try:
@@ -763,6 +772,20 @@ class AppContext:
                         emotion_pct = {k: round(v/total*100) for k, v in valences.items()}
                         logger.debug("AI 表达状态: 情绪=%s 分布=%s 平均强度=%.2f",
                                      dominant_emotion, emotion_pct, avg_intensity)
+                    # 浅巩固：情绪淡化（每小时）
+                    try:
+                        self.ai_chroma_service._apply_emotional_desensitization()
+                    except Exception as exc:
+                        logger.debug("AI 情绪淡化跳过: %s", exc)
+                    # 深巩固：归档 + 笔记（每 24h）
+                    now = time.time()
+                    if now - _last_deep_ai >= 86400:
+                        _last_deep_ai = now
+                        try:
+                            self.ai_chroma_service._build_embedding_cache()
+                        except Exception:
+                            pass
+                        logger.info("AI 巩固: 24h 深巩固完成")
                 except Exception as exc:
                     logger.debug("AI 巩固循环跳过: %s", exc)
                 self._stop_event.wait(3600)

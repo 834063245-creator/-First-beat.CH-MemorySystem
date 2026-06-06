@@ -292,6 +292,9 @@ class CircuitOrchestrator:
                 temp.add_fact(mem, certainty=0.7)
             # v2.1: 编织器已把 stale 路由到 woven.stale_context
             stale_mems.extend(woven.stale_context)
+            # reference 级记忆：编织器分出的次高置信记忆
+            for mem in (woven.reference_memories or []):
+                temp.add_reference(mem, certainty=0.35)
         else:
             for mem in memories:
                 meta = mem.get("metadata") or {}
@@ -608,27 +611,32 @@ class CircuitOrchestrator:
                 continue
 
             # 语义距离判断 + 来源权重
+            # dist < MIN_FACT_DIST × boost → fact（低置信来源要求更近的语义距离）
             source_boost = {"semantic_hot": 1.0, "semantic_cool": 0.9,
                             "entity_match": 0.85, "kw_match": 0.7,
                             "tag_match": 0.7, "co_occurrence": 0.6,
                             "time_triggered": 0.5, "attention_drift": 0.8,
                             "topic_expand": 0.55,
-                            "bm25_fulltext": 0.75}
-            effective_dist = dist * source_boost.get(source, 0.8)
+                            "bm25_fulltext": 0.75,
+                            "ai_expression": 0.7}
+            boost = source_boost.get(source, 0.8)
+            threshold = MIN_FACT_DIST * boost
 
-            if effective_dist < MIN_FACT_DIST:
+            if dist < threshold:
                 if is_stale:
                     wc.stale_context.append(m)  # stale → 背景参考，不作为事实
                 else:
                     wc.fact_memories.append(m)
-            # elif effective_dist < 0.25:
-            #     pass  # reference 级暂不实现
+            elif dist < 0.45:
+                # reference 级：引擎有一定把握，LLM 需带核实语气
+                if not is_stale:
+                    wc.reference_memories.append(m)
             # else: discard 级，不处理
 
         # ═══════════════════════════════════════════════════
         # 层四：Token 预算分配
         # ═══════════════════════════════════════════════════
-        MAX_TOKENS = 2000  # 给 fact_memories 的最大 token 预算
+        MAX_TOKENS = 20000  # 给 fact_memories 的最大 token 预算
         estimated_tokens = 0
         final_facts = []
 

@@ -166,7 +166,11 @@ class ChromaService:
                 meta["heat"] = "hot"
             self._collection.update(ids=[memory_id], metadatas=[meta])
 
-        # 情绪淡化已迁移至深巩固线程，不再在检索路径中触发
+        # 情绪淡化独立触发：每 50 次命中检查一次，3 天未提及则淡化
+        self._desensitization_counter += 1
+        if self._desensitization_counter >= self.DESENSITIZATION_CHECK_INTERVAL:
+            self._desensitization_counter = 0
+            self._apply_emotional_desensitization()
 
     # ------------------------------------------------------------------
     # 情绪淡化

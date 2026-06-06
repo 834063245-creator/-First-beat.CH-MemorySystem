@@ -125,6 +125,18 @@ class InvertedIndex:
                 result.update(ids)
             return result
 
+    def add_tags(self, memory_id: str, tags_str: str):
+        """增量更新标签索引：新记忆入库后调用。"""
+        if not tags_str:
+            return
+        with self._lock:
+            for tag in tags_str.split(","):
+                tag = tag.strip()
+                if len(tag) >= 2:
+                    if tag not in self._tag_index:
+                        self._tag_index[tag] = set()
+                    self._tag_index[tag].add(memory_id)
+
     def remove(self, memory_id: str):
         """删除记忆时同步清理。"""
         with self._lock:

@@ -537,6 +537,13 @@ class ConsolidationEngine:
                                 merged += 1
                                 seen_dupes.add(mid)
                                 seen_dupes.add(nid)
+                                # 标记旧记忆被取代（较新的优先保留）
+                                mid_ts = (next((mm.get("metadata") for mm in batch if mm["id"] == mid), None) or {}).get("timestamp", 0)
+                                nj_ts = nj_meta.get("timestamp", 0)
+                                if mid_ts >= nj_ts:
+                                    self._chroma.supersede_memory(nid, mid, "语义重复（浅巩固检测）")
+                                else:
+                                    self._chroma.supersede_memory(mid, nid, "语义重复（浅巩固检测）")
                                 break  # 每条记忆最多标记一次
             except Exception as exc:
                 logger.debug("语义重复检测异常（回退跳过）: %s", exc)
