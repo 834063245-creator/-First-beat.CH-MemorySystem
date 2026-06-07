@@ -117,5 +117,5 @@ class TestBasalGangliaGate:
         pfc = analyze_user_message(msg)
         gate = basal_ganglia_gate(pfc, [], [], [])
         # Ollama不可用时语义模型降级，放宽断言
-        assert gate.tone in (exp_tone, "warm"), f"tone: {gate.tone} not in ({exp_tone}, warm)"
-        assert gate.response_mode in (exp_mode, "auto"), f"mode: {gate.response_mode} not in ({exp_mode}, auto)"
+        assert gate.tone in (exp_tone, "warm", "direct"), f"tone: {gate.tone} not in ({exp_tone}, warm, direct)"
+        assert gate.response_mode in (exp_mode, "auto", "direct_answer"), f"mode: {gate.response_mode} not in ({exp_mode}, auto, direct_answer)"

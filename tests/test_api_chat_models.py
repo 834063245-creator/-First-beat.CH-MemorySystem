@@ -138,3 +138,90 @@ class TestHandleToolCall:
         with patch("app.api.chat.search_web", new_callable=AsyncMock, return_value="搜索结果"):
             await _handle_tool_call(tc, extra_msgs, mock_ctx)
         assert "搜索结果" in extra_msgs[1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_edit_file_dispatched(self):
+        from app.api.chat import _handle_tool_call
+        mock_ctx = MagicMock()
+        extra_msgs = []
+        tc = {
+            "id": "call_edit",
+            "type": "function",
+            "function": {"name": "edit_file", "arguments": '{"path": "test.py", "old_str": "hello", "new_str": "world"}'}
+        }
+        with patch("app.api.chat.edit_file", return_value="已编辑: test.py"):
+            await _handle_tool_call(tc, extra_msgs, mock_ctx)
+        assert len(extra_msgs) == 2
+        assert extra_msgs[1]["role"] == "tool"
+
+    @pytest.mark.asyncio
+    async def test_edit_file_exception(self):
+        from app.api.chat import _handle_tool_call
+        mock_ctx = MagicMock()
+        extra_msgs = []
+        tc = {
+            "id": "call_edit_err",
+            "type": "function",
+            "function": {"name": "edit_file", "arguments": '{"path": "x", "old_str": "a", "new_str": "b"}'}
+        }
+        with patch("app.api.chat.edit_file", side_effect=Exception("编辑失败")):
+            with pytest.raises(Exception, match="编辑失败"):
+                await _handle_tool_call(tc, extra_msgs, mock_ctx)
+
+    @pytest.mark.asyncio
+    async def test_bash_dispatched(self):
+        from app.api.chat import _handle_tool_call
+        mock_ctx = MagicMock()
+        extra_msgs = []
+        tc = {
+            "id": "call_bash",
+            "type": "function",
+            "function": {"name": "bash", "arguments": '{"command": "echo hello"}'}
+        }
+        with patch("subprocess.run", return_value=MagicMock(stdout="hello\n", stderr="")):
+            await _handle_tool_call(tc, extra_msgs, mock_ctx)
+        assert len(extra_msgs) == 2
+
+    @pytest.mark.asyncio
+    async def test_bash_timeout(self):
+        from app.api.chat import _handle_tool_call
+        import subprocess
+        mock_ctx = MagicMock()
+        extra_msgs = []
+        tc = {
+            "id": "call_bash_timeout",
+            "type": "function",
+            "function": {"name": "bash", "arguments": '{"command": "sleep 999"}'}
+        }
+        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("sleep", 30)):
+            await _handle_tool_call(tc, extra_msgs, mock_ctx)
+        assert len(extra_msgs) == 2
+        assert "超时" in extra_msgs[1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_bash_exception(self):
+        from app.api.chat import _handle_tool_call
+        mock_ctx = MagicMock()
+        extra_msgs = []
+        tc = {
+            "id": "call_bash_err",
+            "type": "function",
+            "function": {"name": "bash", "arguments": '{"command": "rm -rf /"}'}
+        }
+        with patch("subprocess.run", side_effect=Exception("禁止执行")):
+            await _handle_tool_call(tc, extra_msgs, mock_ctx)
+        assert any("禁止执行" in m.get("content", "") for m in extra_msgs if m.get("role") == "tool")
+
+    @pytest.mark.asyncio
+    async def test_unknown_tool(self):
+        from app.api.chat import _handle_tool_call
+        mock_ctx = MagicMock()
+        extra_msgs = []
+        tc = {
+            "id": "call_unknown",
+            "type": "function",
+            "function": {"name": "unknown_tool", "arguments": '{}'}
+        }
+        await _handle_tool_call(tc, extra_msgs, mock_ctx)
+        # unknown tool silently skipped, no extra messages
+        assert len(extra_msgs) == 0

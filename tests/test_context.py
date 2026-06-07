@@ -265,6 +265,116 @@ class TestRecordAiCoOccurrence:
 # 线程安全
 # ═══════════════════════════════════════════════════════════════
 
+# ═══════════════════════════════════════════════════════════════
+# _store_conversation (Benchmark 路径) — 使用 isolated_env
+# ═══════════════════════════════════════════════════════════════
+
+class TestStoreConversation:
+    """测试 _store_conversation 入库管线（Benchmark 路径）。"""
+
+    def test_store_and_retrieve_from_chromadb(self, isolated_env):
+        """写入后 ChromaDB 可见。"""
+        ctx = isolated_env
+        ctx._store_conversation("你好", "你好！有什么可以帮你的？", "2026-06-15 10:00:00")
+        import time; time.sleep(0.3)
+        all_mems = ctx.chroma_service.list_all()
+        assert len(all_mems) >= 1, "写入后应该有至少一条记忆"
+
+    def test_stored_memory_has_summary(self, isolated_env):
+        """写入的记忆包含摘要。"""
+        ctx = isolated_env
+        ctx._store_conversation("我喜欢吃火锅", "火锅确实很美味！", "2026-06-15 10:00:00")
+        import time; time.sleep(0.3)
+        all_mems = ctx.chroma_service.list_all()
+        assert len(all_mems) >= 1
+        meta = all_mems[0].get("metadata", {})
+        assert "summary" in meta or all_mems[0].get("document"), "应有摘要或文档内容"
+
+    def test_stored_memory_has_tags(self, isolated_env):
+        """写入的记忆包含标签。"""
+        ctx = isolated_env
+        ctx._store_conversation("今天学习了Python", "Python是一门很好的语言", "2026-06-15 10:00:00")
+        import time; time.sleep(0.3)
+        all_mems = ctx.chroma_service.list_all()
+        assert len(all_mems) >= 1
+        meta = all_mems[0].get("metadata", {})
+        tags = meta.get("tags", "")
+        assert len(tags) > 0, "应有标签"
+
+    def test_multiple_stores(self, isolated_env):
+        """多次写入产生多条记忆。"""
+        ctx = isolated_env
+        for i in range(3):
+            ctx._store_conversation(f"消息{i}", f"回复{i}", f"2026-06-15 1{i}:00:00")
+        import time; time.sleep(0.5)
+        all_mems = ctx.chroma_service.list_all()
+        assert len(all_mems) >= 3
+
+    def test_store_with_special_characters(self, isolated_env):
+        """写入包含特殊字符的消息。"""
+        ctx = isolated_env
+        ctx._store_conversation("emoji测试 😊🎉", "回复有emoji ❤️", "2026-06-15 10:00:00")
+        import time; time.sleep(0.3)
+        all_mems = ctx.chroma_service.list_all()
+        assert len(all_mems) >= 1
+
+    def test_store_updates_inverted_index(self, isolated_env):
+        """写入后倒排索引更新。"""
+        ctx = isolated_env
+        ctx._store_conversation("Docker容器编排", "Kubernetes是主流方案", "2026-06-15 10:00:00")
+        import time; time.sleep(0.3)
+        # 倒排索引应有条目
+        assert hasattr(ctx, 'inverted_index')
+        assert ctx.inverted_index._tag_index is not None
+
+    def test_store_empty_user_message(self, isolated_env):
+        """空用户消息也能入库。"""
+        ctx = isolated_env
+        ctx._store_conversation("", "系统回复", "2026-06-15 10:00:00")
+        import time; time.sleep(0.3)
+        all_mems = ctx.chroma_service.list_all()
+        assert len(all_mems) >= 1
+
+
+# ═══════════════════════════════════════════════════════════════
+# _start_queue_worker 队列消费
+# ═══════════════════════════════════════════════════════════════
+
+class TestQueueWorker:
+    """测试队列 worker 消费行为。"""
+
+    def test_worker_consumes_from_file(self, isolated_env):
+        """worker 启动后从文件恢复队列任务。"""
+        ctx = isolated_env
+        import json
+        # 预写入队列文件
+        task = {"user_message": "文件恢复测试", "ai_message": "回复", "timestamp": "2026-06-15 10:00:00"}
+        with open(ctx._store_queue_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(task, ensure_ascii=False) + "\n")
+        # 让 worker 有时间消费
+        import time; time.sleep(1.5)
+        all_mems = ctx.chroma_service.list_all()
+        assert len(all_mems) >= 1, "worker应从文件恢复并入库"
+
+    def test_worker_consumes_from_memory_queue(self, isolated_env):
+        """worker 从内存队列消费。"""
+        ctx = isolated_env
+        ctx._enqueue_store_task("内存队列测试", "AI回复", "2026-06-15 10:00:00")
+        import time; time.sleep(1.5)
+        all_mems = ctx.chroma_service.list_all()
+        assert len(all_mems) >= 1
+
+    def test_queue_file_persistence(self, isolated_env):
+        """入队后队列文件存在且可读。"""
+        ctx = isolated_env
+        ctx._enqueue_store_task("持久化测试", "回复", "2026-06-15 10:00:00")
+        import os
+        assert os.path.exists(ctx._store_queue_path)
+        with open(ctx._store_queue_path, encoding="utf-8") as f:
+            content = f.read()
+            assert "持久化测试" in content
+
+
 class TestThreadSafety:
     def test_concurrent_enqueue(self, ctx):
         errors = []

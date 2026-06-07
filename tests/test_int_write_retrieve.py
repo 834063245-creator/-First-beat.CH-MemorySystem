@@ -11,6 +11,8 @@ import time
 import pytest
 from unittest.mock import patch
 
+pytestmark = pytest.mark.real_embed  # 需要真实 Ollama embedding
+
 
 # ═══════════════════════════════════════════════════════════════
 # Mock 桩

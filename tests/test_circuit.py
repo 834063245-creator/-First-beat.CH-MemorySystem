@@ -3,10 +3,12 @@ import sys
 sys.path.insert(0, ".")
 
 import pytest
+from unittest.mock import MagicMock, patch
 
 
 class TestAnalyzeUserMessage:
     """回路①：用户消息分析测试。"""
+    pytestmark = pytest.mark.real_embed  # 需要真实 Ollama embedding 做语义分类
 
     def test_emotional_sharing_intimate(self):
         from app.core.circuit import analyze_user_message
@@ -97,6 +99,7 @@ class TestAnalyzeUserMessage:
 
 class TestBasalGangliaGate:
     """回路④：响应门控测试。"""
+    pytestmark = pytest.mark.real_embed
 
     def test_intimate_emotional_sharing(self):
         from app.core.circuit import analyze_user_message, basal_ganglia_gate
@@ -215,4 +218,108 @@ class TestUtteranceSpec:
         assert len(spec.reference_memories) == 1
         assert spec.reference_memories[0].memory_id == "ref1"
         assert spec.reference_memories[0].role == "reference"
+
+
+# ═══════════════════════════════════════════════════════════════
+# weave_context 引擎编织
+# ═══════════════════════════════════════════════════════════════
+
+class TestWeaveContext:
+    def test_empty_candidates(self):
+        from app.core.circuit import CircuitOrchestrator
+        orch = CircuitOrchestrator(
+            MagicMock(), MagicMock(), MagicMock(),
+            MagicMock(), MagicMock(), MagicMock(),
+        )
+        result = orch.weave_context([], MagicMock())
+        assert result.total_candidates == 0
+        assert result.should_speak is False
+
+    @patch("app.config.settings.BENCHMARK_MODE", True)
+    def test_benchmark_mode_all_candidates_fact(self):
+        from app.core.circuit import CircuitOrchestrator
+        orch = CircuitOrchestrator(
+            MagicMock(), MagicMock(), MagicMock(),
+            MagicMock(), MagicMock(), MagicMock(),
+        )
+        candidates = [
+            {"id": "1", "document": "test doc", "metadata": {"summary": "summary1", "tags": "test"}},
+            {"id": "2", "document": "test doc 2", "metadata": {"summary": "summary2", "tags": "test"}},
+        ]
+        result = orch.weave_context(candidates, MagicMock())
+        assert result.should_speak is True
+        assert len(result.fact_memories) == 2
+
+    @patch("app.config.settings.BENCHMARK_MODE", False)
+    def test_with_candidates_and_tags(self):
+        from app.core.circuit import CircuitOrchestrator
+        orch = CircuitOrchestrator(
+            MagicMock(), MagicMock(), MagicMock(),
+            MagicMock(), MagicMock(), MagicMock(),
+        )
+        cog = MagicMock()
+        cog.intent = "casual"
+        candidates = [
+            {"id": "1", "document": "doc1", "metadata": {"summary": "s1", "tags": "Python,编程", "timestamp": 1000000}},
+        ]
+        result = orch.weave_context(candidates, cog)
+        assert result.total_candidates == 1
+
+
+# ═══════════════════════════════════════════════════════════════
+# CircuitOrchestrator.process
+# ═══════════════════════════════════════════════════════════════
+
+class TestCircuitOrchestratorProcess:
+    @patch("app.config.settings.BENCHMARK_MODE", True)
+    def test_process_with_empty_memories(self):
+        from app.core.circuit import CircuitOrchestrator
+        from unittest.mock import MagicMock
+        orch = CircuitOrchestrator(
+            MagicMock(), MagicMock(), MagicMock(),
+            MagicMock(), MagicMock(), MagicMock(),
+        )
+        result = orch.process(
+            "你好", [0.1] * 1024, MagicMock(),
+            timeline_recent=[], session_context="",
+            personalities=[], memories=[],
+        )
+        assert result is not None
+        assert hasattr(result, 'user')
+
+    @patch("app.config.settings.BENCHMARK_MODE", True)
+    def test_process_with_memories(self):
+        from app.core.circuit import CircuitOrchestrator
+        from unittest.mock import MagicMock
+        orch = CircuitOrchestrator(
+            MagicMock(), MagicMock(), MagicMock(),
+            MagicMock(), MagicMock(), MagicMock(),
+        )
+        memories = [
+            {"id": "1", "document": "关于Python的讨论", "metadata": {"tags": "Python", "summary": "Python学习"}}
+        ]
+        result = orch.process(
+            "Python学习", [0.1] * 1024, MagicMock(),
+            timeline_recent=[], session_context="",
+            personalities=[], memories=memories,
+        )
+        assert result is not None
+
+    @patch("app.config.settings.BENCHMARK_MODE", True)
+    def test_process_with_timeline(self):
+        from app.core.circuit import CircuitOrchestrator
+        from unittest.mock import MagicMock
+        orch = CircuitOrchestrator(
+            MagicMock(), MagicMock(), MagicMock(),
+            MagicMock(), MagicMock(), MagicMock(),
+        )
+        timeline = [
+            {"user_message": "你好", "llm_reply": "你好！", "timestamp": "2026-06-01"}
+        ]
+        result = orch.process(
+            "继续", [0.1] * 1024, MagicMock(),
+            timeline_recent=timeline, session_context="之前聊过天",
+            personalities=[], memories=[],
+        )
+        assert result is not None
 

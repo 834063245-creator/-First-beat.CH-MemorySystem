@@ -14,8 +14,10 @@ import shutil
 import tempfile
 import threading
 from datetime import datetime
+from unittest.mock import patch, AsyncMock
 
 import pytest
+import httpx
 
 # 项目根目录（tests/ 的上级目录）
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -23,6 +25,86 @@ _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 将项目根目录加入路径
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 全局 autouse fixture — mock Ollama embedding，避免测试卡住
+# ═══════════════════════════════════════════════════════════════════
+
+_DUMMY_EMB = [0.1] * 1024  # 确定性 dummy 向量
+
+
+def _text_dependent_emb(text: str) -> list[float]:
+    """根据文本内容生成确定性但不同的 embedding。
+
+    避免所有文本返回同一向量导致语义分类始终选第一个原型。
+    """
+    import hashlib
+    h = hashlib.sha256(text.encode()).digest()
+    # 用 hash 的前 4 字节决定向量的第 0 维偏移（范围 -0.05~+0.05）
+    val = int.from_bytes(h[:4], 'big') / (2**32) * 0.1 - 0.05
+    emb = [0.1] * 1024
+    emb[0] = 0.1 + val
+    return emb
+
+
+def _text_dependent_emb_batch(texts: list[str]) -> list[list[float]]:
+    return [_text_dependent_emb(t) for t in texts]
+
+
+def _skip_ollama_mock(item) -> bool:
+    """标记了 @pytest.mark.real_embed 的测试跳过 autouse mock。"""
+    return bool(item.get_closest_marker("real_embed"))
+
+
+def _is_ollama_available() -> bool:
+    """检测 Ollama 是否可用。"""
+    try:
+        url = os.getenv("LOCAL_LLM_OLLAMA_URL", "http://localhost:11434")
+        resp = httpx.get(f"{url}/api/tags", timeout=2.0)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+# 如果 Ollama 不可用，自动跳过 real_embed 测试
+def pytest_configure(config):
+    config.addinivalue_line("markers", "real_embed: 需要真实 Ollama embedding，否则跳过")
+
+
+def pytest_collection_modifyitems(config, items):
+    if _is_ollama_available():
+        return
+    skip_mark = pytest.mark.skip(reason="Ollama 不可用")
+    for item in items:
+        if item.get_closest_marker("real_embed"):
+            item.add_marker(skip_mark)
+
+
+@pytest.fixture(autouse=True)
+def _mock_ollama_http(request):
+    """自动 mock Ollama 所有 HTTP 调用。
+
+    未启动 Ollama 时防止测试因 HTTP 连接卡住。
+    精确 mock 策略（不影响 FastAPI TestClient）：
+    1) mock _embed_via_ollama / _embed_via_ollama_batch（文本相关向量，保证语义分类可用）
+    2) mock LocalLLM.summarize（避免 Ollama HTTP 摘要调用）
+    3) mock extract_entities（semantic 中直接调用 Ollama /api/chat）
+
+    标记 @pytest.mark.real_embed 的测试不应用此 mock。
+    """
+    if request.node.get_closest_marker("real_embed"):
+        yield
+        return
+
+    with patch("app.llm.embed._embed_via_ollama", side_effect=_text_dependent_emb), \
+         patch("app.llm.embed._embed_via_ollama_batch",
+               side_effect=_text_dependent_emb_batch), \
+         patch("app.llm.local.LocalLLM.summarize",
+               return_value="mock摘要"), \
+         patch("app.brain.semantic.extract_entities",
+               return_value=[]):
+        yield
 
 
 # ═══════════════════════════════════════════════════════════════════

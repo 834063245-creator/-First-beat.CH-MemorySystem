@@ -5,6 +5,8 @@ import time
 
 import pytest
 
+pytestmark = pytest.mark.real_embed  # 需要真实 Ollama embedding，跳过 autouse mock
+
 
 # ═══════════════════════════════════════════════════════════════
 # 缓存命中

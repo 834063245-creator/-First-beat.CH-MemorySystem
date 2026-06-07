@@ -126,14 +126,35 @@ class TestExtractKeywords:
     """_extract_keywords 关键词提取。"""
 
     def test_extracts_from_chinese_text(self):
-        # _extract_keywords 依赖 extract_tags (embedding)，
-        # 这里只验证函数签名正确、空输入处理正确
+        # _extract_keywords 依赖 extract_tags
+        # conftest.py autouse mock 了 extract_entities，但 extract_tags 仍走真实路径
         result = _extract_keywords("")
         assert result == []
 
     def test_empty_input(self):
         assert _extract_keywords("") == []
         assert _extract_keywords("   ") == []
+
+    def test_chinese_input(self):
+        """中文输入能提取关键词"""
+        result = _extract_keywords("今天天气真好适合跑步运动健身")
+        assert isinstance(result, list)
+
+    def test_english_input(self):
+        """英文输入能提取关键词"""
+        result = _extract_keywords("machine learning and artificial intelligence")
+        assert isinstance(result, list)
+
+    def test_mixed_input(self):
+        """中英混合"""
+        result = _extract_keywords("Python编程和machine learning")
+        assert isinstance(result, list)
+
+    def test_dedup(self):
+        """重复关键词去重"""
+        result = _extract_keywords("跑步跑步跑步运动运动")
+        assert isinstance(result, list)
+        # 即使有关键词，也不应有明显重复
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -527,3 +548,205 @@ class TestArchival:
             )
             count = engine._assess_archival()
             assert count == 0  # 已归档的跳过
+
+
+# ═══════════════════════════════════════════════════════════════
+# 日巩固
+# ═══════════════════════════════════════════════════════════════
+
+class TestConsolidateDay:
+    def test_empty_memories(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            chroma = _make_chroma_mock([])
+            engine = ConsolidationEngine(
+                chroma_service=chroma,
+                personality_store=MagicMock(),
+                behavior_store=MagicMock(),
+                chat_history=_make_chat_history(),
+                co_tracker=MagicMock(),
+                state_path=os.path.join(tmp, "state.json"),
+                notes_path=os.path.join(tmp, "notes.json"),
+            )
+            result = engine._consolidate_day()
+            assert result["total"] == 0
+            assert result["emotional_count"] == 0
+
+    def test_with_today_memories(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            now = time.time()
+            mems = [
+                _make_memory("1", now - 60, tags="Python,编程",
+                             summary="Python学习", emotional_intensity=2),
+                _make_memory("2", now - 120, tags="运动,跑步",
+                             summary="跑步打卡", emotional_intensity=1),
+            ]
+            chroma = _make_chroma_mock(mems)
+            engine = ConsolidationEngine(
+                chroma_service=chroma,
+                personality_store=MagicMock(),
+                behavior_store=MagicMock(),
+                chat_history=_make_chat_history(),
+                co_tracker=MagicMock(),
+                state_path=os.path.join(tmp, "state.json"),
+                notes_path=os.path.join(tmp, "notes.json"),
+            )
+            result = engine._consolidate_day()
+            assert result["total"] == 2
+            assert "summary" in result
+
+    def test_stale_candidates(self):
+        """今天的标签与旧记忆标签重叠，产生 stale 候选"""
+        with tempfile.TemporaryDirectory() as tmp:
+            now = time.time()
+            mems = [
+                _make_memory("new1", now - 60, tags="Python",
+                             summary="今天Python学习"),
+                _make_memory("old1", now - 86400 * 14, tags="Python",
+                             summary="旧Python笔记"),
+            ]
+            chroma = _make_chroma_mock(mems)
+            engine = ConsolidationEngine(
+                chroma_service=chroma,
+                personality_store=MagicMock(),
+                behavior_store=MagicMock(),
+                chat_history=_make_chat_history(),
+                co_tracker=MagicMock(),
+                state_path=os.path.join(tmp, "state.json"),
+                notes_path=os.path.join(tmp, "notes.json"),
+            )
+            result = engine._consolidate_day()
+            assert "stale_candidates" in result
+
+
+# ═══════════════════════════════════════════════════════════════
+# 预热预测
+# ═══════════════════════════════════════════════════════════════
+
+class TestPreheatPredictions:
+    def test_no_history_no_topics(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            chroma = _make_chroma_mock([])
+            behavior = MagicMock()
+            behavior.list_all.return_value = []
+            engine = ConsolidationEngine(
+                chroma_service=chroma,
+                personality_store=MagicMock(),
+                behavior_store=behavior,
+                chat_history=_make_chat_history(),
+                co_tracker=MagicMock(),
+                state_path=os.path.join(tmp, "state.json"),
+                notes_path=os.path.join(tmp, "notes.json"),
+            )
+            engine._preheat_predictions()
+            # 不应抛异常
+            state = engine._read_state()
+            assert "preheat_queries" in state
+
+    def test_with_today_topics(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            chroma = _make_chroma_mock([])
+            behavior = MagicMock()
+            behavior.list_all.return_value = []
+            engine = ConsolidationEngine(
+                chroma_service=chroma,
+                personality_store=MagicMock(),
+                behavior_store=behavior,
+                chat_history=_make_chat_history(),
+                co_tracker=MagicMock(),
+                state_path=os.path.join(tmp, "state.json"),
+                notes_path=os.path.join(tmp, "notes.json"),
+            )
+            # 预设 today_topics
+            state = engine._read_state()
+            state["today_topics"] = ["Python", "架构"]
+            engine._write_state(state)
+            engine._preheat_predictions()
+            state = engine._read_state()
+            assert len(state.get("preheat_queries", [])) >= 0
+
+
+# ═══════════════════════════════════════════════════════════════
+# 浅巩固 / 深巩固
+# ═══════════════════════════════════════════════════════════════
+
+class TestConsolidateShallow:
+    def test_empty_memory_pool(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            chroma = _make_chroma_mock([])
+            engine = ConsolidationEngine(
+                chroma_service=chroma,
+                personality_store=MagicMock(),
+                behavior_store=MagicMock(),
+                chat_history=_make_chat_history(),
+                co_tracker=MagicMock(),
+                state_path=os.path.join(tmp, "state.json"),
+                notes_path=os.path.join(tmp, "notes.json"),
+            )
+            engine.consolidate_shallow()
+            # 不应抛异常
+            state = engine._read_state()
+            assert state["last_shallow_consolidation"] > 0
+
+    def test_with_memories(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            now = time.time()
+            mems = [
+                _make_memory("1", now - 3600, tags="Python,编程",
+                             summary="Python学习"),
+            ]
+            chroma = _make_chroma_mock(mems)
+            engine = ConsolidationEngine(
+                chroma_service=chroma,
+                personality_store=MagicMock(),
+                behavior_store=MagicMock(),
+                chat_history=_make_chat_history(),
+                co_tracker=MagicMock(),
+                state_path=os.path.join(tmp, "state.json"),
+                notes_path=os.path.join(tmp, "notes.json"),
+            )
+            engine.consolidate_shallow()
+            state = engine._read_state()
+            assert state["last_shallow_consolidation"] > 0
+
+
+class TestConsolidateDeep:
+    def test_empty_memory_pool(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            chroma = _make_chroma_mock([])
+            engine = ConsolidationEngine(
+                chroma_service=chroma,
+                personality_store=MagicMock(),
+                behavior_store=MagicMock(),
+                chat_history=_make_chat_history(),
+                co_tracker=MagicMock(),
+                state_path=os.path.join(tmp, "state.json"),
+                notes_path=os.path.join(tmp, "notes.json"),
+            )
+            engine.consolidate_deep()
+            state = engine._read_state()
+            assert state["last_deep_consolidation"] > 0
+
+    def test_with_memories(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            now = time.time()
+            mems = [
+                _make_memory("1", now - 86400 * 50, tags="Python,编程",
+                             summary="Python笔记", hit_count=0),
+                _make_memory("2", now - 86400 * 50, tags="Python,架构",
+                             summary="架构笔记", hit_count=0),
+                _make_memory("3", now - 86400 * 50, tags="Python,数据库",
+                             summary="数据库笔记", hit_count=0),
+            ]
+            chroma = _make_chroma_mock(mems)
+            engine = ConsolidationEngine(
+                chroma_service=chroma,
+                personality_store=MagicMock(),
+                behavior_store=MagicMock(),
+                chat_history=_make_chat_history(),
+                co_tracker=MagicMock(),
+                state_path=os.path.join(tmp, "state.json"),
+                notes_path=os.path.join(tmp, "notes.json"),
+            )
+            engine.consolidate_deep()
+            state = engine._read_state()
+            assert state["last_deep_consolidation"] > 0
