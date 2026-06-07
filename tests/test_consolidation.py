@@ -24,6 +24,7 @@ def _make_chroma_mock(memories=None):
     """构造假的 chroma_service。"""
     svc = MagicMock()
     svc.list_all.return_value = memories or []
+    svc.list_all_cached.side_effect = lambda *a, **kw: svc.list_all()
     svc._collection = MagicMock()
     svc._emb_cache = {}
     svc._build_embedding_cache = MagicMock()

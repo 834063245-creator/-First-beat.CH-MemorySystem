@@ -333,15 +333,8 @@ class ImpulseScheduler:
         self._load_state()
 
     def _get_all_mems(self, chroma_service):
-        """各冲动源共享的全量记忆缓存，60s TTL。"""
-        now = time.time()
-        with self._lock:
-            if (self._all_mems_cache is not None
-                    and now - self._all_mems_cache_time < self._ALL_MEMS_CACHE_TTL):
-                return self._all_mems_cache
-            self._all_mems_cache = chroma_service.list_all()
-            self._all_mems_cache_time = now
-            return self._all_mems_cache
+        """各冲动源共享的全量记忆缓存，委托给 ChromaService 统一缓存。"""
+        return chroma_service.list_all_cached()
 
     def _load_state(self):
         state = _load_state(self._state_path)

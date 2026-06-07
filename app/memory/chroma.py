@@ -44,6 +44,11 @@ class ChromaService:
         # Embedding 缓存（attention 位移因子用）
         self._emb_cache: dict[str, list] = {}
         self._emb_cache_lock = threading.Lock()
+        # list_all 全局缓存（后台线程共享，减少 SQLite 全量读取）
+        self._list_all_cache: list[dict] | None = None
+        self._list_all_cache_time: float = 0.0
+        self._list_all_cache_lock = threading.Lock()
+        self._list_all_cache_ttl: float = 300  # 默认 5 分钟
 
         coll_name = collection_name or EMBED_MODELS[DEFAULT_EMBED_MODEL]["collection"]
         self._collection = self._client.get_or_create_collection(
@@ -110,6 +115,7 @@ class ChromaService:
                 embeddings=[embedding],
                 metadatas=[meta],
             )
+        self._invalidate_list_all_cache()
         return memory_id
 
     def mark_storage_complete(self, memory_id: str):
@@ -272,6 +278,7 @@ class ChromaService:
                     "superseded_at": _dt.now().isoformat(),
                 }],
             )
+        self._invalidate_list_all_cache()
         logger.info(
             "事实取代: %s → %s reason=%s",
             old_id[:8], new_id[:8], reason[:60] if reason else "-",
@@ -367,6 +374,7 @@ class ChromaService:
         """从 ChromaDB 删除记忆。"""
         self._collection.delete(ids=[memory_id])
         self._emb_cache.pop(memory_id, None)
+        self._invalidate_list_all_cache()
         logger.info("ChromaDB 删除成功 id=%s", memory_id[:8])
 
     def archive_topic_cluster(self, tag: str, memory_ids: list[str]):
@@ -380,6 +388,7 @@ class ChromaService:
                     )
                 except Exception:
                     continue
+        self._invalidate_list_all_cache()
         logger.info("归档: tag=%s, %d 条", tag, len(memory_ids))
 
     # TODO: 数据量大后 stats 应改为维护独立统计文件，避免全量遍历
@@ -483,6 +492,34 @@ class ChromaService:
                 "metadata": dict(meta),
             })
         return items
+
+    def list_all_cached(self, ttl: float | None = None) -> list[dict]:
+        """返回全部记忆列表（带缓存）。后台线程专用，减少 SQLite 全量读取。
+
+        ttl: 缓存有效期（秒），默认 300（5 分钟）。
+        写入操作（add/delete/supersede/archive）自动失效。
+        """
+        ttl = ttl if ttl is not None else self._list_all_cache_ttl
+        now = time.time()
+        with self._list_all_cache_lock:
+            if (self._list_all_cache is not None
+                    and now - self._list_all_cache_time < ttl):
+                return self._list_all_cache
+        # 缓存未命中，走原始 list_all
+        result = self.list_all()
+        with self._list_all_cache_lock:
+            self._list_all_cache = result
+            self._list_all_cache_time = now
+        return result
+
+    def _invalidate_list_all_cache(self):
+        """写入操作后失效 list_all 缓存。"""
+        lock = getattr(self, '_list_all_cache_lock', None)
+        if lock is None:
+            return  # __init__ 未执行（如测试直接用 __new__），安全跳过
+        with lock:
+            self._list_all_cache = None
+            self._list_all_cache_time = 0.0
 
     # ------------------------------------------------------------------
     # Embedding 缓存（attention 位移因子用）

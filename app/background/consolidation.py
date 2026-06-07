@@ -159,7 +159,7 @@ class ConsolidationEngine:
     def _review_today(self) -> dict:
         """回顾今天的记忆，提取话题和情绪统计。"""
         today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-        all_memories = self._chroma.list_all()
+        all_memories = self._chroma.list_all_cached()
         today_mems = [
             m for m in all_memories
             if (m.get("metadata") or {}).get("timestamp", 0) >= today_start
@@ -219,7 +219,7 @@ class ConsolidationEngine:
         time_titles = []
         try:
             now = datetime.now()
-            all_mems = self._chroma.list_all()
+            all_mems = self._chroma.list_all_cached()
             for m in all_mems:
                 meta = m.get("metadata") or {}
                 ts = meta.get("timestamp", 0)
@@ -316,7 +316,7 @@ class ConsolidationEngine:
     def _consolidate_day(self) -> dict:
         """日巩固：统计今天话题分布和情绪状况。"""
         today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-        all_memories = self._chroma.list_all()
+        all_memories = self._chroma.list_all_cached()
         today_mems = [
             m for m in all_memories
             if (m.get("metadata") or {}).get("timestamp", 0) >= today_start
@@ -389,7 +389,7 @@ class ConsolidationEngine:
     def _check_conflicts(self) -> list[dict]:
         """冲突预扫描：最近 7 天记忆 vs 旧记忆的关键词冲突检测。"""
         seven_days_ago = (datetime.now().timestamp() - 7 * 86400)
-        all_memories = self._chroma.list_all()
+        all_memories = self._chroma.list_all_cached()
 
         # 最近 7 天的记忆
         recent = [
@@ -448,7 +448,7 @@ class ConsolidationEngine:
         不放 LLM，纯算法。
         """
         try:
-            all_mems = self._chroma.list_all()
+            all_mems = self._chroma.list_all_cached()
             state = self._read_state()
 
             # 确保 embedding cache 已构建（供下方重复检测使用）
@@ -666,7 +666,7 @@ class ConsolidationEngine:
         返回标记数。
         """
         try:
-            all_mems = self._chroma.list_all()
+            all_mems = self._chroma.list_all_cached()
             now_ts = _time.time()
             cutoff = now_ts - self.CONTRADICTION_RECENT_DAYS * 86400
 
@@ -826,7 +826,7 @@ class ConsolidationEngine:
         不删除，不丢失，只标记 archived=True。
         """
         try:
-            all_mems = self._chroma.list_all()
+            all_mems = self._chroma.list_all_cached()
             from collections import defaultdict as _dd
             clusters: dict[str, list[dict]] = _dd(list)
 
@@ -889,7 +889,7 @@ class ConsolidationEngine:
         存于 topic_notes.json。笔记不替换原始记忆，只作为检索辅助入口。
         """
         try:
-            all_mems = self._chroma.list_all()
+            all_mems = self._chroma.list_all_cached()
             from collections import defaultdict as _dd
             clusters: dict[str, list[dict]] = _dd(list)
 

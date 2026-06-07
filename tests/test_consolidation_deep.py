@@ -16,6 +16,7 @@ def _make_engine(tmpdir, **overrides):
     from app.background.consolidation import ConsolidationEngine
     chroma = MagicMock()
     chroma.list_all.return_value = []
+    chroma.list_all_cached.side_effect = lambda *a, **kw: chroma.list_all()
     chroma._collection = MagicMock()
     chroma._emb_cache = {}
     personality = MagicMock()

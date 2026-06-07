@@ -74,6 +74,7 @@ class TestContradictionDetection:
         engine._topic_tree = mock_tree
 
         mock_chroma = MagicMock(spec=ChromaService)
+        mock_chroma.list_all_cached.side_effect = lambda *a, **kw: mock_chroma.list_all()
 
         old_mem = self._make_mem(
             "old_001", ["辣", "口味"],
@@ -125,6 +126,7 @@ class TestContradictionDetection:
         engine._topic_tree = mock_tree
 
         mock_chroma = MagicMock(spec=ChromaService)
+        mock_chroma.list_all_cached.side_effect = lambda *a, **kw: mock_chroma.list_all()
         old_mem = self._make_mem(
             "old_001", ["辣"], self._emb(seed=self.SEED_BASE), 999_000_000, "positive", "用户喜欢吃辣",
         )
@@ -161,6 +163,7 @@ class TestContradictionDetection:
         engine._topic_tree = mock_tree
 
         mock_chroma = MagicMock(spec=ChromaService)
+        mock_chroma.list_all_cached.side_effect = lambda *a, **kw: mock_chroma.list_all()
         old_mem = self._make_mem(
             "old_001", ["辣"], self._emb(seed=self.SEED_BASE), 999_000_000, "positive", "用户喜欢吃辣",
         )
@@ -197,6 +200,7 @@ class TestContradictionDetection:
         engine._topic_tree = mock_tree
 
         mock_chroma = MagicMock(spec=ChromaService)
+        mock_chroma.list_all_cached.side_effect = lambda *a, **kw: mock_chroma.list_all()
         old_mem = self._make_mem(
             "old_001", ["辣"], self._emb(seed=self.SEED_BASE), 999_000_000, "positive", "用户喜欢吃辣",
         )
@@ -236,6 +240,7 @@ class TestContradictionDetection:
         engine._topic_tree = mock_tree
 
         mock_chroma = MagicMock(spec=ChromaService)
+        mock_chroma.list_all_cached.side_effect = lambda *a, **kw: mock_chroma.list_all()
         old_mem = self._make_mem(
             "old_001", ["城市"], self._emb(seed=self.SEED_BASE), 999_000_000, "",
             "用户现在住在北京",
@@ -278,6 +283,7 @@ class TestContradictionDetection:
         engine._topic_tree = mock_tree
 
         mock_chroma = MagicMock(spec=ChromaService)
+        mock_chroma.list_all_cached.side_effect = lambda *a, **kw: mock_chroma.list_all()
         old_mem = self._make_mem(
             "old_001", ["辣"], self._emb(seed=self.SEED_BASE), 999_000_000, "",
             "用户非常喜欢吃辣的东西",

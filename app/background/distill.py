@@ -384,7 +384,7 @@ class DistillEngine:
             state = _read_state(self._state_path)
             last_ts = state.get("last_distill_timestamp")
 
-            all_memories = self._chroma.list_all()
+            all_memories = self._chroma.list_all_cached()
             if force_all or not last_ts:
                 if force_all:
                     self._cleanup_junk_patterns(self._store)

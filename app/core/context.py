@@ -290,6 +290,9 @@ class AppContext:
         import asyncio
 
         def _consumer():
+            # 在 daemon 线程中创建持久 event loop（复用，避免每次 asyncio.run() 新建）
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             logger.info("冲动消费线程已启动 for %s", self.data_dir)
             while not self._stop_event.is_set():
                 try:
@@ -330,9 +333,9 @@ class AppContext:
                         f"就只是顺着心里的感觉，自然地开口。"
                     )
 
-                    # 调 LLM 生成自然语言（generate 是 async，用 asyncio.run 包装）
+                    # 调 LLM 生成自然语言（复用 daemon 线程的持久 event loop）
                     try:
-                        result = asyncio.run(
+                        result = loop.run_until_complete(
                             self.llm_client.generate(
                                 speak_prompt,
                                 max_tokens=256,
@@ -370,74 +373,71 @@ class AppContext:
         t.start()
         self._impulse_consumer_thread = t
 
-    # ── DMN worker ───────────────────────────────────────────
+    # ── DMN + 巩固 合并 ticker ───────────────────────────────
+    # 原来两个独立泊松线程（都 ~5min）合并为一个，减少冗余唤醒和状态读取。
 
     def _start_dmn_worker(self):
-        """DMN 泊松检查：平均每 5 分钟随机检查一次空闲状态。"""
+        """DMN 合并 ticker：空闲检查 + 浅/深巩固 + 模式发现。"""
         def _worker():
-            logger.info("DMN 泊松 worker 已启动 for %s", self.data_dir)
-            while not self._stop_event.is_set():
-                try:
-                    if self.chat_history and len(self.chat_history.records) >= 1:
-                        last_rec = self.chat_history.records[-1]
-                        last_ts = last_rec.get("timestamp", "")
-                        if last_ts:
-                            gap = datetime.now() - datetime.strptime(last_ts, "%Y-%m-%d %H:%M:%S")
-                            gap_hours = gap.total_seconds() / 3600
-                            if gap_hours > 0.5:
-                                self.dmn.on_idle(gap_hours)
-                except Exception as exc:
-                    logger.debug("DMN 定时检查跳过: %s", exc)
-                interval = min(random.expovariate(1.0 / 300), 3600)
-                self._stop_event.wait(interval)
-
-        self._dmn_thread = threading.Thread(target=_worker, daemon=True, name=f"dmn_worker_{self.data_dir}")
-        self._dmn_thread.start()
-
-    # ── 巩固节律 worker ──────────────────────────────────────
-
-    def _start_consolidation_worker(self):
-        """按固定间隔触发 DMN 巩固，与用户活跃与否无关。"""
-        def _worker():
-            logger.info("巩固节律 worker 已启动 for %s", self.data_dir)
-            # 启动冷却：60s 后再检查，避免和预热/冲动源同时炸资源
+            logger.info("DMN 合并 ticker 已启动 for %s", self.data_dir)
+            # 启动冷却：60s，避免和预热/冲动源抢资源
             if not self._stop_event.is_set():
                 self._stop_event.wait(60)
             while not self._stop_event.is_set():
                 try:
-                    lsc = 0
-                    ldc = 0
+                    # ── 空闲触发（原 DMN worker 逻辑） ──
                     try:
-                        from app.background.consolidation import _load_state as _dmn_load
-                        dmn_state = _dmn_load(f"{self.data_dir}/dmn_state.json")
-                        lsc = dmn_state.get("last_shallow_consolidation", 0) or 0
-                        ldc = dmn_state.get("last_deep_consolidation", 0) or 0
+                        if self.chat_history and len(self.chat_history.records) >= 1:
+                            last_rec = self.chat_history.records[-1]
+                            last_ts = last_rec.get("timestamp", "")
+                            if last_ts:
+                                gap = datetime.now() - datetime.strptime(last_ts, "%Y-%m-%d %H:%M:%S")
+                                gap_hours = gap.total_seconds() / 3600
+                                if gap_hours > 0.5:
+                                    self.dmn.on_idle(gap_hours)
                     except Exception:
                         pass
-                    now = time.time()
-                    if now - lsc >= CONSOLIDATION_SHALLOW_INTERVAL:
-                        logger.info("巩固节律: 触发浅巩固 (距上次 %.1f 小时)", (now - lsc) / 3600)
+                    # ── 节律巩固（原 consolidation worker 逻辑） ──
+                    try:
+                        lsc = 0
+                        ldc = 0
                         try:
-                            self.dmn.consolidate_shallow()
-                        except Exception as exc:
-                            logger.error("巩固节律: 浅巩固失败: %s", exc)
-                        try:
-                            self._pattern_discovery.run()
-                        except Exception as exc:
-                            logger.error("模式发现运行失败: %s", exc)
-                    if now - ldc >= CONSOLIDATION_DEEP_INTERVAL:
-                        logger.info("巩固节律: 触发深巩固 (距上次 %.1f 小时)", (now - ldc) / 3600)
-                        try:
-                            self.dmn.consolidate_deep()
-                        except Exception as exc:
-                            logger.error("巩固节律: 深巩固失败: %s", exc)
+                            from app.background.consolidation import _load_state as _dmn_load
+                            dmn_state = _dmn_load(f"{self.data_dir}/dmn_state.json")
+                            lsc = dmn_state.get("last_shallow_consolidation", 0) or 0
+                            ldc = dmn_state.get("last_deep_consolidation", 0) or 0
+                        except Exception:
+                            pass
+                        now = time.time()
+                        if now - lsc >= CONSOLIDATION_SHALLOW_INTERVAL:
+                            logger.info("巩固节律: 触发浅巩固 (距上次 %.1f 小时)", (now - lsc) / 3600)
+                            try:
+                                self.dmn.consolidate_shallow()
+                            except Exception as exc:
+                                logger.error("巩固节律: 浅巩固失败: %s", exc)
+                            try:
+                                self._pattern_discovery.run()
+                            except Exception as exc:
+                                logger.error("模式发现运行失败: %s", exc)
+                        if now - ldc >= CONSOLIDATION_DEEP_INTERVAL:
+                            logger.info("巩固节律: 触发深巩固 (距上次 %.1f 小时)", (now - ldc) / 3600)
+                            try:
+                                self.dmn.consolidate_deep()
+                            except Exception as exc:
+                                logger.error("巩固节律: 深巩固失败: %s", exc)
+                    except Exception:
+                        pass
                 except Exception as exc:
-                    logger.debug("巩固节律循环异常: %s", exc)
+                    logger.debug("DMN ticker 异常: %s", exc)
                 interval = min(random.expovariate(1.0 / 300), 3600)
                 self._stop_event.wait(interval)
 
-        self._consolidation_thread = threading.Thread(target=_worker, daemon=True, name=f"consolidation_{self.data_dir}")
-        self._consolidation_thread.start()
+        self._dmn_thread = threading.Thread(target=_worker, daemon=True, name=f"dmn_ticker_{self.data_dir}")
+        self._dmn_thread.start()
+
+    # _start_consolidation_worker 已合并到 _start_dmn_worker，保留空方法兼容旧调用
+    def _start_consolidation_worker(self):
+        pass
 
     # ── 入库 ─────────────────────────────────────────────────
 

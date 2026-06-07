@@ -78,9 +78,10 @@ class TestStatePersistence:
 # ═══════════════════════════════════════════════════════════════
 
 def _make_chroma_service(memories=None):
-    """构造一个假的 chroma_service，支持 list_all()。"""
+    """构造一个假的 chroma_service，支持 list_all() 和 list_all_cached()。"""
     svc = MagicMock()
     svc.list_all.return_value = memories or []
+    svc.list_all_cached.side_effect = lambda *a, **kw: svc.list_all()
     return svc
 
 
