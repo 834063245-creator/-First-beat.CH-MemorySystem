@@ -4,9 +4,9 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-680%2B%20passed-green.svg)]()
-[![Coverage](https://img.shields.io/badge/line%20coverage-53%25-yellow.svg)]()
-[![E2E](https://img.shields.io/badge/E2E-89%20nodes%20%E2%9C%93-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-944%2B%20passed-green.svg)]()
+[![Coverage](https://img.shields.io/badge/line%20coverage-80%25-brightgreen.svg)]()
+[![E2E](https://img.shields.io/badge/E2E%2BInt-163%20nodes%20%E2%9C%93-brightgreen.svg)]()
 [中文文档](README.md)
 
 👉 [Quick Start](QUICKSTART.md) | 🔧 [Setup Guide](SETUP_EN.md) | [Environment Check](verify_env.py)
@@ -17,7 +17,7 @@
 
 First Beat provides a self-contained memory infrastructure. The engine runs consolidation, impulse generation, distillation, and pattern discovery in the background — then speaks naturally through the LLM when the timing is right. What you build on top — a chat app, a desktop companion, an AI pet — is up to you. First Beat handles the memory and the voice.
 
-**v2.2 current**: 10-path parallel retrieval + weave_context + v2.1 soft degradation + E2E 89 nodes all green. Iterating daily.
+**v2.2 current**: 10-path parallel retrieval + weave_context + v2.1 soft degradation + E2E+integration 163 nodes all green, 80% line coverage. Iterating daily.
 
 ---
 
@@ -322,8 +322,9 @@ app/
 ├── config/        # Central config
 └── models/        # Pydantic schemas
 
-tests/             # 680+ unit tests (36 files, 53% line coverage, 98% module coverage)
-E2E/               # End-to-end full-chain regression (6 files, 89 nodes, 5 chains)
+tests/             # 944 unit tests (61 files, 80% line coverage)
+E2E/               # End-to-end full-chain regression (6 files, 139 nodes)
+integration/       # Integration tests (6 files, 24 nodes)
 ```
 
 ---

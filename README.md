@@ -4,9 +4,9 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-680%2B%20passed-green.svg)]()
-[![Coverage](https://img.shields.io/badge/line%20coverage-53%25-yellow.svg)]()
-[![E2E](https://img.shields.io/badge/E2E-89%20nodes%20%E2%9C%93-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-944%2B%20passed-green.svg)]()
+[![Coverage](https://img.shields.io/badge/line%20coverage-80%25-brightgreen.svg)]()
+[![E2E](https://img.shields.io/badge/E2E%2BInt-163%20nodes%20%E2%9C%93-brightgreen.svg)]()
 [English](README_EN.md)
 
 👉 [快速上手](QUICKSTART.md) ([EN](QUICKSTART_EN.md)) | 🔧 [安装排查](SETUP.md) ([EN](SETUP_EN.md)) | [架构图](ARCHITECTURE_DIAGRAM.md) | [环境诊断](verify_env.py)
@@ -17,7 +17,7 @@
 
 初痕提供的是一个自循环的记忆基础设施。引擎自己在后台跑巩固、冲动、蒸馏、模式发现——然后在合适的时机，通过 LLM 自然地开口说话。上面想搭什么——聊天应用、桌宠、陪伴型 Agent——是你的事。初痕只管记忆和说话。
 
-**v2.2 当前状态**：10 路并行检索 + 引擎编织 + v2.1 软降权 + E2E 89 节点全绿。每天在迭代。
+**v2.2 当前状态**：10 路并行检索 + 引擎编织 + v2.1 软降权 + E2E+集成 163 节点全绿，行覆盖率 80%。每天在迭代。
 
 ---
 
@@ -320,8 +320,9 @@ app/
 ├── config/        # 中央配置
 └── models/        # Pydantic schemas
 
-tests/             # 680+ 单元测试（36 文件，行覆盖率 53%，模块覆盖率 98%）
-E2E/               # 端到端全链路回归（6 文件 89 节点 5 链路）
+tests/             # 944 单元测试（61 文件，行覆盖率 80%）
+E2E/               # 端到端全链路回归（6 文件，139 节点）
+integration/       # 集成测试（6 文件，24 节点）
 ```
 
 ---
