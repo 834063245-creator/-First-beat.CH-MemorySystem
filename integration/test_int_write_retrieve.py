@@ -4,9 +4,6 @@
 使用真实 ChromaDB + 真实 embedding（Ollama bge-m3），仅 mock extract_tags。
 BENCHMARK_MODE=true 路径：embed + 标签 + ChromaDB + 倒排索引。
 """
-import sys
-sys.path.insert(0, ".")
-
 import time
 import pytest
 from unittest.mock import patch

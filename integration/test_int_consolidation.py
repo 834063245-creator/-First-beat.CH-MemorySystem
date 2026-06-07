@@ -3,14 +3,10 @@
 验证：巩固引擎在真实 ChromaDB 数据上的行为。
 BENCHMARK_MODE=true 下 dmn=None，因此手动构建 ConsolidationEngine。
 """
-import sys
-sys.path.insert(0, ".")
-
 import os
 import time
 import pytest
 from unittest.mock import patch
-from datetime import datetime
 
 
 # ═══════════════════════════════════════════════════════════════

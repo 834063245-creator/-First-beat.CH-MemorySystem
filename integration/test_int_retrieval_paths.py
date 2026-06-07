@@ -3,9 +3,6 @@
 验证：retrieve_all 各检索路径在真实数据下能返回结果。
 使用真实 ChromaDB + 真实 embedding，仅 mock extract_tags。
 """
-import sys
-sys.path.insert(0, ".")
-
 import time
 import pytest
 from unittest.mock import patch

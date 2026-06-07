@@ -3,9 +3,6 @@
 compute_score 是纯计算函数，无需 fixture、无需 mock。
 验证评分函数在各维度上的单调性和边界行为。
 """
-import sys
-sys.path.insert(0, ".")
-
 import pytest
 from app.retrieval.scoring import compute_score
 

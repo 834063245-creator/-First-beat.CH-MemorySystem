@@ -3,9 +3,6 @@
 验证 ChatHistory 组件的文件 IO + 内存操作闭环。
 无需 mock（ChatHistory 纯文件 IO，不涉及 LLM）。
 """
-import sys
-sys.path.insert(0, ".")
-
 import os
 import pytest
 
