@@ -548,9 +548,13 @@ class CircuitOrchestrator:
         wc.should_speak = True
 
         # ═══════════════════════════════════════════════════
-        # 层一：故事线（同实体 + 跨时间）
+        # 层一：故事线（实体重叠聚类 — 超边替代 pairwise 硬截断）
         # ═══════════════════════════════════════════════════
-        entity_buckets = defaultdict(list)
+        from collections import defaultdict as _dd
+
+        # v2.4: 实体重叠聚类替代 entities[:3] 硬截断
+        # 每个 bucket 是一个超边分组：{entities: set, memories: list}
+        buckets: list[dict] = []
         for m in active:
             raw_entities = m.get("_entities", [])
             if isinstance(raw_entities, str):
@@ -562,32 +566,62 @@ class CircuitOrchestrator:
                 raw_entities = []
             entities = m.get("_tags", []) + raw_entities
             entities = list(set(e for e in entities if isinstance(e, str) and len(e) >= 2))
-            if entities:
-                key = tuple(sorted(entities[:3]))
-                entity_buckets[key].append(m)
+            if not entities:
+                continue
+            entity_set = set(entities)
+            m["_entities"] = raw_entities  # 回写解析后的列表，供后续 narrative 使用
+
+            # 贪婪匹配：找实体重叠 ≥ 2 的最佳已有分组
+            best_bucket = None
+            best_overlap = 0
+            for bucket in buckets:
+                overlap = len(entity_set & bucket["entities"])
+                if overlap > best_overlap:
+                    best_overlap = overlap
+                    best_bucket = bucket
+
+            if best_overlap >= 2 and best_bucket is not None:
+                best_bucket["memories"].append(m)
+                best_bucket["entities"] |= entity_set
+            elif best_overlap >= 1 and (len(entity_set) == 1 or len(best_bucket["entities"]) == 1 if best_bucket else False):
+                # 单实体记忆：重叠 1 即匹配（如双方都只有 "Python"）
+                best_bucket["memories"].append(m)
+                best_bucket["entities"] |= entity_set
+            else:
+                buckets.append({"entities": entity_set, "memories": [m]})
 
         narratives = []
         used_in_narrative = set()
-        for key, bucket in entity_buckets.items():
-            if len(bucket) < 2:
+        for bucket in buckets:
+            if len(bucket["memories"]) < 2:
                 continue
-            bucket.sort(key=lambda x: x.get("_ts", 0))
-            timespan_days = (bucket[-1].get("_ts", 0) - bucket[0].get("_ts", 0)) / 86400
+            bucket["memories"].sort(key=lambda x: x.get("_ts", 0))
+            timespan_days = (bucket["memories"][-1].get("_ts", 0) - bucket["memories"][0].get("_ts", 0)) / 86400
             if timespan_days < 1:
                 continue  # 同一天内的不算故事线
 
-            # 拼 narrative
-            entity_str = "/".join(key)
-            first_ts = bucket[0].get("_ts", 0)
-            last_ts = bucket[-1].get("_ts", 0)
+            # 拼 narrative — 取 bucket 中出现频率最高的 5 个实体作为代表
+            entity_freq = _dd(int)
+            for bm in bucket["memories"]:
+                for e in (bm.get("_entities", []) or []):
+                    if isinstance(e, str) and len(e) >= 2:
+                        entity_freq[e] += 1
+                for e in (bm.get("_tags", []) or []):
+                    if isinstance(e, str) and len(e) >= 2:
+                        entity_freq[e] += 1
+            top_entities = sorted(entity_freq.items(), key=lambda x: -x[1])[:5]
+            entity_str = "/".join(e for e, _ in top_entities)
+
+            first_ts = bucket["memories"][0].get("_ts", 0)
+            last_ts = bucket["memories"][-1].get("_ts", 0)
             from datetime import datetime
             first_date = datetime.fromtimestamp(first_ts).strftime("%m月%d日") if first_ts else "?"
             last_date = datetime.fromtimestamp(last_ts).strftime("%m月%d日") if last_ts else "?"
 
             # 情绪变化判断
             valences = []
-            for m in bucket:
-                v = m.get("metadata", {}).get("emotion_valence_bin", "neutral") if m.get("metadata") else "neutral"
+            for bm in bucket["memories"]:
+                v = bm.get("metadata", {}).get("emotion_valence_bin", "neutral") if bm.get("metadata") else "neutral"
                 valences.append(v)
             trend = "延续"
             if "positive" in valences and "negative" in valences:
@@ -599,11 +633,11 @@ class CircuitOrchestrator:
 
             narrative = (
                 f"{first_date}首次提到{entity_str}，"
-                f"共提及{len(bucket)}次，跨越{int(timespan_days)}天，{trend}。"
+                f"共提及{len(bucket['memories'])}次，跨越{int(timespan_days)}天，{trend}。"
             )
             narratives.append(narrative)
-            for m in bucket:
-                used_in_narrative.add(m.get("id", ""))
+            for bm in bucket["memories"]:
+                used_in_narrative.add(bm.get("id", ""))
 
         wc.narratives = narratives[:5]  # 最多 5 条故事线
 

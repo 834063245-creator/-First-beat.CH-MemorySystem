@@ -39,6 +39,7 @@ from app.memory.chroma import ChromaService
 from app.llm.deepseek import LLMClient
 from app.memory.cooccur import CoOccurrenceTracker
 from app.memory.entity_pair import EntityPairTracker
+from app.memory.hyperedge import HyperEdgeIndex
 from app.personality.store import PersonalityStore
 from app.personality.behavior import BehaviorStore
 from app.memory.history import ChatHistory
@@ -99,6 +100,7 @@ class AppContext:
         self.co_tracker = CoOccurrenceTracker(file_path=f"{data_dir}/co_occurrence.json")
         self.ai_co_tracker = CoOccurrenceTracker(file_path=f"{data_dir}/ai_co_occurrence.json")
         self.entity_pair_tracker = EntityPairTracker(file_path=f"{data_dir}/entity_pairs.json")
+        self.hyperedge_index = HyperEdgeIndex(file_path=f"{data_dir}/hyper_edges.json")
         self.personality_store = PersonalityStore(persist_dir=f"{data_dir}/personality_chroma")
         self.behavior_store = BehaviorStore(persist_dir=f"{data_dir}/behavior_chroma", collection_name=BEHAVIOR_COLLECTION)
         self.chat_history = ChatHistory(path=f"{data_dir}/chat_history.jsonl", max_memory=CHAT_HISTORY_MAX_MEMORY)
@@ -619,6 +621,10 @@ class AppContext:
                         for i in range(len(entity_texts)):
                             for j in range(i + 1, len(entity_texts)):
                                 self.entity_pair_tracker.record(entity_texts[i], entity_texts[j], memory_id)
+                    except Exception:
+                        pass
+                    try:
+                        self.hyperedge_index.record(entity_texts, memory_id)
                     except Exception:
                         pass
                 try:
