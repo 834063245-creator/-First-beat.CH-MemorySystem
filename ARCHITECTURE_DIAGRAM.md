@@ -1,7 +1,7 @@
 # 初痕全链路可视化架构图
 
 > Mermaid 图表集。GitHub 原生渲染，直接可看。
-> 最后更新：2026-06-06
+> 最后更新：2026-06-09
 
 ---
 
@@ -13,29 +13,29 @@ flowchart TB
         direction TB
         USER["👤 用户消息"]
         EMBED["bge-m3 Embedding<br/>1024维 · 本地 · 零成本"]
-        RETRIEVE["🔍 10路并行检索"]
+        RETRIEVE["🔍 10路并行检索 · 零人格检索"]
         WEAVE["🧵 引擎编织 weave_context<br/>故事线 · 分层 · Token预算"]
-        CIRCUIT["⚡ CircuitOrchestrator<br/>意图/情绪/门控/冲动/关系"]
-        LLM_GEN["🤖 LLM 生成回复"]
-        STORE["💾 存储管线"]
+        CIRCUIT["⚡ CircuitOrchestrator<br/>意图/情绪/门控/冲动/关系/画像"]
+        LLM_GEN["🤖 LLM 生成回复<br/>stable画像(前缀缓存) + dynamic画像"]
+        STORE["💾 存储管线 + 画像实时更新"]
         USER --> EMBED --> RETRIEVE --> WEAVE --> CIRCUIT --> LLM_GEN --> STORE
     end
 
     subgraph OFFLINE["🌙 后台自主节律（不等用户）"]
         direction TB
         IMPULSE["💭 冲动系统<br/>5源 + PriorityQueue + 消费者"]
-        CONSOL["🏗️ 巩固引擎<br/>浅4h / 深24h / 空闲"]
-        AI_CONSOL["🎭 AI巩固<br/>1h · AI表达模式"]
-        DISTILL["🧪 蒸馏引擎<br/>零LLM · 标签聚类"]
+        CONSOL["🏗️ 巩固引擎（DMN合并ticker）<br/>浅4h / 深24h / 空闲<br/>用户 + AI 双实例镜像"]
+        PORTRAIT_BG["🖼️ 画像系统<br/>实时 · 浅4h · 深24h<br/>引擎提取 + LLM合成"]
         PATTERN["📊 模式发现<br/>6h · 5模式 · 零LLM"]
         DMN["🧠 DMN空闲检测"]
     end
 
     subgraph STORAGE_LAYER["💾 存储层"]
         CHROMA[("ChromaDB<br/>用户记忆")]
-        AI_CHROMA[("ChromaDB<br/>AI记忆")]
+        AI_CHROMA[("ChromaDB<br/>AI记忆·元数据对等")]
         CHAT_HISTORY[("chat_history.jsonl")]
         WM[("工作记忆摘要")]
+        PORTRAIT_MD[("PORTRAIT.md<br/>12维认知画像")]
         INDEXES["倒排 · 共现 · 实体对<br/>时间 · 话题树 · 标签嵌入"]
     end
 
@@ -72,22 +72,23 @@ flowchart LR
     F1 --> F2["层二：认知分层<br/>fact / reference<br/>background / suppressed"]
     F2 --> F3["层三：Token预算<br/>20000 token软限制<br/>按叙事摘要截断"]
     
-    F3 --> G["⑥ CircuitOrchestrator<br/>回路编排 · 7步决策"]
+    F3 --> G["⑥ CircuitOrchestrator<br/>回路编排 · 8步决策"]
     G --> G1["意图分析"]
     G --> G2["情绪分析"]
     G --> G3["门控决策<br/>tone · formality · mode"]
     G --> G4["冲动注入"]
     G --> G5["行为预测<br/>Markov链"]
     G --> G6["关系评估<br/>familiarity/trust/closeness"]
-    G --> G7["人格注入<br/>用户标签 + AI标签"]
+    G --> G7["画像注入<br/>stable(8维)→前缀缓存<br/>dynamic(4维)→每轮更新"]
     
-    G7 --> H["⑦ UtteranceSpec<br/>打包所有决策 → dataclass"]
-    H --> I["⑧ LLMClient.generate()<br/>tool-role JSON注入记忆<br/>system prompt含人格+门控指令<br/>DeepSeek prompt缓存命中"]
+    G7 --> H["⑦ UtteranceSpec<br/>打包所有决策 → dataclass<br/>portrait_stable + portrait_dynamic"]
+    H --> I["⑧ LLMClient.generate()<br/>tool-role JSON注入记忆<br/>system prompt含stable画像+门控指令<br/>DeepSeek前缀缓存命中>95%"]
     I --> J["⑨ SSE流式输出"]
 
     J --> K1["同步：chat_history写入"]
     J --> K2["同步：工作记忆增量更新"]
     J --> K3["异步：队列 → worker<br/>摘要(qwen2.5:3b) + 标签 + 实体<br/>→ ChromaDB + 倒排 + 共现"]
+    J --> K4["同步：画像实时更新<br/>usr2/ai2+usr4/ai4<br/><100ms · 不调LLM"]
     
     style A fill:#e94560,color:#fff
     style J fill:#0f3460,color:#fff
@@ -180,7 +181,7 @@ flowchart TB
 flowchart LR
     INPUT["WovenContext<br/>+ 用户消息"] --> S1
 
-    subgraph ORCHESTRATOR["CircuitOrchestrator.process() · 7步串行"]
+    subgraph ORCHESTRATOR["CircuitOrchestrator.process() · 8步串行"]
         S1["① 意图分析<br/>━━━━━━━<br/>bge-m3原型匹配<br/>casual/recall/ask_fact/<br/>emotional_sharing/conflict"]
         S1 --> S2["② 情绪分析<br/>━━━━━━━<br/>Russell二维环<br/>valence × arousal<br/>+ intensity(0~1)"]
         S2 --> S3["③ 认知分层<br/>━━━━━━━<br/>MemoryDirective<br/>fact/reference/<br/>background/suppressed"]
@@ -188,9 +189,10 @@ flowchart LR
         S4 --> S5["⑤ 冲动注入<br/>━━━━━━━<br/>PriorityQueue检查<br/>有效优先级≥2<br/>→ ImpulseDirective"]
         S5 --> S6["⑥ 行为预测<br/>━━━━━━━<br/>Markov链<br/>mirror_prediction<br/>下一步意图/话题"]
         S6 --> S7["⑦ 关系评估<br/>━━━━━━━<br/>RelationshipState<br/>familiarity/trust<br/>closeness/mode"]
+        S7 --> S8["⑧ 画像注入<br/>━━━━━━━<br/>render_stable(8维)<br/>→ message[0] 前缀缓存<br/>render_dynamic(4维)<br/>→ message[N+1] 每轮更新"]
     end
 
-    S7 --> OUTPUT["UtteranceSpec<br/>全部决策打包 → LLM"]
+    S8 --> OUTPUT["UtteranceSpec<br/>全部决策打包 → LLM<br/>portrait_stable + portrait_dynamic"]
 
     style INPUT fill:#e94560,color:#fff
     style OUTPUT fill:#0f3460,color:#fff
@@ -216,17 +218,24 @@ flowchart TB
         PQ --> CONSUMER["冲动消费者<br/>空闲>2min触发<br/>LLM生成→[内心独白]"]
     end
 
-    subgraph CONSOLIDATION["🏗️ 巩固引擎 · 3级"]
+    subgraph CONSOLIDATION["🏗️ 巩固引擎 · 3级 · 用户+AI双实例"]
         direction TB
-        SHALLOW["浅巩固 · 4h<br/>━━━━━━━━<br/>话题树重建<br/>语义重复检测<br/>标签嵌入索引<br/>人格蒸馏<br/>人格对称性<br/>事实冲突检测<br/>实体对演化<br/>冷热转换"]
-        DEEP["深巩固 · 24h<br/>━━━━━━━━<br/>归档评估 90天<br/>话题笔记生成<br/>情绪淡化"]
+        SHALLOW["浅巩固 · 4h<br/>━━━━━━━━<br/>话题树重建<br/>语义重复检测<br/>标签嵌入索引<br/>画像浅更新<br/>人格对称性<br/>事实冲突检测<br/>实体对演化<br/>冷热转换"]
+        DEEP["深巩固 · 24h<br/>━━━━━━━━<br/>归档评估 90天<br/>话题笔记生成<br/>画像深更新<br/>情绪淡化"]
         IDLE["空闲巩固<br/>━━━━━━━━<br/>Level1: 预热+重建缓存<br/>Level2: >4h回顾<br/>Level3: >24h日巩固"]
     end
 
+    subgraph PORTRAIT_BG["🖼️ 画像系统 · 三层更新"]
+        direction TB
+        PRT_RT["实时更新 · 每轮<br/>引擎提取特征·规则合成<br/><100ms · 不调LLM<br/>usr2/ai2 + usr4/ai4"]
+        PRT_SH["浅更新 · 4h<br/>提取器扫描+LLM写条目<br/>usr3/ai3 + usr5/ai5<br/>+ usr1/ai1新候选"]
+        PRT_DP["深更新 · 24h<br/>全局扫描+LLM合成<br/>usr1/ai1 + usr6/ai6<br/>最低20轮门槛"]
+    end
+
     subgraph OTHER["其他后台线程"]
-        AI_C["AI巩固 · 1h<br/>AI记忆浅/深巩固"]
+        AI_C["AI巩固 · 镜像<br/>独立ConsolidationEngine<br/>共享DMN ticker触发<br/>情绪淡化 独立1h定时器"]
         PAT["模式发现 · 6h<br/>5模式 · 零LLM"]
-        DMN["DMN · ~5min<br/>空闲检测+触发巩固"]
+        DMN["DMN · ~5min<br/>空闲检测+触发巩固<br/>用户+AI双引擎"]
     end
 
     LIFECYCLE["🛡️ lifecycle.py<br/>崩溃自动重启 · 5次/h上限 · 优雅退出"]
@@ -311,7 +320,8 @@ flowchart TB
         ERROR[("error_reports.jsonl<br/>用户反馈")]
         PATTERN[("pattern_cache.json<br/>模式发现产出")]
         BLIND[("blind_spots.json<br/>人格对称盲区")]
-        PERSONA[("personality_tags.json<br/>人格标签")]
+        PORTRAIT_FILE[("PORTRAIT.md<br/>12维认知画像")]
+        PERSONA[("personality_tags.json<br/>人格标签[退役中]")]
     end
 
     CHROMA --> INDEXES
@@ -330,24 +340,32 @@ flowchart TB
 ```mermaid
 flowchart TB
     subgraph API["api/ · REST层"]
-        CHAT["chat.py<br/>对话+流式+OpenAI兼容<br/>benchmark注入+管理"]
+        CHAT["chat.py<br/>对话+流式+OpenAI兼容<br/>benchmark注入+画像实时"]
         SYS["system.py<br/>健康/状态"]
         MEM_API["memories.py<br/>记忆CRUD+反馈"]
-        PERS_API["personalities.py"]
+        PORT_API["portrait.py<br/>画像渲染"]
         CONS_API["consolidation.py"]
     end
 
     subgraph CORE["core/ · 认知核心"]
         STATE["state.py<br/>CognitiveState<br/>UtteranceSpec"]
-        CIRC["circuit.py<br/>CircuitOrchestrator"]
+        CIRC["circuit.py<br/>CircuitOrchestrator<br/>含画像注入"]
         CONFLICT["conflict.py<br/>冲突消解"]
         FEEDBACK["feedback.py<br/>用户反馈闭环"]
-        CTX["context.py<br/>AppContext"]
+        CTX["context.py<br/>AppContext<br/>画像初始化+AI巩固镜像"]
     end
 
     subgraph BRAIN["brain/ · 语义引擎"]
         SEM["semantic.py<br/>7函数·零模型依赖"]
         KW["keywords.py<br/>统一常量表"]
+    end
+
+    subgraph PORTRAIT["portrait/ · 画像系统"]
+        PRT_MGR["manager.py<br/>PORTRAIT.md CRUD"]
+        PRT_ST["state.py<br/>EntryStateMachine"]
+        PRT_EXT["extractors.py<br/>特征提取器"]
+        PRT_RND["renderer.py<br/>stable/dynamic渲染"]
+        PRT_WRT["writer.py<br/>三层更新"]
     end
 
     subgraph MEMORY["memory/ · 存储层"]
@@ -360,7 +378,7 @@ flowchart TB
     end
 
     subgraph RETRIEVAL["retrieval/ · 检索管线"]
-        PIPE["pipeline.py<br/>10路检索+编织"]
+        PIPE["pipeline.py<br/>10路检索+编织<br/>Portrait light boost"]
         SCORE["scoring.py<br/>精排+软降权"]
         BM25["bm25_fulltext.py"]
     end
@@ -374,19 +392,21 @@ flowchart TB
     end
 
     subgraph BACKGROUND["background/ · 后台节律"]
-        CONS_BG["consolidation.py<br/>巩固引擎"]
+        CONS_BG["consolidation.py<br/>巩固引擎·用户+AI双实例"]
         IMP_BG["impulse.py<br/>冲动系统"]
-        DIST_BG["distill.py<br/>蒸馏引擎"]
+        DIST_BG["distill.py<br/>蒸馏引擎·退役中"]
         LIFE_BG["lifecycle.py<br/>生命周期"]
     end
 
     subgraph LLM["llm/ · LLM适配"]
-        DS["deepseek.py<br/>主LLM"]
+        DS["deepseek.py<br/>主LLM·画像注入"]
         EMB["embed.py<br/>bge-m3"]
         LOCAL["local.py<br/>qwen2.5:3b"]
     end
 
     API --> CORE
+    API --> PORTRAIT
+    CORE --> PORTRAIT
     CORE --> BRAIN
     CORE --> MEMORY
     CORE --> RETRIEVAL
@@ -396,6 +416,7 @@ flowchart TB
     BACKGROUND --> MEMORY
     BACKGROUND --> ANALYSIS
     BACKGROUND --> CORE
+    BACKGROUND --> PORTRAIT
     BACKGROUND --> LLM
     API --> LLM
     CORE --> LLM
@@ -403,6 +424,7 @@ flowchart TB
     style CORE fill:#1a1a2e,stroke:#e94560,color:#eee
     style RETRIEVAL fill:#1a1a2e,stroke:#0f3460,color:#eee
     style BACKGROUND fill:#1a1a2e,stroke:#533483,color:#eee
+    style PORTRAIT fill:#1a1a2e,stroke:#e94560,color:#eee
 ```
 
 **依赖方向**: `api/ → core/ → brain/ + memory/ → retrieval/ + analysis/ → background/ → llm/`
@@ -413,15 +435,21 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    subgraph SYSTEM_PROMPT["System Prompt（稳定前缀 → DeepSeek缓存命中）"]
+    subgraph SYSTEM_PROMPT_STABLE["System Prompt message[0]（稳定前缀 → DeepSeek缓存命中>95%）"]
         direction TB
-        SP1["核心规则（6条）"]
-        SP2["用户人格标签"]
-        SP3["AI表达习惯标签"]
-        SP4["关系状态"]
-        SP5["模式观察"]
-        SP6["话题笔记"]
-        SP7["引擎调参"]
+        SP1["核心人格 + 工具规则"]
+        SP2["stable画像 (8维)<br/>usr1/3/5/6 + ai1/3/5/6"]
+        SP3["人格标签 [退役中]"]
+        SP4["模式观察"]
+        SP5["话题笔记"]
+        SP6["引擎调参"]
+    end
+
+    subgraph SYSTEM_PROMPT_DYNAMIC["System Prompt message[N+1]（动态 → 每轮更新）"]
+        direction TB
+        SD1["dynamic画像 (4维)<br/>usr2/4 + ai2/4"]
+        SD2["session_context"]
+        SD3["now_hint 时间感知"]
     end
 
     subgraph HISTORY["历史对话 user/assistant"]
@@ -439,9 +467,10 @@ flowchart LR
 
     CURRENT["当前用户消息 user"]
 
-    SYSTEM_PROMPT --> HISTORY --> TOOL_ROLE --> CURRENT
+    SYSTEM_PROMPT_STABLE --> HISTORY --> TOOL_ROLE --> SYSTEM_PROMPT_DYNAMIC --> CURRENT
 
-    style SYSTEM_PROMPT fill:#1a1a2e,stroke:#0f3460,color:#eee
+    style SYSTEM_PROMPT_STABLE fill:#1a1a2e,stroke:#0f3460,color:#eee
+    style SYSTEM_PROMPT_DYNAMIC fill:#1a1a2e,stroke:#533483,color:#eee
     style TOOL_ROLE fill:#1a1a2e,stroke:#e94560,color:#eee
 ```
 
@@ -464,11 +493,11 @@ flowchart LR
     end
 
     subgraph LINK4["链路四: 演化 · 16节点"]
-        M1["浅巩固: 话题树/重复<br/>Supersede/标签嵌入<br/>亲和图/人格蒸馏/冷热<br/>实体对/对称性<br/>深巩固: 归档/笔记/淡化<br/>独立: 情绪衰减/AI巩固<br/>反馈闭环/原文不变"]
+        M1["浅巩固: 话题树/重复<br/>Supersede/标签嵌入<br/>亲和图/画像浅更新/冷热<br/>实体对/对称性<br/>深巩固: 归档/笔记/淡化<br/>画像深更新<br/>独立: 情绪衰减/AI巩固镜像<br/>反馈闭环/原文不变"]
     end
 
     subgraph LINK5["链路五: 后台 · 17节点"]
-        B1["5冲动源→疲劳→抑制<br/>→消费→TTL→浅/深巩固<br/>→模式发现→DMN→AI巩固<br/>→线程存活+重启"]
+        B1["5冲动源→疲劳→抑制<br/>→消费→TTL→浅/深巩固<br/>→画像实时/浅/深<br/>→模式发现→DMN→AI巩固<br/>→线程存活+重启"]
     end
 
     LINK1 --> LINK2 --> LINK3 --> LINK4 --> LINK5
@@ -480,7 +509,7 @@ flowchart LR
     style LINK5 fill:#1a1a2e,stroke:#1a1a2e,color:#eee
 ```
 
-**89 节点 · 5 链路 · 各自独立计分 · 不加权合成一个数字**
+**5 链路 · 各自独立计分 · 不加权合成一个数字**
 
 ---
 

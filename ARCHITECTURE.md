@@ -9,16 +9,17 @@
 1. [核心设计决策](#核心设计决策)
 2. [系统全景](#系统全景)
 3. [认知状态层 — 引擎与 LLM 的边界](#认知状态层)
-4. [检索管线 — 10 路并行 + 编织](#检索管线)
-5. [后台自主节律](#后台自主节律)
-6. [记忆生命周期](#记忆生命周期)
-7. [AI 自我表达记忆](#ai-自我表达记忆)
-8. [工作记忆摘要](#工作记忆摘要)
-9. [用户反馈闭环](#用户反馈闭环)
-10. [E2E Benchmark 体系](#e2e-benchmark-体系)
-11. [关键技术选择](#关键技术选择)
-12. [已知技术债](#已知技术债)
-13. [模块依赖图](#模块依赖图)
+4. [认知画像系统 — PORTRAIT.md 统一汇聚](#认知画像系统)
+5. [检索管线 — 10 路并行 + 编织](#检索管线)
+6. [后台自主节律](#后台自主节律)
+7. [记忆生命周期](#记忆生命周期)
+8. [AI 自我表达记忆](#ai-自我表达记忆)
+9. [工作记忆摘要](#工作记忆摘要)
+10. [用户反馈闭环](#用户反馈闭环)
+11. [E2E Benchmark 体系](#e2e-benchmark-体系)
+12. [关键技术选择](#关键技术选择)
+13. [已知技术债](#已知技术债)
+14. [模块依赖图](#模块依赖图)
 
 ---
 
@@ -99,26 +100,30 @@
   ├─ 引擎编织（weave_context）           │
   │   ├─ 故事线检测                   LLM 生成 → [内心独白]
   │   ├─ 认知分层 (fact/ref/bg/supp)
-  │   ├─ 冲突检测                     巩固引擎
+  │   ├─ 冲突检测                     巩固引擎（DMN 合并 ticker）
   │   └─ Token 预算                     ├─ 浅巩固 4h
   ├─ 回路调度（CircuitOrchestrator）    │   话题树重建/重复检测/
-  │   ├─ 门控决策                       │   人格蒸馏/冲突检测
+  │   ├─ 门控决策                       │   画像浅更新/冲突检测
   │   ├─ 冲动注入                       ├─ 深巩固 24h
-  │   ├─ 行为预测                       │   归档评估/话题笔记/情绪淡化
-  │   ├─ 关系评估                       └─ AI 巩固 1h
-  │   └─ 人格注入                           AI 记忆的浅/深巩固
-  ├─ LLM 生成回复
-  └─ 存储（chat_history + ChromaDB     模式发现 6h
-      + AI 记忆库 + 工作记忆摘要）        时间/情绪/话题/节奏/趋势
+  │   ├─ 行为预测                       │   归档评估/话题笔记/情绪淡化/
+  │   ├─ 关系评估                       │   画像深更新
+  │   └─ 画像注入（stable+dynamic）     ├─ AI 巩固（镜像 ai_dmn）
+  ├─ LLM 生成回复                          与用户侧共享触发，
+  └─ 存储（chat_history + ChromaDB        独立 ConsolidationEngine
+      + AI 记忆库 + 工作记忆摘要）      │
+      + 画像实时更新（usr2/ai2+4）     模式发现 6h
+                                        时间/情绪/话题/节奏/趋势
 
-                                      蒸馏引擎（零 LLM）
-                                        标签聚类/情绪关联/趋势分析
+                                      画像系统
+                                        ├─ 实时更新（每轮对话后，<100ms）
+                                        ├─ 浅更新（4h，提取器→LLM写条目）
+                                        └─ 深更新（24h，全局扫描+LLM合成）
 ```
 
 管线的交汇点：
 - **记忆库共享** — 请求管线写，后台巩固读和重组
 - **冲动注入** — 后台冲动信号在 CircuitOrchestrator 被检查，影响 LLM 回复方向
-- **人格双向流动** — 后台蒸馏 → system prompt，LLM 回复 → 存储 → 更新人格
+- **画像双向流动** — 后台画像系统 → portrait_stable/dynamic 常驻注入 system prompt，LLM 回复 → 存储 → 关系评估 → 实时更新画像 → 深巩固全局合成
 - **工作记忆共享** — 请求管线写入对话摘要，下次请求带回上下文
 
 ---
@@ -156,10 +161,87 @@ CircuitOrchestrator.process()
   ├─ 5. 冲动注入     → 检查 PriorityQueue，注入 ImpulseDirective
   ├─ 6. 行为预测     → mirror_prediction（Markov 预测下一步意图/话题）
   ├─ 7. 关系评估     → RelationshipState (familiarity + trust + closeness)
-  └─ 8. 人格注入     → 用户人格标签 + AI 自我表达标签
+  ├─ 8. 画像注入     → PortraitRenderer.render_stable() + render_dynamic()
+  │                    stable (8维) 注入 message[0] system prompt (前缀缓存命中)
+  │                    dynamic (4维) 注入 message[N+1] system prompt (每轮更新)
+  └─ 9. 人格注入     → [Phase 4 退役中] 用户人格标签 + AI 自我表达标签
                         │
                         ▼
                    UtteranceSpec → LLMClient.generate() → 回复
+```
+
+---
+
+## 认知画像系统
+
+位于 `app/portrait/`。PORTRAIT.md 替代分散的 PersonalityStore + DistillEngine + personality_notes 注入，提供 12 维度的持久化认知画像，常驻注入 LLM prompt。
+
+### 核心问题与被解决的设计缺陷
+
+**旧设计：** 人格标签每次对话做语义检索召回（`rerank_tags(top_k=3)`）。聊 A 话题时看不到 B 话题蒸馏出的性格特征。认知产出（意图/情绪/关系/行为预测）算完即丢弃。蒸馏产出是孤立的 `{content, type, confidence}` 碎片标签，没有聚合为"这个人是什么样的人"的连贯画像。
+
+**新设计：** 画像是一个 12 维度的结构化 Markdown 文档（PORTRAIT.md），每轮对话无条件注入 LLM prompt——不走检索召回。认知结论增量累积，每轮对话后实时更新关系快照维度（<100ms，不调 LLM），4h/24h 巩固时由引擎提取特征 → LLM 合成文本 → 并入画像。
+
+### 12 维度结构
+
+| 维度 | 用户侧 | AI 侧 | 更新层级 | 说明 |
+|------|-------|-------|---------|------|
+| 核心特征 | usr1 | ai1 | deep | 长期稳定的人格/表达特征 |
+| 当前状态 | usr2 | ai2 | realtime | 情绪/精力/兴趣的当前快照 |
+| 行为节律 | usr3 | ai3 | shallow | 时间模式/习惯频率 |
+| 关系快照 | usr4 | ai4 | realtime | familiarity/trust/closeness |
+| 兴趣图谱 | usr5 | ai5 | shallow | 话题偏好/知识覆盖 |
+| 情绪图谱 | usr6 | ai6 | deep | 长期情绪轨迹/反应模式 |
+
+stable 画像（8 维：usr1/3/5/6 + ai1/3/5/6）注入 message[0] system prompt，命中 DeepSeek 前缀缓存（>95% 命中率）。dynamic 画像（4 维：usr2/4 + ai2/4）注入 message[N+1] system prompt，每轮对话后实时更新。
+
+### 三层更新节律
+
+```
+PortraitWriter
+├─ realtime_update(utterance_spec, relationship_state)
+│    每轮对话后触发（chat.py 中 await loop.run_in_executor）
+│    仅更新 4 维度（usr2/ai2 + usr4/ai4）
+│    引擎特征提取 + 规则合成，<100ms，不调 LLM
+│
+├─ shallow_update(app_context)
+│    挂载 DMN 浅巩固节律（4h）
+│    提取器扫描近期记忆 → 变化检测 → LLM 写条目 → 并入 PORTRAIT.md
+│    覆盖 usr3/ai3 + usr5/ai5 + 填充 usr1/ai1 的新候选条目
+│
+└─ deep_update(app_context)
+     挂载 DMN 深巩固节律（24h）
+     全局扫描 → LLM 合成 → 合并/淘汰旧条目
+     覆盖 usr1/ai1 + usr6/ai6，最低 20 轮对话门槛
+```
+
+### 画像注入格式
+
+LLM 收到的 prompt 中，stable 画像作为独立段落注入 message[0] 的 system prompt 末尾，dynamic 画像作为独立 system message 注入消息列表 N+1 位：
+
+```
+message[0] system:  "你是初痕..." [核心人格 + 工具规则 + stable画像(8维)]
+message[1] user:    历史对话...
+message[2] assistant: ...
+...
+message[N] system:   [dynamic画像(4维) + session_context + now_hint()]
+message[N+1] user:  当前用户消息
+```
+
+### 画像与检索的接触点
+
+画像不走检索——它常驻注入 prompt。唯一的检索接触点在 `pipeline.py` 的精排阶段：如果候选记忆关联的实体/标签与画像条目高相关，给 +0.05 的 light boost。不会因为"没匹配到"而丢掉画像信息——画像已经在 prompt 里了。
+
+### 模块结构
+
+```
+app/portrait/
+├── __init__.py       # 模块入口
+├── manager.py        # PORTRAIT.md 加载/解析/写入/条目 CRUD
+├── state.py          # PortraitEntry / EntryStatus / EntryStateMachine
+├── extractors.py     # 特征提取器（tag_counter / entity_aggregator / ...）
+├── renderer.py       # 渲染为 stable/dynamic prompt 段
+└── writer.py         # 三层更新（realtime / shallow / deep）
 ```
 
 ---
@@ -202,12 +284,13 @@ Benchmark 模式配额翻倍（放宽检索限制）。
 ### 去重和排序
 
 1. 各路结果按 `id` 去重
-2. 两级精排：embedding cosine + hit_count 加权 + recency_weight 软降权
+2. 两级精排：embedding cosine + hit_count 加权 + recency_weight 软降权 + portrait light boost (+0.05)
 3. v2.1 软降权公式：`recency_weight = 1.0 - (days_ago / 90) × (1.0 - 0.15)`，下限 0.15
    - archived 记忆上限 0.6
    - stale 记忆上限 0.3
 4. 来源优先级：semantic > bm25_fulltext > entity > keyword > tag > time > co_occurrence > attention
 5. **Benchmark 全量兜底：** 当 BENCHMARK_MODE=true 且 ChromaDB 记忆 ≤ 200 条时，直接全量返回，零检索遗漏
+6. **Phase 4: 人格标签检索已退役** — 画像常驻注入替代了每次对话的 `rerank_tags(top_k=3)` 语义召回。画像不走检索，每轮无条件注入 prompt。
 
 ### 引擎编织（weave_context）
 
@@ -302,14 +385,18 @@ v2.0 采用 JSON + tool role 注入（替代 v1 的纯文本 `【记忆】` 段�
 
 | 级别 | 间隔 | 触发方式 | 内容 |
 |------|------|---------|------|
-| 浅巩固 | 4h | 独立线程 | 话题树重建、语义重复检测、标签嵌入索引、人格蒸馏、人格对称性、事实冲突检测、实体对演化、冷热转换 |
-| 深巩固 | 24h | 独立线程 | 归档评估、话题笔记生成、情绪淡化（高 arousal 旧记忆） |
+| 浅巩固 | 4h | DMN 合并 ticker | 话题树重建、语义重复检测、标签嵌入索引、画像浅更新、人格对称性、事实冲突检测、实体对演化、冷热转换 |
+| 深巩固 | 24h | DMN 合并 ticker | 归档评估、话题笔记生成、画像深更新、情绪淡化（高 arousal 旧记忆） |
 | 空闲巩固 | 按空闲时长 | DMN worker | Level 1 预热（重建检索缓存）、Level 2 回顾（>4h）、Level 3 日巩固（>24h） |
-| AI 巩固 | 1h | 独立线程 | AI 自我表达记忆的浅/深巩固 |
+| AI 巩固 | 与用户侧同步 | DMN 合并 ticker 共享触发 | AI 侧拥有完整 ConsolidationEngine 镜像（ai_dmn），和用户侧共享 on_idle/浅巩固/深巩固触发；AI 情绪淡化保留独立每小时定时器 |
 
-### 蒸馏引擎（零 LLM）
+### Phase 0b: AI 巩固镜像
 
-`app/background/distill.py` — 纯统计方法，从记忆的标签/时间/情绪/内容中提取用户画像标签：
+AI 侧不再使用独立的 worker 线程简化逻辑。DMN 合并 ticker 中用户侧触发浅/深巩固时，AI 侧同步触发——两个 ConsolidationEngine 实例（`self.dmn` 和 `self.ai_dmn`）在同一个 ticker 循环中依次执行。AI 记忆入库时获得与用户记忆完全对等的元数据：实体提取（qwen2.5:3b）、完整 10 字段时间特征、session_continued 标记、基于 full_text（用户+AI）的双维度情绪分析。
+
+### 蒸馏引擎（零 LLM — Phase 4 退役中）
+
+`app/background/distill.py` — 纯统计方法，由画像系统逐步替代。过渡期仍保留空闲蒸馏触发，但产出不再影响画像注入：
 - 标签共现聚类
 - 时间模式检测（时段→话题关联）
 - 情绪关联分析
@@ -380,12 +467,12 @@ stale 记忆注入 LLM 时携带 `stale_reason` 和 `superseded_by`，LLM 可作
 
 ## AI 自我表达记忆
 
-独立的 ChromaDB 集合（`ai_memories`），存储 AI 的回复风格和表达习惯。
+独立的 ChromaDB 集合（`ai_memories`），存储 AI 的回复风格和表达习惯。v2.3 获得与用户记忆完全对等的元数据支持。
 
-- **写入**：每次对话后分析 AI 回复，提取表达方式标签
+- **写入**：每次对话后分析 AI 回复，提取表达方式标签。AI 记忆入库获得完整元数据：实体提取（qwen2.5:3b）、10 字段时间特征、session_continued 标记、基于 full_text（用户+AI）的双维度情绪分析——与用户侧完全对等
 - **检索**：R10 路径 — 当前语境下匹配历史表达风格
-- **巩固**：独立 1h 线程，对 AI 记忆集合执行浅/深巩固
-- **注入**：`personality_notes_ai`（source=ai）写入 system prompt，影响 AI 的语气和表达一致性
+- **巩固**：AI 拥有独立 ConsolidationEngine 实例（ai_dmn），在 DMN 合并 ticker 中与用户侧共享 on_idle/浅巩固/深巩固触发。AI 情绪淡化保留独立每小时定时器
+- **注入**：AI 画像标签（ai1~ai6 维度）统一存储在 PORTRAIT.md 中，由 PortraitRenderer 渲染后注入 system prompt——替代了旧的 `personality_notes_ai` 取前 5 条模式
 
 ---
 
@@ -474,17 +561,24 @@ stale 记忆注入 LLM 时携带 `stale_reason` 和 `superseded_by`，LLM 可作
 - `ArchivalManager` — 归档评估和执行
 - `ConsolidationEngine` — 保留核心调度 + 预热 + 空闲触发
 
-### Prompt 注入依赖 DeepSeek 缓存策略（P1）
+### PersonalityStore / DistillEngine 向 Portrait 迁移（P1 — 进行中）
 
-当前 system prompt + 历史对话构成稳定前缀以命中 DeepSeek prompt 缓存。换底座模型时需要重构注入层。短期不处理（DeepSeek 的成本优势足够大），但需在切换成本评估中计入此项。
+Phase 4 过渡期：personality_store 保留参数兼容，但 CircuitOrchestrator 中已不再使用。DistillEngine 在 DMN 空闲触发中仍被执行但产出不再影响 prompt 注入（画像已接管）。蒸馏相关 API（`/api/personalities`、`/api/distill/status`）已移除。完全退役需要：
+- 将 consolidation.py 中的人格蒸馏调用替换为 portrait_writer.shallow_update()
+- 移除 personality/ 和 background/distill.py 模块
+- 清理 settings.py 中的 PERSONALITY/DISTILL 配置常量
+
+### Prompt 注入依赖 DeepSeek 缓存策略（P1 — 部分改善）
+
+v2.3 将 system prompt 拆分为 stable 前缀（message[0]，命中缓存）+ dynamic 后缀（message[N+1]，每轮更新），使传统 prompt 缓存对流式对话更友好。stable 段包含核心人格 + 工具规则 + 8 维画像，命中率 >95%。但整体注入结构仍依赖 DeepSeek 的缓存策略。换底座模型时需重新评估。
 
 ### O(n²) 全量扫描（P1 — 部分修复）
 
 语义重复检测已从双层 for 循环改为 ChromaDB query（O(n log n)）。但 `_check_conflicts` 和 `_assess_archival` 仍用 `list_all()` 全量扫描。记忆量 < 5000 条时影响不大，超过后需要分页或增量处理。
 
-### 测试同步（P2）
+### 测试同步（P2 — 已修复）
 
-4 条 `test_thread_safety.py` 测试因重构后模块名变更而失败。需同步更新到当前模块路径。
+已移除旧 test_personality.py / test_personality_deep.py / test_behavior.py，新增 5 个 portrait 测试文件。test_thread_safety.py 仍需同步更新。
 
 ### 观测性（P1 — 已有基础）
 
@@ -540,24 +634,31 @@ app/
 │   ├── symmetry.py      人格对称性分析（用户/AI 双矩阵盲区检测）
 │   └── predictor.py     行为预测（Markov 链）
 │
-├── personality/   ← 双人格系统
+├── portrait/      ← 认知画像系统（引擎提取 + LLM 合成）
+│   ├── manager.py       PORTRAIT.md 加载/解析/写入/条目 CRUD
+│   ├── state.py         PortraitEntry / EntryStatus / EntryStateMachine
+│   ├── extractors.py    特征提取器（tag_counter/entity_aggregator/...）
+│   ├── renderer.py      渲染 stable(8维)/dynamic(4维) prompt 段
+│   └── writer.py        三层更新（realtime/shallow/deep）
+│
+├── personality/   ← 双人格系统（Phase 4 退役中，由 portrait/ 替代）
 │   ├── store.py         人格标签存储
 │   └── behavior.py      行为模式分析
 │
 ├── background/    ← 后台自主节律
-│   ├── consolidation.py  巩固引擎（浅/深/空闲三级）
+│   ├── consolidation.py  巩固引擎（浅/深/空闲三级，用户+AI 双实例）
 │   ├── impulse.py        冲动系统（5 源 + 消费者 + 内抑制）
-│   ├── distill.py        蒸馏引擎（零 LLM 画像提取）
+│   ├── distill.py        蒸馏引擎（零 LLM，Phase 4 退役中）
 │   └── lifecycle.py      线程生命周期（崩溃重启 + 限流）
 │
 ├── llm/           ← LLM 适配层
-│   ├── deepseek.py      主 LLM 客户端（兼容 OpenAI API）
+│   ├── deepseek.py      主 LLM 客户端（兼容 OpenAI API）+ 画像注入
 │   ├── embed.py         本地 embedding (bge-m3 via Ollama)
 │   └── local.py         本地 LLM (qwen2.5:3b，摘要/实体)
 │
 ├── api/           ← REST 层
 │   ├── app.py           FastAPI 工厂
-│   ├── chat.py          聊天端点 + benchmark 注入 + 管理重置
+│   ├── chat.py          聊天端点 + benchmark 注入 + 管理重置 + 画像实时更新
 │   │   ├─ /chat             普通对话
 │   │   ├─ /chat/stream      流式对话
 │   │   ├─ /v1/chat/completions  OpenAI 兼容
@@ -566,7 +667,7 @@ app/
 │   ├── system.py        系统/健康/状态端点
 │   ├── memories.py      记忆查询端点
 │   ├── consolidation.py 巩固状态端点
-│   ├── personalities.py 人格标签端点
+│   ├── portrait.py      画像渲染端点
 │   └── chat_history.py  对话历史端点
 │
 └── tools/         ← 工具层
@@ -581,4 +682,4 @@ app/
 
 ---
 
-*最后更新：2026-06-06*
+*最后更新：2026-06-09*

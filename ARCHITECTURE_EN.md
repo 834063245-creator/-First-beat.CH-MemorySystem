@@ -9,16 +9,17 @@
 1. [Core Design Decisions](#core-design-decisions)
 2. [System Overview](#system-overview)
 3. [Cognitive State Layer — The Engine/LLM Boundary](#cognitive-state-layer)
-4. [Retrieval Pipeline — 10-Path Parallel + Weaving](#retrieval-pipeline)
-5. [Background Autonomous Rhythm](#background-autonomous-rhythm)
-6. [Memory Lifecycle](#memory-lifecycle)
-7. [AI Self-Expression Memory](#ai-self-expression-memory)
-8. [Working Memory Digest](#working-memory-digest)
-9. [User Feedback Loop](#user-feedback-loop)
-10. [E2E Benchmark Suite](#e2e-benchmark-suite)
-11. [Key Technology Choices](#key-technology-choices)
-12. [Known Technical Debt](#known-technical-debt)
-13. [Module Dependency Graph](#module-dependency-graph)
+4. [Portrait System — PORTRAIT.md Unified Hub](#portrait-system)
+5. [Retrieval Pipeline — 10-Path Parallel + Weaving](#retrieval-pipeline)
+6. [Background Autonomous Rhythm](#background-autonomous-rhythm)
+7. [Memory Lifecycle](#memory-lifecycle)
+8. [AI Self-Expression Memory](#ai-self-expression-memory)
+9. [Working Memory Digest](#working-memory-digest)
+10. [User Feedback Loop](#user-feedback-loop)
+11. [E2E Benchmark Suite](#e2e-benchmark-suite)
+12. [Key Technology Choices](#key-technology-choices)
+13. [Known Technical Debt](#known-technical-debt)
+14. [Module Dependency Graph](#module-dependency-graph)
 
 ---
 
@@ -99,30 +100,32 @@ User message                            5 Impulse Sources → PriorityQueue
   ├─ Weave context                         │
   │   ├─ Storyline detection             LLM generates → [inner voice]
   │   ├─ Cognitive layering              
-  │   ├─ Conflict detection              Consolidation Engine
+  │   ├─ Conflict detection              Consolidation Engine (DMN merged)
   │   └─ Token budget                      ├─ Shallow 4h
   ├─ Circuit Orchestrator                  │   Topic tree / Duplicates /
-  │   ├─ Gate decision                     │   Personality distillation /
-  │   ├─ Impulse injection                 │   Conflict detection
-  │   ├─ Behavior prediction               ├─ Deep 24h
-  │   ├─ Relationship assessment           │   Archival / Topic notes /
-  │   └─ Personality injection             │   Emotion dampening
-  ├─ LLM generates reply                   └─ AI Consolidation 1h
-  └─ Store (chat_history + ChromaDB            AI memory shallow/deep
-      + AI memory + Working memory)
+  │   ├─ Gate decision                     │   Portrait shallow / Conflict
+  │   ├─ Impulse injection                 ├─ Deep 24h
+  │   ├─ Behavior prediction               │   Archival / Topic notes /
+  │   ├─ Relationship assessment           │   Emotion dampening /
+  │   └─ Portrait injection (s+d)          │   Portrait deep
+  ├─ LLM generates reply                   ├─ AI (mirror ai_dmn)
+  └─ Store (chat_history + ChromaDB            Shares triggers with user,
+      + AI memory + Working memory             independent ConsolidationEngine
+      + Portrait realtime update)          │
                                           Pattern Discovery 6h
                                             Temporal/Emotion/Topic/
                                             Rhythm/Trend
 
-                                          Distillation Engine (zero LLM)
-                                            Tag clustering / Emotion correlation
-                                            / Trend analysis
+                                          Portrait System
+                                            ├─ Realtime (after every turn, <100ms)
+                                            ├─ Shallow (4h, extractors→LLM write)
+                                            └─ Deep (24h, global scan+LLM synthesis)
 ```
 
 Intersection points between the two layers:
 - **Shared memory store** — request pipeline writes, background consolidation reads and reorganizes
 - **Impulse injection** — background impulse signals are checked by CircuitOrchestrator, influencing LLM response direction
-- **Bidirectional personality flow** — background distillation → system prompt, LLM responses → storage → updated personality
+- **Bidirectional portrait flow** — background portrait system → portrait_stable/dynamic constant injection in system prompt, LLM responses → storage → relationship assessment → realtime portrait update → deep global synthesis
 - **Shared working memory** — request pipeline writes conversation digest, next request loads it as context
 
 ---
@@ -160,10 +163,87 @@ CircuitOrchestrator.process()
   ├─ 5. Impulse injection   → Check PriorityQueue, inject ImpulseDirective
   ├─ 6. Behavior prediction → mirror_prediction (Markov next intent/topic)
   ├─ 7. Relationship        → RelationshipState (familiarity + trust + closeness)
-  └─ 8. Personality         → User personality tags + AI self-expression tags
+  ├─ 8. Portrait injection  → PortraitRenderer.render_stable() + render_dynamic()
+  │                            stable (8 dims) → message[0] system prompt (prefix cache hits)
+  │                            dynamic (4 dims) → message[N+1] system prompt (per-turn update)
+  └─ 9. Personality         → [Phase 4 retiring] User tags + AI self-expression tags
                                │
                                ▼
                         UtteranceSpec → LLMClient.generate() → Reply
+```
+
+---
+
+## Portrait System
+
+Located in `app/portrait/`. PORTRAIT.md replaces the fragmented PersonalityStore + DistillEngine + personality_notes injection, providing a 12-dimension persistent cognitive portrait that is constantly injected into the LLM prompt.
+
+### Core Problem & Design Flaws Fixed
+
+**Old design:** Personality tags were semantically retrieved per query (`rerank_tags(top_k=3)`). When discussing topic A, personality traits distilled from topic B were invisible. Cognitive outputs (intent/emotion/relationship/behavior prediction) were computed and discarded every turn. Distillation outputs were isolated `{content, type, confidence}` fragment tags — never aggregated into a coherent picture of "what kind of person this is."
+
+**New design:** The portrait is a 12-dimension structured Markdown document (PORTRAIT.md), unconditionally injected into every LLM prompt — no retrieval dependency. Cognitive conclusions accumulate incrementally: relationship snapshots update in realtime after each turn (<100ms, no LLM call); 4h/24h consolidation triggers engine feature extraction → LLM text synthesis → merge into portrait.
+
+### 12 Dimensions
+
+| Dim | User | AI | Update Tier | Description |
+|-----|------|-----|-------------|-------------|
+| Core traits | usr1 | ai1 | deep | Long-term stable personality/expression features |
+| Current state | usr2 | ai2 | realtime | Current snapshot of emotion/energy/interests |
+| Behavior rhythm | usr3 | ai3 | shallow | Time patterns / habit frequency |
+| Relationship snapshot | usr4 | ai4 | realtime | familiarity/trust/closeness |
+| Interest graph | usr5 | ai5 | shallow | Topic preferences / knowledge coverage |
+| Emotion graph | usr6 | ai6 | deep | Long-term emotional trajectory / reaction patterns |
+
+Stable portrait (8 dims: usr1/3/5/6 + ai1/3/5/6) injected into message[0] system prompt, hitting DeepSeek prefix cache (>95% hit rate). Dynamic portrait (4 dims: usr2/4 + ai2/4) injected into message[N+1] system prompt, updated in realtime after each turn.
+
+### Three-Tier Update Rhythm
+
+```
+PortraitWriter
+├─ realtime_update(utterance_spec, relationship_state)
+│    After every turn (triggered in chat.py via loop.run_in_executor)
+│    Updates only 4 dimensions (usr2/ai2 + usr4/ai4)
+│    Engine feature extraction + rule-based synthesis, <100ms, no LLM
+│
+├─ shallow_update(app_context)
+│    Mounted on DMN shallow consolidation rhythm (4h)
+│    Extractors scan recent memories → change detection → LLM writes entries → merge into PORTRAIT.md
+│    Covers usr3/ai3 + usr5/ai5 + fills new candidate entries for usr1/ai1
+│
+└─ deep_update(app_context)
+     Mounted on DMN deep consolidation rhythm (24h)
+     Global scan → LLM synthesis → merge/prune old entries
+     Covers usr1/ai1 + usr6/ai6, minimum 20-turn threshold
+```
+
+### Portrait Injection Format
+
+The LLM receives stable portrait as an independent paragraph at the end of message[0]'s system prompt, and dynamic portrait as an independent system message at position N+1:
+
+```
+message[0] system:  "You are First Beat..." [core personality + tool rules + stable portrait (8 dims)]
+message[1] user:    conversation history...
+message[2] assistant: ...
+...
+message[N] system:   [dynamic portrait (4 dims) + session_context + now_hint()]
+message[N+1] user:  current user message
+```
+
+### Portrait & Retrieval Contact Point
+
+Portrait does not go through retrieval — it is constantly injected into the prompt. The only retrieval contact point is in `pipeline.py`'s ranking stage: if a candidate memory's associated entities/tags show high relevance to portrait entries, it receives a +0.05 light boost. No portrait information is lost due to "not matched" — the portrait is already in the prompt.
+
+### Module Structure
+
+```
+app/portrait/
+├── __init__.py       # Module entry
+├── manager.py        # PORTRAIT.md load/parse/write/entry CRUD
+├── state.py          # PortraitEntry / EntryStatus / EntryStateMachine
+├── extractors.py     # Feature extractors (tag_counter / entity_aggregator / ...)
+├── renderer.py       # Render as stable/dynamic prompt sections
+└── writer.py         # Three-tier updates (realtime / shallow / deep)
 ```
 
 ---
@@ -206,12 +286,13 @@ Benchmark mode quotas are 2-5× wider.
 ### Dedup and Ranking
 
 1. Dedup by `id` across all paths
-2. Two-stage ranking: embedding cosine + hit_count weighted + recency_weight soft degradation
+2. Two-stage ranking: embedding cosine + hit_count weighted + recency_weight soft degradation + portrait light boost (+0.05)
 3. v2.1 soft degradation formula: `recency_weight = 1.0 - (days_ago / 90) × (1.0 - 0.15)`, floor 0.15
    - archived memories: cap 0.6
    - stale memories: cap 0.3
 4. Source priority: semantic > bm25_fulltext > entity > keyword > tag > time > cooccurrence > attention
 5. **Benchmark exhaustive fallback:** when BENCHMARK_MODE=true and ChromaDB memories ≤ 200, return all, zero retrieval loss
+6. **Phase 4: Personality tag retrieval retired** — portrait constant injection replaces per-query `rerank_tags(top_k=3)` semantic recall. Portrait bypasses retrieval; it is unconditionally injected into every prompt.
 
 ### Weave Context
 
@@ -306,14 +387,18 @@ Behavior pattern (30min)──┘     ├─ LLM generates natural language
 
 | Level | Interval | Trigger | Content |
 |-------|----------|---------|---------|
-| Shallow | 4h | Dedicated thread | Topic tree rebuild, semantic duplicate detection, tag embedding index, personality distillation, personality symmetry, conflict detection, entity pair evolution, hot/cool transition |
-| Deep | 24h | Dedicated thread | Archival assessment, topic note generation, emotion dampening (high-arousal old memories) |
+| Shallow | 4h | DMN merged ticker | Topic tree rebuild, semantic duplicate detection, tag embedding index, portrait shallow update, personality symmetry, conflict detection, entity pair evolution, hot/cool transition |
+| Deep | 24h | DMN merged ticker | Archival assessment, topic note generation, portrait deep update, emotion dampening (high-arousal old memories) |
 | Idle | By idle duration | DMN worker | Level 1 warmup (rebuild retrieval cache), Level 2 review (>4h), Level 3 daily consolidation (>24h) |
-| AI | 1h | Dedicated thread | Shallow/deep consolidation for AI self-expression memories |
+| AI | Synced with user | DMN merged ticker shared trigger | AI side has a full ConsolidationEngine mirror (ai_dmn), sharing on_idle/shallow/deep triggers with user side; AI emotion dampening retains independent hourly timer |
 
-### Distillation Engine (Zero LLM)
+### Phase 0b: AI Consolidation Mirror
 
-`app/background/distill.py` — Pure statistical extraction of user profile tags from memory tags/time/emotion/content:
+The AI side no longer uses a standalone worker thread with simplified logic. In the DMN merged ticker, when the user side triggers shallow/deep consolidation, the AI side triggers synchronously — two ConsolidationEngine instances (`self.dmn` and `self.ai_dmn`) execute sequentially within the same ticker loop. AI memory ingestion receives full metadata parity with user memories: entity extraction (qwen2.5:3b), complete 10-field time features, session_continued flag, and dual-dimension emotion analysis based on full_text (user+AI).
+
+### Distillation Engine (Zero LLM — Phase 4 Retiring)
+
+`app/background/distill.py` — Pure statistical extraction, being gradually replaced by the portrait system. During the transition, idle distillation triggers are still executed, but outputs no longer affect portrait injection:
 - Tag co-occurrence clustering
 - Time pattern detection (time-period → topic correlation)
 - Emotion correlation analysis
@@ -384,12 +469,12 @@ Triggers every 50 `increment_hit_count` calls. High-intensity memories untouched
 
 ## AI Self-Expression Memory
 
-A separate ChromaDB collection (`ai_memories`) stores the AI's response style and expressive patterns.
+A separate ChromaDB collection (`ai_memories`) stores the AI's response style and expressive patterns. v2.3 achieves full metadata parity with user memories.
 
-- **Write**: After each conversation, analyze the AI's reply and extract expression-style tags
+- **Write**: After each conversation, analyze the AI's reply and extract expression-style tags. AI memory ingestion now receives complete metadata: entity extraction (qwen2.5:3b), 10-field time features, session_continued flag, and dual-dimension emotion analysis from full_text (user+AI) — fully equivalent to the user side
 - **Retrieve**: Path R10 — match historical expression styles to the current context
-- **Consolidate**: Dedicated 1h thread runs shallow/deep consolidation on the AI memory collection
-- **Inject**: `personality_notes_ai` (source=ai) injected into system prompt, shaping the AI's tone and expressive consistency
+- **Consolidate**: AI has an independent ConsolidationEngine instance (ai_dmn) that shares on_idle/shallow/deep consolidation triggers with the user side in the DMN merged ticker. AI emotion dampening retains its own hourly timer
+- **Inject**: AI portrait dimensions (ai1~ai6) are stored alongside user dimensions (usr1~usr6) in PORTRAIT.md, rendered by PortraitRenderer and injected into the system prompt — replacing the old `personality_notes_ai` top-5-by-created_at pattern
 
 ---
 
@@ -478,9 +563,16 @@ Full specification in `BENCHMARK_SPEC.md`.
 - `ArchivalManager` — archival assessment and execution
 - `ConsolidationEngine` — keep core scheduling + warmup + idle triggers
 
-### Prompt Injection Tied to DeepSeek Caching (P1)
+### PersonalityStore / DistillEngine → Portrait Migration (P1 — In Progress)
 
-Current system prompt + conversation history form a stable prefix to hit DeepSeek prompt cache. Switching base models requires restructuring the injection layer. Not addressing short-term (DeepSeek's cost advantage is significant enough), but must factor into any model migration cost assessment.
+Phase 4 transition: personality_store retains parameter compatibility but is no longer used in CircuitOrchestrator. DistillEngine is still executed on DMN idle triggers but its outputs no longer affect prompt injection (portrait has taken over). Distillation-related APIs (`/api/personalities`, `/api/distill/status`) have been removed. Full retirement requires:
+- Replace personality distillation calls in consolidation.py with portrait_writer.shallow_update()
+- Remove personality/ and background/distill.py modules
+- Clean up PERSONALITY/DISTILL config constants in settings.py
+
+### Prompt Injection Tied to DeepSeek Caching (P1 — Partially Improved)
+
+v2.3 splits the system prompt into a stable prefix (message[0], cacheable) and a dynamic suffix (message[N+1], per-turn), making traditional prompt caching more friendly for conversational use. The stable segment contains core personality + tool rules + 8-dim portrait with >95% cache hit rate. However, the overall injection structure still depends on DeepSeek's caching strategy. Model migration requires re-evaluation.
 
 ### O(n²) Full Scans (P1 — Partially Fixed)
 
@@ -540,24 +632,31 @@ app/
 │   ├── symmetry.py      Personality symmetry analysis (user/AI dual-matrix blind spot detection)
 │   └── predictor.py     Behavior prediction (Markov chain)
 │
-├── personality/   ← Dual personality system
+├── portrait/      ← Cognitive portrait system (engine extraction + LLM synthesis)
+│   ├── manager.py       PORTRAIT.md load/parse/write/entry CRUD
+│   ├── state.py         PortraitEntry / EntryStatus / EntryStateMachine
+│   ├── extractors.py    Feature extractors (tag_counter/entity_aggregator/...)
+│   ├── renderer.py      Render stable (8 dims) / dynamic (4 dims) prompt sections
+│   └── writer.py        Three-tier updates (realtime/shallow/deep)
+│
+├── personality/   ← Dual personality system (Phase 4 retiring, replaced by portrait/)
 │   ├── store.py         Personality tag storage
 │   └── behavior.py      Behavior pattern analysis
 │
 ├── background/    ← Background autonomous rhythm
-│   ├── consolidation.py  Consolidation engine (shallow/deep/idle three-level)
+│   ├── consolidation.py  Consolidation engine (shallow/deep/idle three-level, user+AI dual instances)
 │   ├── impulse.py        Impulse system (5 sources + consumer + internal inhibition)
-│   ├── distill.py        Distillation engine (zero-LLM profile extraction)
+│   ├── distill.py        Distillation engine (zero-LLM, Phase 4 retiring)
 │   └── lifecycle.py      Thread lifecycle (crash restart + rate limiting)
 │
 ├── llm/           ← LLM adaptation layer
-│   ├── deepseek.py      Main LLM client (OpenAI-compatible API)
+│   ├── deepseek.py      Main LLM client (OpenAI-compatible API) + portrait injection
 │   ├── embed.py         Local embedding (bge-m3 via Ollama)
 │   └── local.py         Local LLM (qwen2.5:3b, summarization/entities)
 │
 ├── api/           ← REST layer
 │   ├── app.py           FastAPI factory
-│   ├── chat.py          Chat endpoint + benchmark injection + admin reset
+│   ├── chat.py          Chat endpoint + benchmark injection + admin reset + portrait realtime
 │   │   ├─ /chat             Standard chat
 │   │   ├─ /chat/stream      SSE streaming
 │   │   ├─ /v1/chat/completions  OpenAI-compatible
@@ -566,7 +665,7 @@ app/
 │   ├── system.py        System/health/status endpoints
 │   ├── memories.py      Memory query endpoints
 │   ├── consolidation.py Consolidation status endpoint
-│   ├── personalities.py Personality tag endpoint
+│   ├── portrait.py      Portrait render endpoint
 │   └── chat_history.py  Chat history endpoint
 │
 └── tools/         ← Utility layer
@@ -581,4 +680,4 @@ app/
 
 ---
 
-*Last updated: 2026-06-06*
+*Last updated: 2026-06-09*
