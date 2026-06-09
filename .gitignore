@@ -62,3 +62,7 @@ Thumbs.db
 
 # EverOS reference (external research, not part of this project)
 EVEROS_INSIGHTS.md
+
+# Hologram artifacts
+.hologram/
+hologram_graph.json
