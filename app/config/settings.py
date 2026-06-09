@@ -191,7 +191,7 @@ BEHAVIOR_COLLECTION = "behavior_patterns"
 # ============================================================
 # legacy — 当前无 .py 引用，保留供可能的旧模块兼容
 TIMELINE_RECENT_COUNT = 5
-WORK_MEMORY_TOKEN_BUDGET = 50000
+WORK_MEMORY_TOKEN_BUDGET = 200000
 
 # ============================================================
 # ChatHistory
@@ -202,7 +202,7 @@ CHAT_HISTORY_MAX_MEMORY = 500
 # ============================================================
 # 文件存储路径
 # ============================================================
-CO_OCCURRENCE_FILE = os.path.join(DATA_DIR, "co_occurrence.db")
+CO_OCCURRENCE_FILE = os.path.join(DATA_DIR, "co_occurrence.json")
 STORE_FAILURES_PATH = os.path.join(DATA_DIR, "store_failures.jsonl")
 
 # ============================================================
@@ -236,29 +236,14 @@ IMPULSE_TTL = 7200
 IMPULSE_ACTIVE_PATH_B = os.getenv("IMPULSE_ACTIVE_PATH_B", "true").lower() == "true"
 
 # ============================================================
-# 部署模式 & 轻量版开关
-# ============================================================
-DEPLOY_MODE = os.getenv("DEPLOY_MODE", "full")
-IS_LITE = DEPLOY_MODE == "lite"
-
-# 轻量版功能开关
-LITE_DISABLE_BACKGROUND_TASKS = True        # 禁用后台巩固 + 空闲回顾
-LITE_DISABLE_IMPULSE = True                 # 禁用冲动调度器 + 独立开口
-LITE_WORK_MEMORY_BUDGET = 5000 if IS_LITE else 50000
-
-# ============================================================
 # Benchmark 模式 — 禁用认知过滤，最大化事实召回
 # ============================================================
 BENCHMARK_MODE = os.getenv("BENCHMARK_MODE", "false").lower() == "true"
 
 if BENCHMARK_MODE:
-    DEPLOY_MODE = "lite"
-    IS_LITE = True
     CONSOLIDATION_SHALLOW_INTERVAL = 999_999_999   # 实质上禁用
     CONSOLIDATION_DEEP_INTERVAL = 999_999_999
-    LITE_DISABLE_BACKGROUND_TASKS = True
-    LITE_DISABLE_IMPULSE = True
-    LITE_WORK_MEMORY_BUDGET = 100_000              # benchmark 不限制工作记忆
+    WORK_MEMORY_TOKEN_BUDGET = 200_000             # benchmark 不限制工作记忆
 
 # ============================================================
 # 共享停用词表

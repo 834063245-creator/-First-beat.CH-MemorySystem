@@ -29,8 +29,7 @@ from app.config.settings import (                  # noqa: E402
     CONSOLIDATION_SHALLOW_INTERVAL, CONSOLIDATION_DEEP_INTERVAL,
     AI_CHROMA_DIR, AI_COLLECTION, AI_DISTILL_STATE_PATH,
     IMPULSE_ACTIVE_PATH_B,
-    IS_LITE, LITE_DISABLE_BACKGROUND_TASKS, LITE_DISABLE_IMPULSE,
-    LITE_WORK_MEMORY_BUDGET, USER_DATA_DIRS,
+    WORK_MEMORY_TOKEN_BUDGET, USER_DATA_DIRS,
     BENCHMARK_MODE,
     PORTRAIT_FILE_PATH,
     STOP_WORDS as _STOP_WORDS,
@@ -142,34 +141,30 @@ class AppContext:
             source="ai",
         )
         self.distill_engine = self.user_distill  # 向后兼容
-        if not (IS_LITE and LITE_DISABLE_BACKGROUND_TASKS):
-            from app.background.consolidation import ConsolidationEngine
-            self.dmn = ConsolidationEngine(
-                chroma_service=self.chroma_service,
-                personality_store=self.personality_store,
-                behavior_store=self.behavior_store,
-                chat_history=self.chat_history,
-                co_tracker=self.co_tracker,
-                state_path=f"{data_dir}/dmn_state.json",
-                notes_path=f"{data_dir}/topic_notes.json",
-                temporal_pattern_index=self.temporal_pattern_index,
-                topic_affinity=self.topic_affinity,
-            )
-            # Phase 0b: AI 完整 ConsolidationEngine — 与用户侧完全镜像
-            self.ai_dmn = ConsolidationEngine(
-                chroma_service=self.ai_chroma_service,
-                personality_store=self.personality_store,
-                behavior_store=self.behavior_store,
-                chat_history=self.chat_history,
-                co_tracker=self.ai_co_tracker,
-                state_path=f"{data_dir}/ai_dmn_state.json",
-                notes_path=f"{data_dir}/ai_topic_notes.json",
-                temporal_pattern_index=self.temporal_pattern_index,
-                topic_affinity=self.topic_affinity,
-            )
-        else:
-            self.dmn = None
-            self.ai_dmn = None
+        from app.background.consolidation import ConsolidationEngine
+        self.dmn = ConsolidationEngine(
+            chroma_service=self.chroma_service,
+            personality_store=self.personality_store,
+            behavior_store=self.behavior_store,
+            chat_history=self.chat_history,
+            co_tracker=self.co_tracker,
+            state_path=f"{data_dir}/dmn_state.json",
+            notes_path=f"{data_dir}/topic_notes.json",
+            temporal_pattern_index=self.temporal_pattern_index,
+            topic_affinity=self.topic_affinity,
+        )
+        # Phase 0b: AI 完整 ConsolidationEngine — 与用户侧完全镜像
+        self.ai_dmn = ConsolidationEngine(
+            chroma_service=self.ai_chroma_service,
+            personality_store=self.personality_store,
+            behavior_store=self.behavior_store,
+            chat_history=self.chat_history,
+            co_tracker=self.ai_co_tracker,
+            state_path=f"{data_dir}/ai_dmn_state.json",
+            notes_path=f"{data_dir}/ai_topic_notes.json",
+            temporal_pattern_index=self.temporal_pattern_index,
+            topic_affinity=self.topic_affinity,
+        )
 
         # 话题树（DMN 浅巩固时重建，pipeline 检索时使用）
         self._topic_tree = getattr(self.dmn, '_topic_tree', None)
@@ -186,14 +181,11 @@ class AppContext:
         if hasattr(self, 'llm_client'):
             self.llm_client.set_pattern_discovery(self._pattern_discovery)
 
-        if not (IS_LITE and LITE_DISABLE_IMPULSE):
-            from app.background.impulse import ImpulseScheduler
-            self.impulse_scheduler = ImpulseScheduler(
-                state_path=f"{data_dir}/impulse_state.json",
-                temporal_pattern_index=self.temporal_pattern_index,
-            )
-        else:
-            self.impulse_scheduler = None
+        from app.background.impulse import ImpulseScheduler
+        self.impulse_scheduler = ImpulseScheduler(
+            state_path=f"{data_dir}/impulse_state.json",
+            temporal_pattern_index=self.temporal_pattern_index,
+        )
         self.mirror_neuron = BehaviorPredictor(data_dir=data_dir)
 
         # 每个用户的存储队列路径

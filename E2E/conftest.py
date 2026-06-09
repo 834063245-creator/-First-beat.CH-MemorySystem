@@ -549,7 +549,7 @@ def isolated_env_background():
     """后台节律测试隔离环境 — 非 Benchmark 模式，含完整 impulse/dmn/consolidation。
 
     特点：
-    - BENCHMARK_MODE=false，确保 IS_LITE=False，所有后台组件均创建
+    - BENCHMARK_MODE=false，所有后台组件均创建
     - 立即停止 impulse 泊松线程（避免随机触发干扰测试）
     - 保留 dmn + consolidation 实例供手动调用
     - 测试结束后自动清理
@@ -560,11 +560,9 @@ def isolated_env_background():
 
     old_data_dir = os.environ.get("DATA_DIR")
     old_benchmark = os.environ.get("BENCHMARK_MODE")
-    old_deploy = os.environ.get("DEPLOY_MODE")
 
     os.environ["DATA_DIR"] = data_dir
     os.environ["BENCHMARK_MODE"] = "false"
-    os.environ["DEPLOY_MODE"] = "full"
     # 确保 Path B 开关打开（冲动消费路径）
     os.environ["IMPULSE_ACTIVE_PATH_B"] = "true"
 
@@ -602,11 +600,6 @@ def isolated_env_background():
         os.environ["BENCHMARK_MODE"] = old_benchmark
     else:
         os.environ.pop("BENCHMARK_MODE", None)
-    if old_deploy is not None:
-        os.environ["DEPLOY_MODE"] = old_deploy
-    else:
-        os.environ.pop("DEPLOY_MODE", None)
-
 
 @pytest.fixture(scope="class")
 def seeded_env_background(isolated_env_background):

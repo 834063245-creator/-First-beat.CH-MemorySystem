@@ -71,11 +71,7 @@ def _make_mocks():
     mock.return_value = pd_mock
     patches['app.core.context.PatternDiscovery'] = p
 
-    # 常量
-    for const in ['IS_LITE', 'LITE_DISABLE_BACKGROUND_TASKS', 'LITE_DISABLE_IMPULSE']:
-        p = patch(f'app.core.context.{const}', False)
-        p.start()
-        patches[const] = p
+    # 常量（LITE 模式已移除，无需 patch）
 
     # 后台线程 — 全部 no-op
     bg_methods = ['_start_impulse_consumer', '_start_queue_worker',

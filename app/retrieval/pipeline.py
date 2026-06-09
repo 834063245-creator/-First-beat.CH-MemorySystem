@@ -12,7 +12,7 @@ from app.brain.semantic import extract_tags, tokenize as _sem_tokenize
 
 from app.config.settings import (
     ATTENTION_WINDOW,
-    LITE_WORK_MEMORY_BUDGET,
+    WORK_MEMORY_TOKEN_BUDGET,
     BENCHMARK_MODE as _BM,
 )
 from app.retrieval.scoring import compute_score
@@ -176,7 +176,7 @@ def run_chat_retrieval(
     if ctx_obj.chat_history:
         try:
             timeline_recent = ctx_obj.chat_history.get_recent(
-                token_budget=LITE_WORK_MEMORY_BUDGET
+                token_budget=WORK_MEMORY_TOKEN_BUDGET
             )
         except Exception:
             try:
