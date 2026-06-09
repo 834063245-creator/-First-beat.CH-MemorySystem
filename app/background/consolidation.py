@@ -84,16 +84,15 @@ class ConsolidationEngine:
 
     MAX_PREHEAT_CACHE = 10
 
-    def __init__(self, chroma_service, personality_store, behavior_store, chat_history, co_tracker, *,
+    def __init__(self, chroma_service, chat_history, co_tracker, *,
                  state_path: str, notes_path: str,
-                 temporal_pattern_index=None, topic_affinity=None):
+                 temporal_pattern_index=None, topic_affinity=None, ai_co_tracker=None):
         self._state_path = state_path
         self._notes_path = notes_path
         self._chroma = chroma_service
-        self._personality = personality_store
-        self._behavior = behavior_store
         self._chat_history = chat_history
         self._co_tracker = co_tracker
+        self._ai_co_tracker = ai_co_tracker
         self._temporal_index = temporal_pattern_index
         self._topic_affinity = topic_affinity
         self._topic_tree = None
@@ -201,15 +200,8 @@ class ConsolidationEngine:
         state = self._read_state()
         today_topics = state.get("today_topics", [])
 
-        # 收集行为模式标签
+        # 行为模式标签 — Phase 4 退役，由 Portrait 画像的 usr3/ai3 行为节律维度替代
         behavior_keywords = set()
-        try:
-            behaviors = self._behavior.list_all()
-            for b in behaviors:
-                content = b.get("content", "") or ""
-                behavior_keywords.update(_extract_keywords(content, topk=5))
-        except Exception as exc:
-            logger.debug("后台行为模式读取跳过: %s", exc)
 
         # 时间节奏检索：去年同期 / 上月同日
         time_titles = []
@@ -620,10 +612,17 @@ class ConsolidationEngine:
             try:
                 from app.analysis.symmetry import PersonaSymmetry
                 data_dir = os.path.dirname(self._state_path)
-                sym = PersonaSymmetry(
-                    f"{data_dir}/co_occurrence.json",
-                    f"{data_dir}/ai_co_occurrence.json",
-                )
+                if self._ai_co_tracker is not None:
+                    # v3: 从 SQLite tracker 导出实时数据，替代读取过期 JSON 文件
+                    user_data = self._co_tracker.export_for_symmetry()
+                    ai_data = self._ai_co_tracker.export_for_symmetry()
+                    sym = PersonaSymmetry(user_data, ai_data, from_dicts=True)
+                else:
+                    # 向后兼容：AI tracker 不可用时回退到文件读取
+                    sym = PersonaSymmetry(
+                        f"{data_dir}/co_occurrence.db",
+                        f"{data_dir}/ai_co_occurrence.db",
+                    )
                 sym.analyze()
                 obs = sym.get_observations()
                 if obs:

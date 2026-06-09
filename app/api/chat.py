@@ -146,7 +146,7 @@ async def chat_stream(req: ChatRequest, user_ctx = Depends(get_user_context)):
     utterance_spec = await loop.run_in_executor(
         user_ctx.storage_executor,
         lambda: CircuitOrchestrator(
-            user_ctx.chroma_service, user_ctx.personality_store, user_ctx.impulse_scheduler,
+            user_ctx.chroma_service, user_ctx.impulse_scheduler,
             user_ctx.dmn, user_ctx.chat_history, user_ctx.co_tracker,
             mirror_neuron=user_ctx.mirror_neuron,
         ).process(
@@ -278,7 +278,7 @@ async def chat(req: ChatRequest, user_ctx = Depends(get_user_context)):
     utterance_spec = await loop.run_in_executor(
         user_ctx.storage_executor,
         lambda: CircuitOrchestrator(
-            user_ctx.chroma_service, user_ctx.personality_store, user_ctx.impulse_scheduler,
+            user_ctx.chroma_service, user_ctx.impulse_scheduler,
             user_ctx.dmn, user_ctx.chat_history, user_ctx.co_tracker,
             mirror_neuron=user_ctx.mirror_neuron,
         ).process(
@@ -407,7 +407,7 @@ async def openai_chat_completions(raw: dict, user_ctx = Depends(get_user_context
     utterance_spec = await loop.run_in_executor(
         user_ctx.storage_executor,
         lambda: CircuitOrchestrator(
-            user_ctx.chroma_service, user_ctx.personality_store, user_ctx.impulse_scheduler,
+            user_ctx.chroma_service, user_ctx.impulse_scheduler,
             user_ctx.dmn, user_ctx.chat_history, user_ctx.co_tracker,
             mirror_neuron=user_ctx.mirror_neuron,
         ).process(

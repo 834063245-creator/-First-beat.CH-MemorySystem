@@ -218,17 +218,12 @@ def api_status():
         except Exception as exc:
             snapshot["ai_memory"] = {"error": str(exc)}
 
-        # ── 人格标签 ──
+        # ── 画像系统（Phase 4 退役完成，替代旧 PersonalityStore） ──
         try:
-            p_tags = ctx.personality_store.list_tags(page=1, page_size=200)
-            p_items = p_tags.get("items", [])
-            p_by_type = {}
-            for item in p_items:
-                t = item.get("type", "unknown")
-                p_by_type[t] = p_by_type.get(t, 0) + 1
-            snapshot["personality"] = {
-                "total_tags": len(p_items),
-                "by_type": p_by_type,
+            portrait = ctx.portrait.to_dict()
+            snapshot["portrait"] = {
+                "dimensions": {k: bool(v) for k, v in portrait.items()},
+                "total_entries": sum(len(v) if isinstance(v, list) else 1 for v in portrait.values()),
             }
         except Exception as exc:
             snapshot["personality"] = {"error": str(exc)}

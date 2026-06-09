@@ -253,3 +253,25 @@ class CoOccurrenceTracker:
         conn = self._conn
         conn.execute("DELETE FROM cooccurrence")
         conn.commit()
+
+    def export_for_symmetry(self) -> dict[str, dict[str, int]]:
+        """导出为对称性分析兼容格式：{entity: {related_entity: count}}。
+
+        将 SQLite 中 (id_a, id_b, count) 的行重建为嵌套 dict，
+        供 PersonaSymmetry 消费，替代旧 JSON 文件直接读取。
+        """
+        conn = self._conn
+        rows = conn.execute(
+            "SELECT id_a, id_b, count FROM cooccurrence ORDER BY count DESC"
+        ).fetchall()
+        data: dict[str, dict[str, int]] = {}
+        for row in rows:
+            a, b, cnt = row["id_a"], row["id_b"], row["count"]
+            if a not in data:
+                data[a] = {}
+            data[a][b] = cnt
+            # 也填充反向关系，保持与旧格式兼容
+            if b not in data:
+                data[b] = {}
+            data[b][a] = cnt
+        return data

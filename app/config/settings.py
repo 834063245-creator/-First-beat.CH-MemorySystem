@@ -134,7 +134,6 @@ CO_OCCURRENCE_MAX_PAIRS = 10000
 CO_OCCURRENCE_CLEANUP_RATIO = 0.2
 CO_OCCURRENCE_MIN_COUNT = 2
 TIME_TRIGGERED_MAX = 5
-CONTEXT_WINDOW_SIZE = 10          # 保留供未来使用（当前无任何 .py 引用）
 CONTEXT_ROUNDS = 10
 
 # ============================================================
@@ -165,17 +164,8 @@ EMBED_BACKFILL_MARKER = os.path.join(DATA_DIR, ".embed_model_backfill_done")
 AI_CHROMA_DIR = os.path.join(DATA_DIR, "ai_chroma")
 AI_COLLECTION = "ai_memories"
 
-# Phase 4: 人格库 & 蒸馏已退役，由画像系统替代
-# 以下配置保留供旧模块（DistillEngine/PersonalityStore/ConsolidationEngine）过渡期使用
-PERSONALITY_COLLECTION = "personality_tags"
-PERSONALITY_CHROMA_DIR = os.path.join(DATA_DIR, "personality_chroma")
-DISTILL_STATE_PATH = os.path.join(DATA_DIR, "distill_state.json")
-AI_DISTILL_STATE_PATH = os.path.join(DATA_DIR, "ai_distill_state.json")
-DISTILL_IDLE_HOURS = 1
-PERSONALITY_DEDUP_THRESHOLD = 0.85
-
 # ============================================================
-# 画像系统 (Portrait System)
+# 画像系统 (Portrait System) — Phase 4 退役完成
 # ============================================================
 PORTRAIT_FILE_PATH = os.getenv("PORTRAIT_FILE_PATH",
                                 os.path.join(DATA_DIR, "PORTRAIT.md"))
@@ -183,8 +173,9 @@ PORTRAIT_SHALLOW_HOURS = 4
 PORTRAIT_DEEP_HOURS = 24
 PORTRAIT_DEEP_MIN_TURNS = 20     # 深巩固最低对话轮数门槛
 PORTRAIT_REALTIME_DIMS = [2, 4]  # 实时更新维度（用户+AI 两侧）
-BEHAVIOR_CHROMA_DIR = os.path.join(DATA_DIR, "behavior_chroma")
-BEHAVIOR_COLLECTION = "behavior_patterns"
+
+# DMN 后台任务触发阈值（两轮对话间隔超过此值触发巩固+预热）
+DMN_IDLE_TRIGGER_HOURS = 1
 
 # ============================================================
 # 时间线近端检索
@@ -202,7 +193,7 @@ CHAT_HISTORY_MAX_MEMORY = 500
 # ============================================================
 # 文件存储路径
 # ============================================================
-CO_OCCURRENCE_FILE = os.path.join(DATA_DIR, "co_occurrence.json")
+CO_OCCURRENCE_FILE = os.path.join(DATA_DIR, "co_occurrence.db")
 STORE_FAILURES_PATH = os.path.join(DATA_DIR, "store_failures.jsonl")
 
 # ============================================================

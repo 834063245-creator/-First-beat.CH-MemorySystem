@@ -271,29 +271,6 @@ def source_curiosity(chroma_service, all_mems=None) -> tuple | None:
     return None
 
 
-def source_behavior_pattern(personality_store, chat_history) -> tuple | None:
-    """检查当前时间段是否有常见行为模式（从人格库读 type=行为模式）。产出具体行为描述。"""
-    try:
-        now = datetime.now()
-        current_hour = now.hour
-        result = personality_store.list_tags(page=1, page_size=100) if hasattr(personality_store, 'list_tags') else {}
-        items = result.get("items", [])
-        patterns = [it for it in items if it.get("type") == "行为模式"]
-        if not patterns:
-            logger.info("  behavior_pattern 跳过: 无行为模式标签")
-            return None
-        for p in patterns:
-            content = p.get("content", "") or ""
-            if str(current_hour) in content or ("晚上" in content and current_hour >= 18):
-                if len(content) >= 10:
-                    return (content, 25)
-                return (f"这个时间段，用户通常会有一些固定的习惯", 25)
-        logger.info("  behavior_pattern 跳过: 无匹配时段的行为")
-    except Exception as exc:
-        logger.debug("behavior_pattern 源异常: %s", exc)
-    return None
-
-
 # ── 调度器 ──────────────────────────────────────────────────
 
 class ImpulseScheduler:
@@ -311,7 +288,6 @@ class ImpulseScheduler:
         ("时间节律", source_time_rhythm, 1800),     # 平均每 30 分钟（模式索引更稳，不用频繁查）
         ("随机漫游", source_random_roam, 600),       # 平均每 10 分钟
         ("好奇心", source_curiosity, 1200),          # 平均每 20 分钟（探索从未提起的记忆）
-        ("行为模式", source_behavior_pattern, 1800), # 平均每 30 分钟
     ]
 
     def __init__(self, state_path: str, temporal_pattern_index=None):
@@ -464,8 +440,7 @@ class ImpulseScheduler:
 
     # ── 泊松调度 ──────────────────────────────────────────
 
-    def start_source_workers(self, chroma_service=None, behavior_store=None,
-                             chat_history=None, personality_store=None):
+    def start_source_workers(self, chroma_service=None, chat_history=None):
         """为每个冲动源启动独立泊松线程。"""
         self._stop_event.clear()
         self._workers.clear()
@@ -475,7 +450,6 @@ class ImpulseScheduler:
             "时间节律": {"chroma_service": chroma_service, "temporal_pattern_index": self._temporal_index},
             "随机漫游": {"chroma_service": chroma_service},
             "好奇心": {"chroma_service": chroma_service},
-            "行为模式": {"personality_store": personality_store, "chat_history": chat_history},
         }
 
         for name, source_fn, avg_interval in self.SOURCE_CONFIG:

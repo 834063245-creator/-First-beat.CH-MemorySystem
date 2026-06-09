@@ -1,7 +1,7 @@
 """人格对称性 — 双共现矩阵差分，发现 AI 对用户兴趣的理解盲区。
 
-从 co_occurrence.json 和 ai_co_occurrence.json 中读取已有的共现数据，
-比较每个标签在两套矩阵中的关联分布差异。
+从 CoOccurrenceTracker.export_for_symmetry() 获取实时共现数据（SQLite），
+比较用户和 AI 两套矩阵中的关联分布差异。
 零新存储，纯缓存重建。
 """
 
@@ -14,20 +14,38 @@ logger = logging.getLogger(__name__)
 
 
 class PersonaSymmetry:
-    """双共现矩阵差分分析。"""
+    """双共现矩阵差分分析。
+
+    支持两种输入模式：
+    - 文件路径（向后兼容旧 JSON）: PersonaSymmetry("user.json", "ai.json")
+    - 直接传入 dict 数据（推荐，从 CoOccurrenceTracker.export_for_symmetry() 获取）:
+      PersonaSymmetry(user_dict, ai_dict, from_dicts=True)
+    """
 
     MIN_GAP = 0.3          # 差异度阈值
     MAX_BLIND_SPOTS = 3    # 每次最多产出的盲区数
 
-    def __init__(self, user_cooc_path: str, ai_cooc_path: str):
-        self._user_path = user_cooc_path
-        self._ai_path = ai_cooc_path
+    def __init__(self, user_source, ai_source, from_dicts: bool = False):
+        if from_dicts:
+            self._user_data = user_source
+            self._ai_data = ai_source
+            self._user_path = None
+            self._ai_path = None
+        else:
+            self._user_path = user_source
+            self._ai_path = ai_source
+            self._user_data = None
+            self._ai_data = None
         self._blind_spots: list[dict] = []
 
     def analyze(self) -> list[dict]:
         """计算盲区，返回 [{tag, gap, user_related, ai_related}, ...]."""
-        user = self._load(self._user_path)
-        ai = self._load(self._ai_path)
+        if self._user_data is not None:
+            user = self._user_data
+            ai = self._ai_data
+        else:
+            user = self._load(self._user_path)
+            ai = self._load(self._ai_path)
         if not user or not ai:
             logger.debug("人格对称性: 缺少共现数据，跳过")
             return []

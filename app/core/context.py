@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 from app.config.settings import (                  # noqa: E402
     CHROMA_PERSIST_DIR, DATA_DIR, DEFAULT_TOP_K, MAX_MEMORIES_IN_PROMPT,
     CHAT_HISTORY_PATH, CHAT_HISTORY_MAX_MEMORY, DEBUG_INCLUDE_PROMPT,
-    STORE_FAILURES_PATH, BEHAVIOR_CHROMA_DIR, BEHAVIOR_COLLECTION,
+    STORE_FAILURES_PATH,
     CONSOLIDATION_SHALLOW_INTERVAL, CONSOLIDATION_DEEP_INTERVAL,
-    AI_CHROMA_DIR, AI_COLLECTION, AI_DISTILL_STATE_PATH,
+    AI_CHROMA_DIR, AI_COLLECTION,
     IMPULSE_ACTIVE_PATH_B,
     WORK_MEMORY_TOKEN_BUDGET, USER_DATA_DIRS,
     BENCHMARK_MODE,
@@ -39,13 +39,10 @@ from app.llm.deepseek import LLMClient
 from app.memory.cooccur import CoOccurrenceTracker
 from app.memory.entity_pair import EntityPairTracker
 from app.memory.hyperedge import HyperEdgeIndex
-from app.personality.store import PersonalityStore
-from app.personality.behavior import BehaviorStore
 from app.memory.history import ChatHistory
 from app.memory.inverted import InvertedIndex
 from app.memory.affinity import TopicAffinity
 from app.memory.temporal import TemporalPatternIndex
-from app.background.distill import DistillEngine
 from app.analysis.predictor import BehaviorPredictor  # noqa: E402
 from app.analysis.pattern_discovery import PatternDiscovery  # noqa: E402
 from app.tools.atomic import atomic_write             # noqa: E402
@@ -100,8 +97,6 @@ class AppContext:
         self.ai_co_tracker = CoOccurrenceTracker(file_path=f"{data_dir}/ai_co_occurrence.db")
         self.entity_pair_tracker = EntityPairTracker(file_path=f"{data_dir}/entity_pairs.db")
         self.hyperedge_index = HyperEdgeIndex(file_path=f"{data_dir}/hyper_edges.db")
-        self.personality_store = PersonalityStore(persist_dir=f"{data_dir}/personality_chroma")
-        self.behavior_store = BehaviorStore(persist_dir=f"{data_dir}/behavior_chroma", collection_name=BEHAVIOR_COLLECTION)
         self.chat_history = ChatHistory(path=f"{data_dir}/chat_history.jsonl", max_memory=CHAT_HISTORY_MAX_MEMORY)
         self.inverted_index = InvertedIndex()
         try:
@@ -129,35 +124,20 @@ class AppContext:
 
         self.topic_affinity = TopicAffinity(data_dir=data_dir)
         self.temporal_pattern_index = TemporalPatternIndex(data_dir=data_dir)
-        self.user_distill = DistillEngine(
-            self.personality_store, self.chroma_service,
-            behavior_store=self.behavior_store,
-            state_path=f"{data_dir}/distill_state.json",
-            source="user",
-        )
-        self.ai_distill = DistillEngine(
-            self.personality_store, self.ai_chroma_service,
-            state_path=f"{data_dir}/ai_distill_state.json",
-            source="ai",
-        )
-        self.distill_engine = self.user_distill  # 向后兼容
         from app.background.consolidation import ConsolidationEngine
         self.dmn = ConsolidationEngine(
             chroma_service=self.chroma_service,
-            personality_store=self.personality_store,
-            behavior_store=self.behavior_store,
             chat_history=self.chat_history,
             co_tracker=self.co_tracker,
             state_path=f"{data_dir}/dmn_state.json",
             notes_path=f"{data_dir}/topic_notes.json",
             temporal_pattern_index=self.temporal_pattern_index,
             topic_affinity=self.topic_affinity,
+            ai_co_tracker=self.ai_co_tracker,
         )
         # Phase 0b: AI 完整 ConsolidationEngine — 与用户侧完全镜像
         self.ai_dmn = ConsolidationEngine(
             chroma_service=self.ai_chroma_service,
-            personality_store=self.personality_store,
-            behavior_store=self.behavior_store,
             chat_history=self.chat_history,
             co_tracker=self.ai_co_tracker,
             state_path=f"{data_dir}/ai_dmn_state.json",
@@ -290,9 +270,7 @@ class AppContext:
         if self.impulse_scheduler:
             self.impulse_scheduler.start_source_workers(
                 chroma_service=self.chroma_service,
-                behavior_store=self.behavior_store,
                 chat_history=self.chat_history,
-                personality_store=self.personality_store,
             )
             self._start_impulse_consumer()
 
@@ -753,18 +731,12 @@ class AppContext:
                         if prev_ts and timestamp:
                             gap = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S") - datetime.strptime(prev_ts, "%Y-%m-%d %H:%M:%S")
                             gap_hours = gap.total_seconds() / 3600
-                            from app.config.settings import DISTILL_IDLE_HOURS
-                            if gap_hours > DISTILL_IDLE_HOURS:
+                            from app.config.settings import DMN_IDLE_TRIGGER_HOURS
+                            if gap_hours > DMN_IDLE_TRIGGER_HOURS:
                                 logger.info("DMN: 检测到空闲 %.1f小时，触发级别任务", gap_hours)
                                 self.storage_executor.submit(self.dmn.on_idle, gap_hours)
                                 self.storage_executor.submit(self.ai_dmn.on_idle, gap_hours)
-                                # Phase 4: DistillEngine 正在退役 — 画像系统替代
-                                try:
-                                    existing = self.personality_store.list_tags(page=1, page_size=100)
-                                    self.storage_executor.submit(self.distill_engine.run_distill, existing_tags=existing.get("items", []))
-                                    self.storage_executor.submit(self.ai_distill.run_distill, existing_tags=existing.get("items", []))
-                                except Exception:
-                                    pass
+                                # Phase 4 已完成退役 — 画像系统 (app/portrait/) 替代 DistillEngine
                                 self.storage_executor.submit(self._record_ai_co_occurrence)
                                 self.storage_executor.submit(self.mirror_neuron.learn_from, self.chat_history.get_records_snapshot())
                                 self.storage_executor.submit(self._prewarm_retrieval)
@@ -811,11 +783,10 @@ class AppContext:
             self.co_tracker._invalidate_cache()
             self.co_tracker._load()
             self.entity_pair_tracker._invalidate_cache()
-            tags = self.personality_store.list_tags(page=1, page_size=100)
             _ = self.chroma_service.count()
             self.chroma_service._build_embedding_cache()
             self.ai_chroma_service._build_embedding_cache()
-            logger.info("检索预热完成：共现缓存+人格库+ChromaDB+embedding缓存")
+            logger.info("检索预热完成：共现缓存+ChromaDB+embedding缓存")
         except Exception as exc:
             logger.debug("检索预热跳过: %s", exc)
 

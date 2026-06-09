@@ -209,11 +209,9 @@ def basal_ganglia_gate(
 class CircuitOrchestrator:
     """编排一次用户消息的完整处理通路。"""
 
-    def __init__(self, chroma_service, personality_store=None, impulse_scheduler=None,
+    def __init__(self, chroma_service, impulse_scheduler=None,
                  dmn_engine=None, chat_history=None, co_tracker=None, mirror_neuron=None):
-        # personality_store 保留参数兼容旧调用，Phase 4 退役不再使用
         self._chroma = chroma_service
-        self._personality = personality_store
         self._impulse = impulse_scheduler
         self._dmn = dmn_engine
         self._chat_history = chat_history
@@ -339,18 +337,8 @@ class CircuitOrchestrator:
             elif isinstance(p, str):
                 temp.personality_notes.append(p)
 
-        # AI 人格标签（source=ai，用于【我自己的表达习惯】）
-        ai_notes = []
-        try:
-            ai_result = self._personality.list_tags(page=1, page_size=5)
-            for item in ai_result.get("items", []):
-                if item.get("source", "user") == "ai":
-                    content = item.get("content", "")
-                    if content:
-                        ai_notes.append({"content": content, "type": item.get("type", "")})
-        except Exception as exc:
-            logger.debug("AI 人格标签获取跳过: %s", exc)
-        temp.personality_notes_ai = ai_notes
+        # AI 人格标签 — 由 PortraitRenderer 通过 PORTRAIT.md 统一注入
+        temp.personality_notes_ai = []
 
         if self._dmn is not None:
             try:
