@@ -160,24 +160,29 @@ EMBED_MODELS = {
 EMBED_BACKFILL_MARKER = os.path.join(DATA_DIR, ".embed_model_backfill_done")
 
 # ============================================================
-# AI 人格系统
+# AI 人格系统 (画像基础设施)
 # ============================================================
 AI_CHROMA_DIR = os.path.join(DATA_DIR, "ai_chroma")
 AI_COLLECTION = "ai_memories"
-AI_DISTILL_STATE_PATH = os.path.join(DATA_DIR, "ai_distill_state.json")
 
-# ============================================================
-# 人格库 & 蒸馏
-# ============================================================
+# Phase 4: 人格库 & 蒸馏已退役，由画像系统替代
+# 以下配置保留供旧模块（DistillEngine/PersonalityStore/ConsolidationEngine）过渡期使用
 PERSONALITY_COLLECTION = "personality_tags"
 PERSONALITY_CHROMA_DIR = os.path.join(DATA_DIR, "personality_chroma")
 DISTILL_STATE_PATH = os.path.join(DATA_DIR, "distill_state.json")
+AI_DISTILL_STATE_PATH = os.path.join(DATA_DIR, "ai_distill_state.json")
 DISTILL_IDLE_HOURS = 1
 PERSONALITY_DEDUP_THRESHOLD = 0.85
 
 # ============================================================
-# 行为库
+# 画像系统 (Portrait System)
 # ============================================================
+PORTRAIT_FILE_PATH = os.getenv("PORTRAIT_FILE_PATH",
+                                os.path.join(DATA_DIR, "PORTRAIT.md"))
+PORTRAIT_SHALLOW_HOURS = 4
+PORTRAIT_DEEP_HOURS = 24
+PORTRAIT_DEEP_MIN_TURNS = 20     # 深巩固最低对话轮数门槛
+PORTRAIT_REALTIME_DIMS = [2, 4]  # 实时更新维度（用户+AI 两侧）
 BEHAVIOR_CHROMA_DIR = os.path.join(DATA_DIR, "behavior_chroma")
 BEHAVIOR_COLLECTION = "behavior_patterns"
 

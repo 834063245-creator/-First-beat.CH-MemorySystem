@@ -209,8 +209,9 @@ def basal_ganglia_gate(
 class CircuitOrchestrator:
     """编排一次用户消息的完整处理通路。"""
 
-    def __init__(self, chroma_service, personality_store, impulse_scheduler,
-                 dmn_engine, chat_history, co_tracker, mirror_neuron=None):
+    def __init__(self, chroma_service, personality_store=None, impulse_scheduler=None,
+                 dmn_engine=None, chat_history=None, co_tracker=None, mirror_neuron=None):
+        # personality_store 保留参数兼容旧调用，Phase 4 退役不再使用
         self._chroma = chroma_service
         self._personality = personality_store
         self._impulse = impulse_scheduler
@@ -453,6 +454,16 @@ class CircuitOrchestrator:
         logger.debug("关系维度: familiarity=%.2f trust=%.2f closeness=%.2f mode=%s",
                      rs.familiarity, rs.trust, rs.closeness, rs.interaction_mode)
 
+        # Phase 2: 画像常驻注入 — 渲染 PORTRAIT.md 为 stable/dynamic prompt 段
+        portrait_stable = ""
+        portrait_dynamic = ""
+        try:
+            if hasattr(ctx_obj, "portrait_renderer") and ctx_obj.portrait_renderer is not None:
+                portrait_stable = ctx_obj.portrait_renderer.render_stable()
+                portrait_dynamic = ctx_obj.portrait_renderer.render_dynamic()
+        except Exception as exc:
+            logger.debug("画像渲染跳过: %s", exc)
+
         return UtteranceSpec(
             user=prefrontal,
             memories=fact_memories,
@@ -468,6 +479,8 @@ class CircuitOrchestrator:
             relationship=rs,
             stale_context=stale_mems,
             woven_context=woven,
+            portrait_stable=portrait_stable,
+            portrait_dynamic=portrait_dynamic,
         )
 
     def weave_context(

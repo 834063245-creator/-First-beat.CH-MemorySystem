@@ -211,8 +211,12 @@ class LLMClient:
         messages = [{"role": "system", "content": system_prompt}]
         if timeline_recent:
             messages.extend(self._timeline_to_messages(timeline_recent))
-        # 动态内容放独立 system message（session_context + 时间，不破坏前缀缓存）
+        # 动态内容放独立 system message（画像动态 + session_context + 时间，不破坏前缀缓存）
         _dyn_parts = []
+        # Phase 2: 动态画像 (4维度: usr2/ai2/usr4/ai4，每轮更新)
+        portrait_dynamic = getattr(cognitive_state, "portrait_dynamic", "") or "" if cognitive_state else ""
+        if isinstance(portrait_dynamic, str) and portrait_dynamic.strip():
+            _dyn_parts.append(portrait_dynamic.strip())
         if session_context:
             _dyn_parts.append(session_context)
         _dyn_parts.append(now_hint())
@@ -358,8 +362,12 @@ class LLMClient:
         messages = [{"role": "system", "content": system_prompt}]
         if timeline_recent:
             messages.extend(self._timeline_to_messages(timeline_recent))
-        # 动态内容放独立 system message（session_context + 时间，不破坏前缀缓存）
+        # 动态内容放独立 system message（画像动态 + session_context + 时间，不破坏前缀缓存）
         _dyn_parts = []
+        # Phase 2: 动态画像 (4维度: usr2/ai2/usr4/ai4，每轮更新)
+        portrait_dynamic = getattr(cognitive_state, "portrait_dynamic", "") or "" if cognitive_state else ""
+        if isinstance(portrait_dynamic, str) and portrait_dynamic.strip():
+            _dyn_parts.append(portrait_dynamic.strip())
         if session_context:
             _dyn_parts.append(session_context)
         _dyn_parts.append(now_hint())
@@ -699,7 +707,13 @@ class LLMClient:
         if BENCHMARK_MODE:
             sections.append(_BENCHMARK_KNOWLEDGE_RULE)
         # 注：session_context 和 now_hint() 已移到 generate() 中独立 system message
-        # 人格洞察（变化频率低，归入稳定段）
+
+        # Phase 2: 画像常驻注入 — 稳定画像 (8维度, DeepSeek前缀缓存命中>95%)
+        portrait_stable = getattr(cognitive_state, "portrait_stable", "") or ""
+        if isinstance(portrait_stable, str) and portrait_stable.strip():
+            sections.append(portrait_stable.strip())
+
+        # 人格洞察（变化频率低，归入稳定段）[Phase 4 将由画像替代]
         if cognitive_state.personality_notes:
             type_tag = {
                 "行为模式": "行为", "思维模式": "思维", "偏好模式": "偏好",

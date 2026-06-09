@@ -15,12 +15,16 @@ def rerank(
     error_counts: Optional[dict[str, int]] = None,
     attention_boosts: Optional[dict[str, float]] = None,
     attention_weight: float = 0.0,
+    portrait_boost_map: Optional[dict[str, float]] = None,
+    portrait_weight: float = 0.0,
 ) -> list[dict]:
-    """基于 embedding 余弦相似度精排，附带纠正/错误反馈加成。
+    """基于 embedding 余弦相似度精排，附带纠正/错误反馈 + 画像 boost。
 
     输入: query + candidates（每条 dict 需有 "summary" 或 "document" 字段）
          attention_boosts: {memory_id: proximity} — 注意力漂移分数
          attention_weight: 注意力分数在最终评分中的加权（0=不启用）
+         portrait_boost_map: {memory_id: boost_value} — 画像相关性加权（区间[-0.2, +0.3]）
+         portrait_weight: 画像 boost 在最终评分中的加权（0=不启用，推荐 0.1）
     输出: 按相似度降序排列的 top_k 条 candidates，附带 _rr_score
     """
     if not candidates:
@@ -61,7 +65,9 @@ def rerank(
             penalty = errs.get(mid, 0) * 0.05
             # 注意力漂移加权（指数加权后的最近对话上下文相似度）
             attn_score = attn.get(mid, 0.0)
-            sim = sim + boost - penalty + attention_weight * attn_score
+            # 画像 boost（Phase 4: 精排阶段画像相关性微调）
+            portrait_boost = (portrait_boost_map or {}).get(mid, 0.0)
+            sim = sim + boost - penalty + attention_weight * attn_score + portrait_weight * portrait_boost
 
             c_copy = c.copy()
             c_copy["_rr_score"] = sim

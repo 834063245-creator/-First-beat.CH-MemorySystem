@@ -193,15 +193,8 @@ def run_chat_retrieval(
         logger.debug("session_context 加载失败: %s", exc)
 
     _log_step('session_context')
-    # ── 人格标签 ──
+    # Phase 4: 人格标签检索路径已退役 — 画像系统常驻注入替代
     personalities = []
-    if ctx_obj.personality_store and query_embedding_for_retrieval is not None:
-        try:
-            personalities = ctx_obj.personality_store.rerank_tags(
-                user_message, query_embedding_for_retrieval, top_k=3
-            )
-        except Exception:
-            pass
 
     _log_step('personality')
     # ── DMN 预热缓存 ──

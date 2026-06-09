@@ -162,6 +162,17 @@ async def chat_stream(req: ChatRequest, user_ctx = Depends(get_user_context)):
                 utterance_spec.user.intent, utterance_spec.user.emotion,
                 len(utterance_spec.memories), len(utterance_spec.impulses))
 
+    # Phase 1: 画像实时更新（轻声，<100ms，不调 LLM）
+    try:
+        rel = getattr(utterance_spec, "relationship", None)
+        if rel and hasattr(user_ctx, "portrait_writer"):
+            await loop.run_in_executor(
+                user_ctx.storage_executor,
+                lambda: user_ctx.portrait_writer.realtime_update(utterance_spec, rel),
+            )
+    except Exception as exc:
+        logger.debug("画像实时更新跳过: %s", exc)
+
     async def event_stream():
         full_text = ""
         extra_msgs: list | None = None
@@ -280,6 +291,17 @@ async def chat(req: ChatRequest, user_ctx = Depends(get_user_context)):
     logger.info("回路调度完成: intent=%s emotion=%s memories=%d impulses=%d",
                 utterance_spec.user.intent, utterance_spec.user.emotion,
                 len(utterance_spec.memories), len(utterance_spec.impulses))
+
+    # Phase 1: 画像实时更新（轻声，<100ms，不调 LLM）
+    try:
+        rel = getattr(utterance_spec, "relationship", None)
+        if rel and hasattr(user_ctx, "portrait_writer"):
+            await loop.run_in_executor(
+                user_ctx.storage_executor,
+                lambda: user_ctx.portrait_writer.realtime_update(utterance_spec, rel),
+            )
+    except Exception as exc:
+        logger.debug("画像实时更新跳过: %s", exc)
 
     try:
         extra_messages = []

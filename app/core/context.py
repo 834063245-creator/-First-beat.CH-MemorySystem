@@ -32,6 +32,7 @@ from app.config.settings import (                  # noqa: E402
     IS_LITE, LITE_DISABLE_BACKGROUND_TASKS, LITE_DISABLE_IMPULSE,
     LITE_WORK_MEMORY_BUDGET, USER_DATA_DIRS,
     BENCHMARK_MODE,
+    PORTRAIT_FILE_PATH,
     STOP_WORDS as _STOP_WORDS,
 )
 from app.memory.chroma import ChromaService
@@ -110,6 +111,14 @@ class AppContext:
         except Exception:
             pass
 
+        # Phase 1: 画像系统初始化
+        from app.portrait.manager import PortraitManager
+        from app.portrait.renderer import PortraitRenderer
+        from app.portrait.writer import PortraitWriter
+        self.portrait = PortraitManager(PORTRAIT_FILE_PATH)
+        self.portrait_renderer = PortraitRenderer(self.portrait)
+        self.portrait_writer = PortraitWriter(self.portrait)
+
         # BM25 全文索引（benchmark 模式下启用）
         if BENCHMARK_MODE:
             from app.retrieval.bm25_fulltext import BM25FullTextIndex
@@ -144,8 +153,21 @@ class AppContext:
                 temporal_pattern_index=self.temporal_pattern_index,
                 topic_affinity=self.topic_affinity,
             )
+            # Phase 0b: AI 完整 ConsolidationEngine — 与用户侧完全镜像
+            self.ai_dmn = ConsolidationEngine(
+                chroma_service=self.ai_chroma_service,
+                personality_store=self.personality_store,
+                behavior_store=self.behavior_store,
+                chat_history=self.chat_history,
+                co_tracker=self.ai_co_tracker,
+                state_path=f"{data_dir}/ai_dmn_state.json",
+                notes_path=f"{data_dir}/ai_topic_notes.json",
+                temporal_pattern_index=self.temporal_pattern_index,
+                topic_affinity=self.topic_affinity,
+            )
         else:
             self.dmn = None
+            self.ai_dmn = None
 
         # 话题树（DMN 浅巩固时重建，pipeline 检索时使用）
         self._topic_tree = getattr(self.dmn, '_topic_tree', None)
@@ -377,7 +399,7 @@ class AppContext:
     # 原来两个独立泊松线程（都 ~5min）合并为一个，减少冗余唤醒和状态读取。
 
     def _start_dmn_worker(self):
-        """DMN 合并 ticker：空闲检查 + 浅/深巩固 + 模式发现。"""
+        """DMN 合并 ticker：空闲检查 + 浅/深巩固 + 模式发现（用户 + AI 双引擎）。"""
         def _worker():
             logger.info("DMN 合并 ticker 已启动 for %s", self.data_dir)
             # 启动冷却：60s，避免和预热/冲动源抢资源
@@ -395,6 +417,8 @@ class AppContext:
                                 gap_hours = gap.total_seconds() / 3600
                                 if gap_hours > 0.5:
                                     self.dmn.on_idle(gap_hours)
+                                    # Phase 0b: AI 侧镜像巩固 — 共享同一 on_idle 触发
+                                    self.ai_dmn.on_idle(gap_hours)
                     except Exception:
                         pass
                     # ── 节律巩固（原 consolidation worker 逻辑） ──
@@ -415,6 +439,11 @@ class AppContext:
                                 self.dmn.consolidate_shallow()
                             except Exception as exc:
                                 logger.error("巩固节律: 浅巩固失败: %s", exc)
+                            # Phase 0b: AI 侧浅巩固镜像
+                            try:
+                                self.ai_dmn.consolidate_shallow()
+                            except Exception as exc:
+                                logger.error("巩固节律: AI 浅巩固失败: %s", exc)
                             try:
                                 self._pattern_discovery.run()
                             except Exception as exc:
@@ -425,8 +454,24 @@ class AppContext:
                                 self.dmn.consolidate_deep()
                             except Exception as exc:
                                 logger.error("巩固节律: 深巩固失败: %s", exc)
+                            # Phase 0b: AI 侧深巩固镜像
+                            try:
+                                self.ai_dmn.consolidate_deep()
+                            except Exception as exc:
+                                logger.error("巩固节律: AI 深巩固失败: %s", exc)
                     except Exception:
                         pass
+                    # ── Phase 3: 画像浅/深巩固（引擎+LLM合成） ──
+                    try:
+                        if now - lsc >= CONSOLIDATION_SHALLOW_INTERVAL:
+                            self.portrait_writer.shallow_update(self)
+                    except Exception as exc:
+                        logger.debug("画像浅巩固跳过: %s", exc)
+                    try:
+                        if now - ldc >= CONSOLIDATION_DEEP_INTERVAL:
+                            self.portrait_writer.deep_update(self)
+                    except Exception as exc:
+                        logger.debug("画像深巩固跳过: %s", exc)
                 except Exception as exc:
                     logger.debug("DMN ticker 异常: %s", exc)
                 interval = min(random.expovariate(1.0 / 300), 3600)
@@ -577,30 +622,70 @@ class AppContext:
                     except Exception:
                         pass
                 try:
+                    # Phase 0a: AI 记忆入库元数据补全 — 与用户记忆完全镜像
+                    ai_full_text = f"用户：{user_message}\nAI：{ai_message}"
                     ai_summary = _get_local_llm().summarize(f"AI：{ai_message}")
                     if not ai_summary:
                         ai_summary = ai_message[:50]
                     ai_tags = _extract_noun_tags(ai_message)
                     if not ai_tags:
                         ai_tags = ["AI表达"]
+                    # 提取 AI 消息中的实体，补全标签覆盖
+                    ai_entities = extract_entities(ai_summary)
+                    ai_entity_texts = [e["text"] for e in ai_entities
+                                       if e.get("type") in ("PERSON", "LOCATION", "ORGANIZATION") and len(e["text"]) >= 2]
+                    ai_tags = list(dict.fromkeys(ai_tags + ai_entity_texts))[:10]
                     ai_embedding = local_embed(f"AI：{ai_message}")
-                    ai_valence, ai_arousal, ai_emo_category = analyze_emotion_2d(ai_message)
+                    # AI 情绪: 基于 full_text 计算，对齐用户侧公式
+                    ai_valence, ai_arousal, ai_emo_category = analyze_emotion_2d(ai_full_text)
                     ai_intensity = min(
-                        ai_message.count("！") + ai_message.count("!") +
-                        len(re.findall(r'[😊😂😭😡😍🥰😢😤🤯💔❤️🔥😅😱🤗]', ai_message)),
+                        ai_full_text.count("！") + ai_full_text.count("!") +
+                        len(re.findall(r'[😊😂😭😡😍🥰😢😤🤯💔❤️🔥😅😱🤗]', ai_full_text)),
                         3,
                     )
-                    ai_meta = {
+                    # time_features: 与用户侧完全相同的 10 个子字段
+                    from app.config.settings import TIME_PERIOD_MAP as _tpm_ai
+                    now = datetime.now()
+                    h = now.hour
+                    ai_period = "晚上"
+                    for (lo, hi), name in _tpm_ai.items():
+                        if lo <= h <= hi:
+                            ai_period = name
+                            break
+                    ai_date_tag = now.strftime("%Y-%m-%d")
+                    ai_time_features = {
+                        "date": ai_date_tag,
+                        "year": now.year,
+                        "month": now.month,
+                        "day": now.day,
+                        "week": now.isocalendar()[1],
+                        "day_of_week": now.weekday(),
+                        "quarter": (now.month - 1) // 3 + 1,
+                        "season": (now.month % 12 + 3) // 3,
+                        "year_month": now.strftime("%Y-%m"),
+                        "time_period": ai_period,
                         "emotion_valence": ai_valence,
                         "emotion_arousal": ai_arousal,
                         "emotion_valence_bin": ai_emo_category,
                         "emotional_intensity": ai_intensity,
-                        "timestamp": datetime.now().timestamp(),
+                        "timestamp": now.timestamp(),
                     }
+                    # session_continued 标记
+                    try:
+                        if self.chat_history and len(self.chat_history.records) >= 1:
+                            prev_ts = self.chat_history.records[-1].get("timestamp", "")
+                            if prev_ts and timestamp:
+                                gap = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S") - datetime.strptime(prev_ts, "%Y-%m-%d %H:%M:%S")
+                                if gap.total_seconds() < 1800:
+                                    ai_time_features["session_continued"] = True
+                    except (ValueError, OSError):
+                        pass
                     self.ai_chroma_service.add_memory(
                         user_message="[AI]", ai_message=ai_message,
                         summary=ai_summary, tags=ai_tags, embedding=ai_embedding,
-                        time_features=ai_meta,
+                        entities=ai_entities,
+                        date_tag=ai_date_tag,
+                        time_features=ai_time_features,
                         source="ai",
                     )
                 except Exception as ai_exc:
@@ -674,9 +759,14 @@ class AppContext:
                             if gap_hours > DISTILL_IDLE_HOURS:
                                 logger.info("DMN: 检测到空闲 %.1f小时，触发级别任务", gap_hours)
                                 self.storage_executor.submit(self.dmn.on_idle, gap_hours)
-                                existing = self.personality_store.list_tags(page=1, page_size=100)
-                                self.storage_executor.submit(self.distill_engine.run_distill, existing_tags=existing.get("items", []))
-                                self.storage_executor.submit(self.ai_distill.run_distill, existing_tags=existing.get("items", []))
+                                self.storage_executor.submit(self.ai_dmn.on_idle, gap_hours)
+                                # Phase 4: DistillEngine 正在退役 — 画像系统替代
+                                try:
+                                    existing = self.personality_store.list_tags(page=1, page_size=100)
+                                    self.storage_executor.submit(self.distill_engine.run_distill, existing_tags=existing.get("items", []))
+                                    self.storage_executor.submit(self.ai_distill.run_distill, existing_tags=existing.get("items", []))
+                                except Exception:
+                                    pass
                                 self.storage_executor.submit(self._record_ai_co_occurrence)
                                 self.storage_executor.submit(self.mirror_neuron.learn_from, self.chat_history.get_records_snapshot())
                                 self.storage_executor.submit(self._prewarm_retrieval)
@@ -753,46 +843,21 @@ class AppContext:
     # ── AI 巩固 worker ───────────────────────────────────────
 
     def _start_ai_consolidation_worker(self):
-        """AI 表达记忆独立巩固：每小时执行浅巩固（情绪淡化 + 统计），
-        每 24h 同步执行深巩固（归档评估 + 话题笔记）。"""
-        _last_deep_ai = 0
+        """Phase 0b: AI 巩固已迁移到 DMN 合并 ticker —
+        AI 侧拥有完整 ConsolidationEngine 实例（self.ai_dmn），
+        在 _start_dmn_worker 中与用户侧共享 on_idle/浅巩固/深巩固 触发。
+        此 worker 仅保留情绪淡化定时器（每小时），其余全部由 ai_dmn 接管。"""
         def _worker():
-            nonlocal _last_deep_ai
-            logger.info("AI 巩固 worker 已启动")
+            logger.info("AI 情绪淡化 worker 已启动 for %s", self.data_dir)
+            if not self._stop_event.is_set():
+                self._stop_event.wait(60)
             while not self._stop_event.is_set():
                 try:
-                    all_data = self.ai_chroma_service._collection.get(
-                        include=["metadatas"], limit=200,
-                    )
-                    metas = [dict(m) for m in (all_data.get("metadatas") or []) if m]
-                    if len(metas) >= 10:
-                        from app.analysis.emotion import resolve_emotion_category
-                        valences = Counter(resolve_emotion_category(m) for m in metas)
-                        intensities = [m.get("emotional_intensity", 0) or 0 for m in metas]
-                        avg_intensity = sum(intensities) / len(intensities) if intensities else 0
-                        dominant_emotion = valences.most_common(1)[0][0]
-                        total = sum(valences.values()) or 1
-                        emotion_pct = {k: round(v/total*100) for k, v in valences.items()}
-                        logger.debug("AI 表达状态: 情绪=%s 分布=%s 平均强度=%.2f",
-                                     dominant_emotion, emotion_pct, avg_intensity)
-                    # 浅巩固：情绪淡化（每小时）
-                    try:
-                        self.ai_chroma_service._apply_emotional_desensitization()
-                    except Exception as exc:
-                        logger.debug("AI 情绪淡化跳过: %s", exc)
-                    # 深巩固：归档 + 笔记（每 24h）
-                    now = time.time()
-                    if now - _last_deep_ai >= 86400:
-                        _last_deep_ai = now
-                        try:
-                            self.ai_chroma_service._build_embedding_cache()
-                        except Exception:
-                            pass
-                        logger.info("AI 巩固: 24h 深巩固完成")
+                    self.ai_chroma_service._apply_emotional_desensitization()
                 except Exception as exc:
-                    logger.debug("AI 巩固循环跳过: %s", exc)
+                    logger.debug("AI 情绪淡化跳过: %s", exc)
                 self._stop_event.wait(3600)
-        self._ai_consolidation_thread = threading.Thread(target=_worker, daemon=True, name=f"ai_consolidation_{self.data_dir}")
+        self._ai_consolidation_thread = threading.Thread(target=_worker, daemon=True, name=f"ai_desensitize_{self.data_dir}")
         self._ai_consolidation_thread.start()
 
     def _record_ai_co_occurrence(self):

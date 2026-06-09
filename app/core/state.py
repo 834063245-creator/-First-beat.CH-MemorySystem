@@ -296,3 +296,8 @@ class UtteranceSpec:
     stale_context: list = dataclasses.field(default_factory=list)
     """v2.1: 被取代但保留为背景参考的记忆（stale=True 但不屏蔽）"""
     woven_context: Optional["WovenContext"] = None
+    # Phase 2: 画像系统 — 常驻注入 prompt
+    portrait_stable: str = ""
+    """渲染后的稳定画像 (8维度)，注入 message[0] system prompt (可缓存)"""
+    portrait_dynamic: str = ""
+    """渲染后的动态画像 (4维度)，注入 message[N+1] system prompt (每轮更新)"""
