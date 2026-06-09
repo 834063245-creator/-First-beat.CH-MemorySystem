@@ -504,37 +504,25 @@ class TestM8EntityPairEvolution:
     """M8 — Entity Pair 演化。"""
 
     def test_M8_entity_pair_evolution(self, seeded_env_evolution):
-        """验证：entity_pairs.json 存在，巩固后关键实体对计数 ≥ 巩固前。"""
+        """验证：巩固后实体对记录仍存在且可查询。"""
         ctx, all_ids = seeded_env_evolution
-
-        ep_path = os.path.join(ctx.data_dir, "entity_pairs.json")
 
         # 手动记录实体对
         ctx.entity_pair_tracker.record("Python", "Scrapy", "test_m8_001")
         ctx.entity_pair_tracker.record("Python", "Docker", "test_m8_002")
         ctx.entity_pair_tracker.record("Python", "Scrapy", "test_m8_003")
 
-        # 巩固前计数
-        before_count = 0
-        if os.path.exists(ep_path):
-            with open(ep_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            before_count = sum(
-                len(rels) for rels in data.values() if isinstance(rels, dict)
-            )
+        # 巩固前统计
+        before = ctx.entity_pair_tracker.stats()
+        assert before["total_pairs"] >= 4  # 双向
 
         # 触发浅巩固
         _force_shallow(ctx)
 
-        # 巩固后验证文件存在
-        assert os.path.exists(ep_path), f"entity_pairs.json 应存在: {ep_path}"
-
-        with open(ep_path, "r", encoding="utf-8") as f:
-            data_after = json.load(f)
-
-        # Python-Scrapy 实体对应存在
-        python_rels = data_after.get("Python", {})
-        scrapy_count = python_rels.get("Scrapy", {}).get("count", 0)
+        # 巩固后通过 expand 验证 Python-Scrapy 实体对应存在
+        result = ctx.entity_pair_tracker.expand(["Python"])
+        python_rels = result.get("Python", {})
+        scrapy_count = python_rels.get("Scrapy", 0)
         assert scrapy_count >= 1, (
             f"Python-Scrapy 实体对计数应 ≥ 1，实际 {scrapy_count}"
         )

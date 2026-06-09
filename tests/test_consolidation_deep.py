@@ -17,6 +17,15 @@ def _make_engine(tmpdir, **overrides):
     chroma = MagicMock()
     chroma.list_all.return_value = []
     chroma.list_all_cached.side_effect = lambda *a, **kw: chroma.list_all()
+    chroma.list_since.side_effect = lambda since_ts, limit=500, **kw: [
+        m for m in chroma.list_all()
+        if (m.get("metadata") or {}).get("timestamp", 0) >= since_ts
+    ][:limit]
+    chroma.list_before.side_effect = lambda before_ts, limit=500, **kw: [
+        m for m in chroma.list_all()
+        if (m.get("metadata") or {}).get("timestamp", 0) < before_ts
+    ][:limit]
+    chroma.list_all_paginated.side_effect = lambda *a, **kw: chroma.list_all()
     chroma._collection = MagicMock()
     chroma._emb_cache = {}
     personality = MagicMock()

@@ -202,7 +202,7 @@ CHAT_HISTORY_MAX_MEMORY = 500
 # ============================================================
 # 文件存储路径
 # ============================================================
-CO_OCCURRENCE_FILE = os.path.join(DATA_DIR, "co_occurrence.json")
+CO_OCCURRENCE_FILE = os.path.join(DATA_DIR, "co_occurrence.db")
 STORE_FAILURES_PATH = os.path.join(DATA_DIR, "store_failures.jsonl")
 
 # ============================================================

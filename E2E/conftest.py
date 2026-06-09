@@ -114,11 +114,13 @@ def isolated_inverted_index():
 def isolated_entity_pair_tracker(temp_data_dir):
     """隔离的 EntityPairTracker 实例。"""
     from app.memory.entity_pair import EntityPairTracker
-    path = os.path.join(temp_data_dir, "entity_pairs.json")
+    path = os.path.join(temp_data_dir, "entity_pairs.db")
     tracker = EntityPairTracker(file_path=path)
     yield tracker
     try:
         os.remove(path)
+        os.remove(path + "-wal")
+        os.remove(path + "-shm")
     except Exception:
         pass
 
@@ -188,6 +190,7 @@ def isolated_env():
     except Exception:
         pass
     try:
+        from app.core.db import close_all; close_all()
         shutil.rmtree(tmpdir, ignore_errors=True)
     except Exception:
         pass
@@ -228,6 +231,7 @@ def isolated_env_no_bm():
     except Exception:
         pass
     try:
+        from app.core.db import close_all; close_all()
         shutil.rmtree(tmpdir, ignore_errors=True)
     except Exception:
         pass
@@ -584,6 +588,7 @@ def isolated_env_background():
     except Exception:
         pass
     try:
+        from app.core.db import close_all; close_all()
         shutil.rmtree(tmpdir, ignore_errors=True)
     except Exception:
         pass

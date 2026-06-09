@@ -443,7 +443,7 @@ class TestW10EntityPairStorage:
     """W10 — 实体对共现存储。"""
 
     def test_entity_pair_count_increments(self, isolated_entity_pair_tracker):
-        """验证：entity_pairs.json 中新增对应实体对的共现计数。"""
+        """验证：实体对共现记录写入并可查询。"""
         entity_a = "Python"
         entity_b = "Scrapy"
         memory_id = "test-mem-w10-001"
@@ -451,19 +451,17 @@ class TestW10EntityPairStorage:
         # 记录实体对
         isolated_entity_pair_tracker.record(entity_a, entity_b, memory_id)
 
-        # 从文件读取验证
-        with open(isolated_entity_pair_tracker._file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        # 验证双向都存在
-        assert entity_a in data, f"实体「{entity_a}」应在 entity_pairs.json 中"
-        assert entity_b in data[entity_a], f"「{entity_b}」应在「{entity_a}」的共现列表中"
-        assert data[entity_a][entity_b]["count"] >= 1, (
-            f"共现计数应 ≥1，实际: {data[entity_a][entity_b]['count']}"
+        # 通过 expand 验证双向存在
+        result = isolated_entity_pair_tracker.expand([entity_a])
+        assert entity_a in result, f"实体「{entity_a}」应有扩展结果"
+        assert entity_b in result[entity_a], f"「{entity_b}」应在「{entity_a}」的共现列表中"
+        assert result[entity_a][entity_b] >= 1, (
+            f"共现计数应 ≥1，实际: {result[entity_a][entity_b]}"
         )
 
         # 验证 memory_id 关联
-        assert memory_id in data[entity_a][entity_b]["memory_ids"], (
+        ids = isolated_entity_pair_tracker.get_memory_ids([entity_a])
+        assert memory_id in ids, (
             f"memory_id {memory_id} 应在实体对的 memory_ids 中"
         )
 

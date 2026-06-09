@@ -273,6 +273,7 @@ def isolated_env():
     except Exception:
         pass
     try:
+        from app.core.db import close_all; close_all()
         shutil.rmtree(tmpdir, ignore_errors=True)
     except Exception:
         pass
@@ -314,6 +315,7 @@ def isolated_env_no_bm():
     except Exception:
         pass
     try:
+        from app.core.db import close_all; close_all()
         shutil.rmtree(tmpdir, ignore_errors=True)
     except Exception:
         pass

@@ -25,6 +25,20 @@ logger = logging.getLogger(__name__)
 # ChromaDB — 向量存储 & 检索
 # ===================================================================
 
+def _build_items(result: dict) -> list[dict]:
+    """ChromaDB get() 原始结果 → 统一 item 格式。"""
+    docs = result.get("documents") or [None] * len(result["ids"])
+    items = []
+    for i, mid in enumerate(result["ids"]):
+        meta = result["metadatas"][i] if result.get("metadatas") else {}
+        items.append({
+            "id": mid,
+            "document": docs[i] if i < len(docs) and docs[i] else None,
+            "metadata": dict(meta) if meta else {},
+        })
+    return items
+
+
 class ChromaService:
     """ChromaDB 记忆存储与检索（读写分离，避免并发冲突）。"""
 
@@ -97,6 +111,7 @@ class ChromaService:
             "heat": _initial_heat,
             "embed_model": DEFAULT_EMBED_MODEL,
             "stale": False,
+            "archived": False,
             "superseded_by": "",
             "storage_complete": False,
             "source": source,
@@ -482,16 +497,49 @@ class ChromaService:
         """返回全部记忆列表（不含 embedding），用于实验。"""
         coll = self._collection
         result = coll.get(include=["metadatas"])
-        docs = result.get("documents") or [None] * len(result["ids"])
-        items = []
-        for i, mid in enumerate(result["ids"]):
-            meta = result["metadatas"][i]
-            items.append({
-                "id": mid,
-                "document": docs[i] if docs else None,
-                "metadata": dict(meta),
-            })
-        return items
+        return _build_items(result)
+
+    def list_since(self, since_ts: float, limit: int = 500) -> list[dict]:
+        """按时间过滤：返回 timestamp >= since_ts 的记忆，Server 端过滤。"""
+        try:
+            result = self._collection.get(
+                where={"timestamp": {"$gte": since_ts}},
+                include=["metadatas", "documents"],
+            )
+        except Exception:
+            return self.list_all()  # ChromaDB where 不支持时回退
+        items = _build_items(result)
+        return items[:limit]
+
+    def list_before(self, before_ts: float, limit: int = 500) -> list[dict]:
+        """按时间过滤：返回 timestamp < before_ts 的记忆，Server 端过滤。"""
+        try:
+            result = self._collection.get(
+                where={"timestamp": {"$lt": before_ts}},
+                include=["metadatas", "documents"],
+            )
+        except Exception:
+            return self.list_all()
+        items = _build_items(result)
+        return items[:limit]
+
+    def list_all_paginated(self, batch_size: int = 500) -> list[dict]:
+        """分页获取全部记忆，避免一次性加载过大。"""
+        offset = 0
+        all_items = []
+        while True:
+            result = self._collection.get(
+                offset=offset, limit=batch_size,
+                include=["metadatas", "documents"],
+            )
+            if not result["ids"]:
+                break
+            items = _build_items(result)
+            all_items.extend(items)
+            if len(result["ids"]) < batch_size:
+                break
+            offset += batch_size
+        return all_items
 
     def list_all_cached(self, ttl: float | None = None) -> list[dict]:
         """返回全部记忆列表（带缓存）。后台线程专用，减少 SQLite 全量读取。

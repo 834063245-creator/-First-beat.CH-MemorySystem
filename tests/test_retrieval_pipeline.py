@@ -97,11 +97,13 @@ class TestCoOccurrenceTracker:
     @pytest.fixture
     def tracker(self):
         from app.memory.cooccur import CoOccurrenceTracker
-        tmpf = tempfile.mktemp(suffix=".json")
+        tmpf = tempfile.mktemp(suffix=".db")
         ct = CoOccurrenceTracker(file_path=tmpf)
         yield ct
         try:
             os.unlink(tmpf)
+            os.unlink(tmpf + "-wal")
+            os.unlink(tmpf + "-shm")
         except OSError:
             pass
 

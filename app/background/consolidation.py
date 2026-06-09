@@ -159,11 +159,7 @@ class ConsolidationEngine:
     def _review_today(self) -> dict:
         """回顾今天的记忆，提取话题和情绪统计。"""
         today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-        all_memories = self._chroma.list_all_cached()
-        today_mems = [
-            m for m in all_memories
-            if (m.get("metadata") or {}).get("timestamp", 0) >= today_start
-        ]
+        today_mems = self._chroma.list_since(today_start, limit=500)
 
         # 话题提取
         all_text = ""
@@ -387,35 +383,31 @@ class ConsolidationEngine:
         return result
 
     def _check_conflicts(self) -> list[dict]:
-        """冲突预扫描：最近 7 天记忆 vs 旧记忆的关键词冲突检测。"""
-        seven_days_ago = (datetime.now().timestamp() - 7 * 86400)
-        all_memories = self._chroma.list_all_cached()
+        """冲突预扫描：最近 7 天记忆 vs 旧记忆的关键词冲突检测。
 
-        # 最近 7 天的记忆
-        recent = [
-            m for m in all_memories
-            if (m.get("metadata") or {}).get("timestamp", 0) >= seven_days_ago
-        ]
+        v2: ChromaDB server 端按时间过滤，不再全量加载。
+        """
+        seven_days_ago = (datetime.now().timestamp() - 7 * 86400)
+
+        # 只拉最近 7 天 + 旧的各一批，不走 list_all
+        recent = self._chroma.list_since(seven_days_ago, limit=200)
+        old_memories = self._chroma.list_before(seven_days_ago, limit=500)
 
         conflicts = []
         now_ts = datetime.now().timestamp()
-        for m in recent[:50]:  # 控制扫描量
+        for m in recent[:50]:
             try:
                 meta = m.get("metadata") or {}
                 tags_str = meta.get("tags", "") or ""
                 tags = [t.strip() for t in tags_str.split(",") if t.strip()]
                 if not tags:
                     continue
-                # 在旧记忆中找同 tag 不同内容
-                for old in all_memories:
+                for old in old_memories:
                     if len(conflicts) >= 10:
                         break
                     if old["id"] == m["id"]:
                         continue
                     old_meta = old.get("metadata") or {}
-                    old_ts = old_meta.get("timestamp", 0)
-                    if old_ts >= seven_days_ago:
-                        continue  # 不是旧记忆
                     old_tags_str = old_meta.get("tags", "") or ""
                     old_tags = set(t.strip() for t in old_tags_str.split(",") if t.strip())
                     if set(tags) & old_tags:
@@ -666,22 +658,16 @@ class ConsolidationEngine:
         返回标记数。
         """
         try:
-            all_mems = self._chroma.list_all_cached()
             now_ts = _time.time()
             cutoff = now_ts - self.CONTRADICTION_RECENT_DAYS * 86400
 
-            # 分离新旧记忆（按时间戳 + 排除已 stale）
-            new_mems = []
-            old_mems = []
-            for m in all_mems:
-                meta = m.get("metadata") or {}
-                if meta.get("stale", False):
-                    continue
-                ts = meta.get("timestamp", 0)
-                if ts >= cutoff:
-                    new_mems.append(m)
-                else:
-                    old_mems.append(m)
+            # Server 端按时间过滤，Python 侧只排除 stale
+            raw_new = self._chroma.list_since(cutoff, limit=500)
+            raw_old = self._chroma.list_before(cutoff, limit=500)
+            new_mems = [m for m in raw_new
+                        if not (m.get("metadata") or {}).get("stale", False)]
+            old_mems = [m for m in raw_old
+                        if not (m.get("metadata") or {}).get("stale", False)]
 
             if not new_mems or not old_mems:
                 return 0
@@ -824,9 +810,11 @@ class ConsolidationEngine:
         按 tag 聚合记忆，取每条记忆的 last_hit_time 中位数。
         中位数超过 ARCHIVAL_THRESHOLD_DAYS 天未被关注 → 整簇归档。
         不删除，不丢失，只标记 archived=True。
+
+        v2: 分页加载，Python 侧过滤已归档。
         """
         try:
-            all_mems = self._chroma.list_all_cached()
+            all_mems = self._chroma.list_all_paginated(batch_size=500)
             from collections import defaultdict as _dd
             clusters: dict[str, list[dict]] = _dd(list)
 
@@ -846,7 +834,7 @@ class ConsolidationEngine:
 
             for tag, mems in clusters.items():
                 if len(mems) < 3:
-                    continue  # 少于 3 条的话题不归档
+                    continue
 
                 last_hits = []
                 for m in mems:
@@ -889,7 +877,7 @@ class ConsolidationEngine:
         存于 topic_notes.json。笔记不替换原始记忆，只作为检索辅助入口。
         """
         try:
-            all_mems = self._chroma.list_all_cached()
+            all_mems = self._chroma.list_all_paginated(batch_size=500)
             from collections import defaultdict as _dd
             clusters: dict[str, list[dict]] = _dd(list)
 

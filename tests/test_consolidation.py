@@ -25,6 +25,15 @@ def _make_chroma_mock(memories=None):
     svc = MagicMock()
     svc.list_all.return_value = memories or []
     svc.list_all_cached.side_effect = lambda *a, **kw: svc.list_all()
+    svc.list_since.side_effect = lambda since_ts, limit=500, **kw: [
+        m for m in svc.list_all()
+        if (m.get("metadata") or {}).get("timestamp", 0) >= since_ts
+    ][:limit]
+    svc.list_before.side_effect = lambda before_ts, limit=500, **kw: [
+        m for m in svc.list_all()
+        if (m.get("metadata") or {}).get("timestamp", 0) < before_ts
+    ][:limit]
+    svc.list_all_paginated.side_effect = lambda *a, **kw: svc.list_all()
     svc._collection = MagicMock()
     svc._emb_cache = {}
     svc._build_embedding_cache = MagicMock()

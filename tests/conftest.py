@@ -325,6 +325,11 @@ def isolated_env():
 
     # 清理
     try:
+        from app.core.db import close_all
+        close_all()
+    except Exception:
+        pass
+    try:
         ctx.close()
     except Exception:
         pass

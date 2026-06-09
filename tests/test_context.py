@@ -110,6 +110,9 @@ def ctx():
             c._stop_event.set()
             time.sleep(0.02)
             yield c
+            # 关闭 SQLite 连接，否则 Windows 无法清理 temp 目录
+            from app.core.db import close_all
+            close_all()
     finally:
         for p in patches.values():
             p.stop()

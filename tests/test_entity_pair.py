@@ -1,4 +1,4 @@
-"""测试 app/memory/entity_pair.py — 实体共现跟踪器。"""
+"""测试 app/memory/entity_pair.py — 实体共现跟踪器 (SQLite v3)。"""
 import os
 import tempfile
 
@@ -6,13 +6,12 @@ import pytest
 
 
 def _make_tracker():
-    """创建临时 EntityPairTracker 实例，确保初始状态为空。"""
-    fd, path = tempfile.mkstemp(suffix=".json")
+    """创建临时 EntityPairTracker 实例。"""
+    fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
-    os.unlink(path)  # 删除 mkstemp 创建的空文件，让 _ensure_file 重建
+    os.unlink(path)  # 删除 mkstemp 创建的空文件，让 SQLite 重建
     from app.memory.entity_pair import EntityPairTracker
     t = EntityPairTracker(path)
-    t._invalidate_cache()
     t._path = path  # 保存路径用于清理
     return t
 
@@ -22,6 +21,12 @@ def _cleanup(t):
         os.unlink(t._path)
     except OSError:
         pass
+    # 清理 WAL 文件
+    for suffix in ("-wal", "-shm"):
+        try:
+            os.unlink(t._path + suffix)
+        except OSError:
+            pass
 
 
 class TestInit:
@@ -47,7 +52,6 @@ class TestRecord:
         t = _make_tracker()
         try:
             t.record("Python", "Django", "mem_1")
-            t._invalidate_cache()
             s = t.stats()
             assert s["total_entities"] >= 2
         finally:
@@ -57,7 +61,6 @@ class TestRecord:
         t = _make_tracker()
         try:
             t.record("A", "B", "m1")
-            t._invalidate_cache()
             data = t._load()
             assert "A" in data
             assert "B" in data["A"]
@@ -89,7 +92,6 @@ class TestRecord:
         try:
             t.record("Py", "AI", "m1")
             t.record("Py", "AI", "m2")
-            t._invalidate_cache()
             data = t._load()
             assert data["Py"]["AI"]["count"] == 2
         finally:
@@ -101,7 +103,6 @@ class TestRecord:
             pairs = [("A", "B"), ("A", "C"), ("B", "C")]
             for i, (a, b) in enumerate(pairs):
                 t.record(a, b, f"mem_{i}")
-            t._invalidate_cache()
             s = t.stats()
             assert s["total_entities"] == 3
             assert s["total_pairs"] == 6  # bidirectional
@@ -117,7 +118,6 @@ class TestExpand:
             t.record("Python", "Flask", "m2")
             t.record("Python", "FastAPI", "m3")
             t.record("Python", "Django", "m4")
-            t._invalidate_cache()
             result = t.expand(["Python"])
             assert "Python" in result
             related = result["Python"]
@@ -148,7 +148,6 @@ class TestGetMemoryIds:
         try:
             t.record("X", "Y", "abc")
             t.record("X", "Z", "def")
-            t._invalidate_cache()
             ids = t.get_memory_ids(["X"])
             assert "abc" in ids
             assert "def" in ids
@@ -177,7 +176,6 @@ class TestRemoveMemory:
             t.record("Go", "Rust", "del_me")
             t.record("Go", "Rust", "keep_me")
             t.remove_memory("del_me")
-            t._invalidate_cache()
             ids = t.get_memory_ids(["Go"])
             assert "del_me" not in ids
             assert "keep_me" in ids
@@ -189,7 +187,6 @@ class TestRemoveMemory:
         try:
             t.record("Solo", "Only", "only_id")
             t.remove_memory("only_id")
-            t._invalidate_cache()
             s = t.stats()
             assert s["total_pairs"] == 0
             assert s["total_entities"] == 0
@@ -201,7 +198,6 @@ class TestRemoveMemory:
         try:
             t.record("A", "B", "m1")
             t.remove_memory("nonexistent")
-            t._invalidate_cache()
             s = t.stats()
             assert s["total_pairs"] == 2  # bidirectional
         finally:
@@ -214,7 +210,6 @@ class TestStats:
         try:
             t.record("A", "B", "m1")
             t.record("A", "C", "m2")
-            t._invalidate_cache()
             s = t.stats()
             assert s["total_entities"] == 3
             assert s["total_pairs"] == 4  # A-B, B-A, A-C, C-A
@@ -226,17 +221,5 @@ class TestStats:
         try:
             s = t.stats()
             assert s == {"total_entities": 0, "total_pairs": 0}
-        finally:
-            _cleanup(t)
-
-
-class TestCacheInvalidation:
-    def test_invalidate_clears_cache(self):
-        t = _make_tracker()
-        try:
-            t._load()  # populates cache
-            assert t._cache is not None
-            t._invalidate_cache()
-            assert t._cache is None
         finally:
             _cleanup(t)

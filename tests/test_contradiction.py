@@ -75,6 +75,15 @@ class TestContradictionDetection:
 
         mock_chroma = MagicMock(spec=ChromaService)
         mock_chroma.list_all_cached.side_effect = lambda *a, **kw: mock_chroma.list_all()
+        mock_chroma.list_since.side_effect = lambda since_ts, limit=500, **kw: [
+            m for m in mock_chroma.list_all()
+            if (m.get("metadata") or {}).get("timestamp", 0) >= since_ts
+        ][:limit]
+        mock_chroma.list_before.side_effect = lambda before_ts, limit=500, **kw: [
+            m for m in mock_chroma.list_all()
+            if (m.get("metadata") or {}).get("timestamp", 0) < before_ts
+        ][:limit]
+        mock_chroma.list_all_paginated.side_effect = lambda *a, **kw: mock_chroma.list_all()
 
         old_mem = self._make_mem(
             "old_001", ["辣", "口味"],
@@ -127,6 +136,15 @@ class TestContradictionDetection:
 
         mock_chroma = MagicMock(spec=ChromaService)
         mock_chroma.list_all_cached.side_effect = lambda *a, **kw: mock_chroma.list_all()
+        mock_chroma.list_since.side_effect = lambda since_ts, limit=500, **kw: [
+            m for m in mock_chroma.list_all()
+            if (m.get("metadata") or {}).get("timestamp", 0) >= since_ts
+        ][:limit]
+        mock_chroma.list_before.side_effect = lambda before_ts, limit=500, **kw: [
+            m for m in mock_chroma.list_all()
+            if (m.get("metadata") or {}).get("timestamp", 0) < before_ts
+        ][:limit]
+        mock_chroma.list_all_paginated.side_effect = lambda *a, **kw: mock_chroma.list_all()
         old_mem = self._make_mem(
             "old_001", ["辣"], self._emb(seed=self.SEED_BASE), 999_000_000, "positive", "用户喜欢吃辣",
         )
@@ -164,6 +182,15 @@ class TestContradictionDetection:
 
         mock_chroma = MagicMock(spec=ChromaService)
         mock_chroma.list_all_cached.side_effect = lambda *a, **kw: mock_chroma.list_all()
+        mock_chroma.list_since.side_effect = lambda since_ts, limit=500, **kw: [
+            m for m in mock_chroma.list_all()
+            if (m.get("metadata") or {}).get("timestamp", 0) >= since_ts
+        ][:limit]
+        mock_chroma.list_before.side_effect = lambda before_ts, limit=500, **kw: [
+            m for m in mock_chroma.list_all()
+            if (m.get("metadata") or {}).get("timestamp", 0) < before_ts
+        ][:limit]
+        mock_chroma.list_all_paginated.side_effect = lambda *a, **kw: mock_chroma.list_all()
         old_mem = self._make_mem(
             "old_001", ["辣"], self._emb(seed=self.SEED_BASE), 999_000_000, "positive", "用户喜欢吃辣",
         )
@@ -201,6 +228,15 @@ class TestContradictionDetection:
 
         mock_chroma = MagicMock(spec=ChromaService)
         mock_chroma.list_all_cached.side_effect = lambda *a, **kw: mock_chroma.list_all()
+        mock_chroma.list_since.side_effect = lambda since_ts, limit=500, **kw: [
+            m for m in mock_chroma.list_all()
+            if (m.get("metadata") or {}).get("timestamp", 0) >= since_ts
+        ][:limit]
+        mock_chroma.list_before.side_effect = lambda before_ts, limit=500, **kw: [
+            m for m in mock_chroma.list_all()
+            if (m.get("metadata") or {}).get("timestamp", 0) < before_ts
+        ][:limit]
+        mock_chroma.list_all_paginated.side_effect = lambda *a, **kw: mock_chroma.list_all()
         old_mem = self._make_mem(
             "old_001", ["辣"], self._emb(seed=self.SEED_BASE), 999_000_000, "positive", "用户喜欢吃辣",
         )
@@ -241,6 +277,15 @@ class TestContradictionDetection:
 
         mock_chroma = MagicMock(spec=ChromaService)
         mock_chroma.list_all_cached.side_effect = lambda *a, **kw: mock_chroma.list_all()
+        mock_chroma.list_since.side_effect = lambda since_ts, limit=500, **kw: [
+            m for m in mock_chroma.list_all()
+            if (m.get("metadata") or {}).get("timestamp", 0) >= since_ts
+        ][:limit]
+        mock_chroma.list_before.side_effect = lambda before_ts, limit=500, **kw: [
+            m for m in mock_chroma.list_all()
+            if (m.get("metadata") or {}).get("timestamp", 0) < before_ts
+        ][:limit]
+        mock_chroma.list_all_paginated.side_effect = lambda *a, **kw: mock_chroma.list_all()
         old_mem = self._make_mem(
             "old_001", ["城市"], self._emb(seed=self.SEED_BASE), 999_000_000, "",
             "用户现在住在北京",
@@ -284,6 +329,15 @@ class TestContradictionDetection:
 
         mock_chroma = MagicMock(spec=ChromaService)
         mock_chroma.list_all_cached.side_effect = lambda *a, **kw: mock_chroma.list_all()
+        mock_chroma.list_since.side_effect = lambda since_ts, limit=500, **kw: [
+            m for m in mock_chroma.list_all()
+            if (m.get("metadata") or {}).get("timestamp", 0) >= since_ts
+        ][:limit]
+        mock_chroma.list_before.side_effect = lambda before_ts, limit=500, **kw: [
+            m for m in mock_chroma.list_all()
+            if (m.get("metadata") or {}).get("timestamp", 0) < before_ts
+        ][:limit]
+        mock_chroma.list_all_paginated.side_effect = lambda *a, **kw: mock_chroma.list_all()
         old_mem = self._make_mem(
             "old_001", ["辣"], self._emb(seed=self.SEED_BASE), 999_000_000, "",
             "用户非常喜欢吃辣的东西",
