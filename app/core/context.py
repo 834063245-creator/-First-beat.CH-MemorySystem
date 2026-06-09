@@ -296,7 +296,7 @@ class AppContext:
                         continue
 
                     # 检查空闲条件（用户不在聊天中）
-                    from app.api.system import get_last_heartbeat
+                    from app.core.heartbeat import get_last_heartbeat
                     hb = get_last_heartbeat()
                     if not self.impulse_scheduler.should_deliver(self.chat_history, hb):
                         self._stop_event.wait(30)

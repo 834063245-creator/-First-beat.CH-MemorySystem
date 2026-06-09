@@ -100,15 +100,7 @@ def api_user_switch(user: str):
     return resp
 
 
-# 心跳追踪
-_last_heartbeat_time: float | None = None
-_heartbeat_lock = threading.Lock()
-
-
-def get_last_heartbeat() -> float | None:
-    """供后台消费线程查询用户最后活跃时间。"""
-    with _heartbeat_lock:
-        return _last_heartbeat_time
+from app.core.heartbeat import record_heartbeat
 
 
 @router.get("/api/ping")
@@ -119,9 +111,7 @@ def ping():
 @router.get("/api/user-active")
 def api_user_active():
     """用户打字心跳。前端约每 10 秒调用一次。"""
-    global _last_heartbeat_time
-    with _heartbeat_lock:
-        _last_heartbeat_time = time.time()
+    record_heartbeat()
     return {"ok": True}
 
 
