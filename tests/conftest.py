@@ -81,6 +81,13 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip_mark)
 
 
+def _clear_embed_caches():
+    """清空 embed 模块的全局缓存（不碰合并定时器，避免破坏正在进行的测试）。"""
+    import app.llm.embed as _mod
+    _mod._embed_cache.clear()
+    _mod._ngram_cache.clear()
+
+
 @pytest.fixture(autouse=True)
 def _mock_ollama_http(request):
     """自动 mock Ollama 所有 HTTP 调用。
@@ -97,14 +104,25 @@ def _mock_ollama_http(request):
         yield
         return
 
-    with patch("app.llm.embed._embed_via_ollama", side_effect=_text_dependent_emb), \
-         patch("app.llm.embed._embed_via_ollama_batch",
-               side_effect=_text_dependent_emb_batch), \
-         patch("app.llm.local.LocalLLM.summarize",
-               return_value="mock摘要"), \
-         patch("app.brain.semantic.extract_entities",
-               return_value=[]):
-        yield
+    try:
+        with patch("app.llm.embed._embed_via_ollama", side_effect=_text_dependent_emb), \
+             patch("app.llm.embed._embed_via_ollama_batch",
+                   side_effect=_text_dependent_emb_batch), \
+             patch("app.llm.local.LocalLLM.summarize",
+                   return_value="mock摘要"), \
+             patch("app.brain.semantic.extract_entities",
+                   return_value=[]):
+            yield
+    finally:
+        # 测试结束后强制清空：缓存 + 未决合并队列 + 定时器
+        # 防止 mock 嵌入向量或未决回调节点污染后续 real_embed 测试
+        import app.llm.embed as _mod
+        _mod._embed_cache.clear()
+        _mod._ngram_cache.clear()
+        _mod._coalesce_pending.clear()
+        if _mod._coalesce_timer is not None:
+            _mod._coalesce_timer.cancel()
+            _mod._coalesce_timer = None
 
 
 # ═══════════════════════════════════════════════════════════════════

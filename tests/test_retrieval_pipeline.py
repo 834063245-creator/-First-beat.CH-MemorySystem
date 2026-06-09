@@ -140,12 +140,12 @@ class TestTimeRhythmFunctions:
     """验证时间节律 4 窗函数。"""
 
     def test_recency_score(self):
-        from app.background.distill import _recency_score
+        from app.portrait.extractors import recency_score
         now = 1717000000.0
         recent = now - 3 * 86400
-        assert _recency_score(recent, now) == 1.0
-        old = now - 31 * 86400
-        assert _recency_score(old, now) == 0.0
-        mid = now - 15 * 86400
-        score = _recency_score(mid, now)
-        assert 0.0 < score < 1.0
+        assert recency_score(recent, now=now) == pytest.approx(0.967, abs=0.01)
+        old = now - 91 * 86400
+        assert recency_score(old, now=now) == 0.0
+        mid = now - 45 * 86400
+        score = recency_score(mid, now=now)
+        assert 0.4 < score < 0.6

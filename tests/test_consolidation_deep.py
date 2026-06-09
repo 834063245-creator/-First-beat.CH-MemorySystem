@@ -28,15 +28,12 @@ def _make_engine(tmpdir, **overrides):
     chroma.list_all_paginated.side_effect = lambda *a, **kw: chroma.list_all()
     chroma._collection = MagicMock()
     chroma._emb_cache = {}
-    personality = MagicMock()
-    behavior = MagicMock()
-    behavior.list_all.return_value = []
     chat_history = MagicMock()
     co_tracker = MagicMock()
     state_path = os.path.join(tmpdir, "dmn_state.json")
     notes_path = os.path.join(tmpdir, "topic_notes.json")
     return ConsolidationEngine(
-        chroma, personality, behavior, chat_history, co_tracker,
+        chroma, chat_history, co_tracker,
         state_path=state_path, notes_path=notes_path,
         **overrides,
     )

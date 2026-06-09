@@ -14,7 +14,6 @@ from app.background.impulse import (
     source_random_roam,
     source_curiosity,
     source_time_rhythm,
-    source_behavior_pattern,
     _load_state,
     _save_state,
     _default_state,
@@ -256,20 +255,6 @@ class TestSourceTimeRhythm:
         content, priority = result
         assert "工作" in content
         assert priority == 50
-
-
-class TestSourceBehaviorPattern:
-    """行为模式冲动源。"""
-
-    def test_returns_none_without_personality(self):
-        result = source_behavior_pattern(None, None)
-        assert result is None
-
-    def test_returns_none_when_no_patterns(self):
-        store = MagicMock()
-        store.list_tags.return_value = {"items": []}
-        result = source_behavior_pattern(store, None)
-        assert result is None
 
 
 # ═══════════════════════════════════════════════════════════════

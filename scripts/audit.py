@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """
-初痕真实记忆审计套件 v3 — 开源版
+初痕真实记忆审计套件 v4 — 开源版
 基于生产数据直接测试检索层能力，诚实地测每一条通路。
+
+v4 变更（Phase 4 退役适配）:
+  - 类别 6: Personality Consistency → Portrait Consistency
+    旧: 读 personality_chroma (PersonalityStore) → 测人格标签可检索性
+    新: 读 PORTRAIT.md (PortraitManager) → 测画像维度完整性 + 证据链 + 版本活性
+  - load_data(): 移除 PERSONALITY_TAGS 加载（personality_chroma 已退役）
 
 用法:
   python scripts/audit.py                          # 跑全部 8 类
-  python scripts/audit.py --quick                  # 快速模式（跳过 /chat 类）
+  python scripts/audit.py --quick                  # 快速模式（跳过画像类）
   python scripts/audit.py --category 1             # 只跑语义检索
   python scripts/audit.py --sample 20              # 指定抽样数
   python scripts/audit.py --report ./my_reports    # 自定义报告目录
@@ -37,7 +43,7 @@ random.seed(42)  # 确定种子，分数可复现
 
 # ── 全局状态 ──
 CHROMA_DATA: list[dict] = []
-PERSONALITY_TAGS: list[dict] = []
+PORTRAIT_DATA: dict = {}  # {dim: [entries], version: int, entry_count: int}
 CHAT_HISTORY: list[dict] = []
 
 
@@ -46,9 +52,8 @@ CHAT_HISTORY: list[dict] = []
 # ═══════════════════════════════════════════════════════════════
 
 def load_data():
-    global CHROMA_DATA, PERSONALITY_TAGS, CHAT_HISTORY
-    from app.config.settings import CHROMA_PERSIST_DIR, PERSONALITY_CHROMA_DIR as _pd, PERSONALITY_COLLECTION
-    from app.config.settings import CHAT_HISTORY_PATH
+    global CHROMA_DATA, PORTRAIT_DATA, CHAT_HISTORY
+    from app.config.settings import CHROMA_PERSIST_DIR, CHAT_HISTORY_PATH, PORTRAIT_FILE_PATH
     import chromadb
 
     client = chromadb.PersistentClient(path=CHROMA_PERSIST_DIR)
@@ -65,21 +70,26 @@ def load_data():
     CHROMA_DATA.sort(key=lambda x: x["id"])
     logger.info("ChromaDB: %d memories", len(CHROMA_DATA))
 
-    # 人格标签
+    # 画像 PORTRAIT.md（替代 Phase 4 退役的 personality_chroma）
+    PORTRAIT_DATA = {"dims": {}, "version": 0, "entry_count": 0}
     try:
-        import chromadb as cdb
-        pc = cdb.PersistentClient(path=os.path.join(os.getenv("DATA_DIR", "./data"), "personality_chroma"))
-        pcoll = pc.get_or_create_collection(PERSONALITY_COLLECTION, embedding_function=None)
-        pdata = pcoll.get(include=["documents", "metadatas"])
-        for i, pid in enumerate(pdata.get("ids", [])):
-            PERSONALITY_TAGS.append({
-                "id": pid,
-                "content": pdata["documents"][i] if pdata.get("documents") else "",
-                "meta": dict(pdata["metadatas"][i]) if pdata.get("metadatas") else {},
-            })
+        from app.portrait.manager import PortraitManager, ALL_DIMS
+        pm = PortraitManager(PORTRAIT_FILE_PATH)  # 构造时自动加载（文件不存在则创建空画像）
+        PORTRAIT_DATA["version"] = pm.version
+        for dim in ALL_DIMS:
+            entries = pm.get_dim_entries(dim)
+            PORTRAIT_DATA["dims"][dim] = [
+                {"text": e.text[:120], "tags": e.tags, "confidence": e.confidence,
+                 "status": e.status.value}
+                for e in entries
+            ]
+            PORTRAIT_DATA["entry_count"] += len(entries)
     except Exception as e:
-        logger.warning("Personality tags load failed: %s", e)
-    logger.info("Personality tags: %d", len(PERSONALITY_TAGS))
+        logger.warning("Portrait load failed: %s", e)
+    logger.info("Portrait: v%d, %d entries across %d dims",
+                PORTRAIT_DATA["version"],
+                PORTRAIT_DATA["entry_count"],
+                sum(1 for v in PORTRAIT_DATA.get("dims", {}).values() if v))
 
     # ChatHistory
     if os.path.exists(CHAT_HISTORY_PATH):
@@ -288,38 +298,106 @@ def test_correction_feedback(sample_n: int = 0) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════
-# 类别 6：人格一致性（权重 10%，需要 /chat 服务）
+# 类别 6：画像一致性（权重 10%）
+# Phase 4 退役后替代旧"人格一致性"——读 PORTRAIT.md，不依赖 /chat
 # ═══════════════════════════════════════════════════════════════
 
-def test_personality_consistency(sample_n: int = 3) -> dict:
-    if not PERSONALITY_TAGS:
-        return {"score": 0, "pass": "N/A", "error": "No personality tags"}
-    import numpy as np
-    sorted_tags = sorted(
-        PERSONALITY_TAGS,
-        key=lambda t: t.get("meta", {}).get("hit_count", 0),
-        reverse=True,
-    )
-    top_tags = sorted_tags[:sample_n]
-    hit, total = 0, 0
-    for tag in top_tags:
-        content = tag.get("content", "")
-        if not content:
-            continue
-        total += 1
-        tag_short = content[:20]
-        # 直接验证标签本身是否在记忆库中可查
-        emb = _get_embedding(content)
-        if not emb:
-            continue
-        results = _chroma_query(emb)
-        # 检查是否有语义相关的记忆
-        relevant = any(r["distance"] < 0.5 for r in results)
-        if relevant:
-            hit += 1
+def test_portrait_consistency(sample_n: int = 3) -> dict:
+    """验证画像系统完整性：维度覆盖、证据链、版本活性。"""
+    checks = []
+
+    # ═══ C1: PORTRAIT.md 存在且可解析 ═══
+    if not PORTRAIT_DATA.get("dims"):
+        checks.append({"check": "PORTRAIT.md loaded", "pass": False,
+                       "error": "No portrait data — PORTRAIT.md missing or empty"})
+        passed = sum(1 for c in checks if c.get("pass", False))
+        return {"score": round(passed / len(checks), 4) if checks else 0,
+                "pass": f"{passed}/{len(checks)}", "checks": checks}
+    checks.append({"check": "PORTRAIT.md loaded", "pass": True,
+                   "detail": f"v{PORTRAIT_DATA['version']}, {PORTRAIT_DATA['entry_count']} entries"})
+
+    # ═══ C2: 版本活性 — 画像至少被更新过一次 ═══
+    checks.append({"check": "portrait version > 0 (has been updated)",
+                   "pass": PORTRAIT_DATA["version"] > 0,
+                   "detail": f"version={PORTRAIT_DATA['version']}"})
+
+    # ═══ C3: 用户画像维度覆盖 — 6 个用户维度至少有 basic 覆盖 ═══
+    user_dims = ["usr1", "usr2", "usr3", "usr4", "usr5", "usr6"]
+    user_covered = 0
+    dim_detail = []
+    for dim in user_dims:
+        entries = PORTRAIT_DATA["dims"].get(dim, [])
+        active = [e for e in entries if e.get("status") not in ("decayed",)]
+        if active:
+            user_covered += 1
+            dim_detail.append(f"{dim}={len(active)}")
+        else:
+            dim_detail.append(f"{dim}=0")
+    checks.append({"check": "user portrait dimensions populated",
+                   "pass": user_covered >= 3,  # 至少一半有内容
+                   "detail": f"{user_covered}/6 dims active: {', '.join(dim_detail)}"})
+
+    # ═══ C4: AI 画像维度覆盖 — 6 个 AI 维度 ═══
+    ai_dims = ["ai1", "ai2", "ai3", "ai4", "ai5", "ai6"]
+    ai_covered = 0
+    ai_detail = []
+    for dim in ai_dims:
+        entries = PORTRAIT_DATA["dims"].get(dim, [])
+        active = [e for e in entries if e.get("status") not in ("decayed",)]
+        if active:
+            ai_covered += 1
+            ai_detail.append(f"{dim}={len(active)}")
+        else:
+            ai_detail.append(f"{dim}=0")
+    checks.append({"check": "AI portrait dimensions populated",
+                   "pass": ai_covered >= 2,  # AI 侧积累较慢，≥2 就 OK
+                   "detail": f"{ai_covered}/6 dims active: {', '.join(ai_detail)}"})
+
+    # ═══ C5: 画像条目证据链 — 抽查条目 tags 在记忆库中是否可查 ═══
+    if sample_n > 0 and PORTRAIT_DATA["entry_count"] > 0:
+        all_entries = []
+        for dim in user_dims + ai_dims:
+            for e in PORTRAIT_DATA["dims"].get(dim, []):
+                if e.get("tags") and e.get("status") not in ("decayed",):
+                    all_entries.append(e)
+
+        if all_entries:
+            import random as _random
+            _random.seed(42)
+            sample = _random.sample(all_entries, min(sample_n, len(all_entries)))
+            evidence_hits = 0
+            for entry in sample:
+                tags = entry.get("tags", [])
+                # 检查这些 tags 是否在记忆库中有对应记忆
+                matched = any(
+                    any(t in (m.get("tags") or m.get("_meta", {}).get("tags", "") or "")
+                        for t in tags)
+                    for m in CHROMA_DATA
+                )
+                if matched:
+                    evidence_hits += 1
+            checks.append({"check": f"portrait entry evidence (tags match memories)",
+                           "pass": evidence_hits >= max(1, len(sample) // 2),
+                           "detail": f"{evidence_hits}/{len(sample)} entries have tag evidence in ChromaDB"})
+        else:
+            checks.append({"check": "portrait entry evidence", "pass": True,
+                           "detail": "no tag-bearing entries to check"})
+    else:
+        checks.append({"check": "portrait entry evidence", "pass": True,
+                       "detail": f"skipped (sample_n={sample_n}, entries={PORTRAIT_DATA['entry_count']})"})
+
+    # ═══ C6: 无完全空维度 — 如果用户侧有数据，不应有维度系统性缺席 ═══
+    if user_covered >= 3:
+        fully_empty = [d for d in user_dims if not PORTRAIT_DATA["dims"].get(d)]
+        checks.append({"check": "no systematically empty user dimensions",
+                       "pass": len(fully_empty) <= 1,
+                       "detail": f"empty: {fully_empty}" if fully_empty else "all dims have entries"})
+
+    passed = sum(1 for c in checks if c.get("pass", False))
     return {
-        "score": round(hit / total, 4) if total else 0,
-        "pass": f"{hit}/{total}",
+        "score": round(passed / len(checks), 4) if checks else 0,
+        "pass": f"{passed}/{len(checks)}",
+        "checks": checks,
     }
 
 
@@ -554,12 +632,12 @@ CATEGORIES: dict[int, tuple[str, callable, float]] = {
     3: ("Time Retrieval", test_time_retrieval, 0.15),
     4: ("Ranking Logic", test_ranking_logic, 0.15),
     5: ("Correction Feedback", test_correction_feedback, 0.10),
-    6: ("Personality Consistency", test_personality_consistency, 0.10),
+    6: ("Portrait Consistency", test_portrait_consistency, 0.10),
     7: ("Working Memory", test_working_memory, 0.10),
     8: ("Time Rhythm", test_time_rhythm, 0.05),
 }
 
-CHAT_CATEGORIES = {6}  # 仅人格一致性依赖 /chat（已退役，建议 --quick 跳过）
+CHAT_CATEGORIES: set[int] = set()  # v4: 无类别依赖 /chat（画像从 PORTRAIT.md 读，不走 /chat）
 SAMPLE_DEFAULTS = {1: 30, 2: 20, 3: 15, 6: 3, 7: 5, 8: 10}
 
 
@@ -592,13 +670,13 @@ def main():
     args = parser.parse_args()
 
     print("=" * 50)
-    print("初痕审计套件 v3")
+    print("初痕审计套件 v4")
     print("=" * 50)
 
     t_start = time.time()
     load_data()
     t_load = time.time()
-    print(f"Loaded: {len(CHROMA_DATA)} memories, {len(PERSONALITY_TAGS)} tags ({t_load - t_start:.1f}s)")
+    print(f"Loaded: {len(CHROMA_DATA)} memories, portrait v{PORTRAIT_DATA.get('version', 0)} ({PORTRAIT_DATA.get('entry_count', 0)} entries) ({t_load - t_start:.1f}s)")
 
     results = {}
     weighted_sum = 0.0
@@ -623,7 +701,8 @@ def main():
     report = {
         "timestamp": datetime.now().isoformat(),
         "total_memories": len(CHROMA_DATA),
-        "total_personality_tags": len(PERSONALITY_TAGS),
+        "portrait_version": PORTRAIT_DATA.get("version", 0),
+        "portrait_entries": PORTRAIT_DATA.get("entry_count", 0),
         "scores": results,
         "weighted_total": round(overall, 4),
     }

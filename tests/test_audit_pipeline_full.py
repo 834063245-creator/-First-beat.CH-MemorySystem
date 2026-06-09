@@ -436,7 +436,6 @@ class TestCognitiveStateOutput:
 
         orch = CircuitOrchestrator(
             chroma_service=pipeline_ctx.chroma_service,
-            personality_store=MagicMock(),
             impulse_scheduler=MagicMock(),
             dmn_engine=MagicMock(),
             chat_history=pipeline_ctx.chat_history,

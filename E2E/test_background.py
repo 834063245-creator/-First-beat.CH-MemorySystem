@@ -31,12 +31,12 @@ SEED_MEMORIES = _e2e_conftest.SEED_MEMORIES
 
 
 # ═══════════════════════════════════════════════════════════════════
-# B1-B5: 冲动源 — 每个源产生信号
+# B1-B4: 冲动源 — 每个源产生信号（原 B5 行为模式源已于 Phase 4 退役）
 # ═══════════════════════════════════════════════════════════════════
 
 
 class TestImpulseSources:
-    """冲动源测试（B1-B5）：直接调用源函数，验证产出信号。"""
+    """冲动源测试（B1-B4）：直接调用源函数，验证产出信号。"""
 
     def test_B1_emotional_trend_impulse(self, seeded_env_background):
         """B1: 情绪趋势冲动源 — 有情绪记忆时产生信号并进入 PriorityQueue。
@@ -170,49 +170,7 @@ class TestImpulseSources:
         generated = [h for h in history if h.get("event") == "generated"]
         assert len(generated) >= 1
 
-    def test_B5_behavior_pattern_impulse(self, seeded_env_background):
-        """B5: 行为模式冲动源 — 检测到行为模式时产生信号。
-
-        向人格库注入一条行为模式标签，验证冲动源识别。
-        """
-        ctx, mem_ids = seeded_env_background
-        from app.background.impulse import source_behavior_pattern
-
-        # 注入一条行为模式标签到人格库
-        current_hour = datetime.now().hour
-        pattern_content = f"用户通常在{current_hour}点左右会聊技术相关话题"
-        try:
-            from app.llm.embed import local_embed
-            emb = local_embed(pattern_content)
-            ctx.personality_store.store_tag(
-                content=pattern_content,
-                embedding=emb,
-                tag_type="行为模式",
-                confidence="中",
-                source="user",
-            )
-        except Exception as e:
-            pytest.skip(f"无法注入行为模式标签（embedding 不可用）: {e}")
-
-        # 调用冲动源
-        result = source_behavior_pattern(
-            ctx.personality_store,
-            ctx.chat_history,
-        )
-
-        if result is not None:
-            content, priority = result
-            assert isinstance(content, str)
-            assert len(content) >= 5
-            assert priority == 25, f"行为模式优先级固定 25，实际 {priority}"
-
-            ctx.impulse_scheduler.feed_impulse(content, priority, "行为模式")
-            history = ctx.impulse_scheduler.get_history()
-            generated = [h for h in history if h.get("event") == "generated"]
-            assert len(generated) >= 1
-        else:
-            # 如果当前小时不在 pattern_content 中则跳过
-            pytest.skip(f"行为模式未匹配当前时段（hour={current_hour}），pattern={pattern_content[:40]}")
+    # B5: 行为模式冲动源已于 Phase 4 退役（5源→4源），测试移除
 
 
 # ═══════════════════════════════════════════════════════════════════

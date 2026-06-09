@@ -31,27 +31,20 @@ def _make_mocks():
         ('app.core.context.LLMClient', MagicMock),
         ('app.core.context.CoOccurrenceTracker', MagicMock),
         ('app.core.context.EntityPairTracker', MagicMock),
-        ('app.core.context.BehaviorStore', MagicMock),
         ('app.core.context.InvertedIndex', lambda: MagicMock(_tag_index={})),
         ('app.core.context.TopicAffinity', MagicMock),
         ('app.core.context.TemporalPatternIndex', MagicMock),
-        ('app.core.context.DistillEngine', MagicMock),
         ('app.core.context.BehaviorPredictor', MagicMock),
         ('app.background.consolidation.ConsolidationEngine', MagicMock),
         ('app.background.impulse.ImpulseScheduler', MagicMock),
+        ('app.portrait.manager.PortraitManager', MagicMock),
+        ('app.portrait.renderer.PortraitRenderer', MagicMock),
+        ('app.portrait.writer.PortraitWriter', MagicMock),
     ]:
         p = patch(target)
         mock = p.start()
         mock.return_value = factory() if callable(factory) else factory()
         patches[target] = p
-
-    # PersonalityStore — 特殊配置
-    p = patch('app.core.context.PersonalityStore')
-    mock = p.start()
-    ps = MagicMock()
-    ps.list_tags.return_value = {"items": []}
-    mock.return_value = ps
-    patches['app.core.context.PersonalityStore'] = p
 
     # ChatHistory — 特殊配置
     p = patch('app.core.context.ChatHistory')
@@ -155,7 +148,7 @@ class TestAppContextConstruction:
     def test_constructs_without_crash(self, ctx):
         assert ctx.data_dir is not None
         assert ctx.chroma_service is not None
-        assert ctx.personality_store is not None
+        assert ctx.portrait is not None
 
     def test_topic_tree_property(self, ctx):
         tree = ctx.topic_tree
