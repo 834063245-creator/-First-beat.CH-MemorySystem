@@ -104,6 +104,17 @@ def load_data():
         CHAT_HISTORY = CHAT_HISTORY[-50:]
 
 
+def _is_ollama_available() -> bool:
+    """检测 Ollama 是否可用（复用 conftest 逻辑）。"""
+    try:
+        import httpx
+        url = os.getenv("LOCAL_LLM_OLLAMA_URL", "http://localhost:11434")
+        resp = httpx.get(f"{url}/api/tags", timeout=2.0)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
 def _get_embedding(text: str) -> Optional[list[float]]:
     from app.llm.embed import local_embed
     return local_embed(text)
@@ -638,6 +649,7 @@ CATEGORIES: dict[int, tuple[str, callable, float]] = {
 }
 
 CHAT_CATEGORIES: set[int] = set()  # v4: 无类别依赖 /chat（画像从 PORTRAIT.md 读，不走 /chat）
+EMBED_CATEGORIES: set[int] = {1, 3}  # 类别 1（语义检索）和类别 3（时间检索）依赖 Ollama embedding
 SAMPLE_DEFAULTS = {1: 30, 2: 20, 3: 15, 6: 3, 7: 5, 8: 10}
 
 
@@ -676,7 +688,10 @@ def main():
     t_start = time.time()
     load_data()
     t_load = time.time()
+    ollama_ok = _is_ollama_available()
     print(f"Loaded: {len(CHROMA_DATA)} memories, portrait v{PORTRAIT_DATA.get('version', 0)} ({PORTRAIT_DATA.get('entry_count', 0)} entries) ({t_load - t_start:.1f}s)")
+    if not ollama_ok:
+        print("Ollama: NOT AVAILABLE — embedding-dependent categories will be skipped")
 
     results = {}
     weighted_sum = 0.0
@@ -685,6 +700,11 @@ def main():
     for cid in sorted(CATEGORIES if not args.category else [args.category]):
         if args.quick and cid in CHAT_CATEGORIES:
             print(f"  [{cid}/8] {CATEGORIES[cid][0]} — skipped (quick mode)")
+            continue
+        if not ollama_ok and cid in EMBED_CATEGORIES:
+            print(f"  [{cid}/8] {CATEGORIES[cid][0]} (weight={CATEGORIES[cid][2]:.0%}) — skipped (Ollama unavailable)")
+            results[CATEGORIES[cid][0]] = {"score": None, "pass": "SKIPPED",
+                                             "category": CATEGORIES[cid][0], "weight": CATEGORIES[cid][2]}
             continue
         sn = args.sample if args.sample > 0 else SAMPLE_DEFAULTS.get(cid, 10)
         if args.quick:
