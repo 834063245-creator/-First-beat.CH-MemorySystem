@@ -119,6 +119,7 @@ class EntityPairTracker:
         if not entity_a or not entity_b or entity_a == entity_b:
             return
         conn = self._conn
+        conn.execute("BEGIN IMMEDIATE")  # 显式事务包裹双向写入
         # 双向写入 (A, B) 和 (B, A) — 保持与旧 JSON 格式兼容
         for a, b in [(entity_a, entity_b), (entity_b, entity_a)]:
             conn.execute(
@@ -159,23 +160,26 @@ class EntityPairTracker:
         return result
 
     def get_memory_ids(self, entity_names: list[str]) -> list[str]:
-        """给定一批实体名，收集所有相关的记忆 ID，按共现次数降序、去重。"""
+        """给定一批实体名，收集所有相关的记忆 ID，按共现次数降序、去重。
+
+        单次批量查询替代逐 entity 的 N+1 模式。
+        """
         if not entity_names:
             return []
         conn = self._conn
         scored: dict[str, int] = {}
-        for ename in entity_names:
-            rows = conn.execute(
-                "SELECT entity_b, memory_ids, count FROM entity_pair WHERE entity_a = ?",
-                (ename,),
-            ).fetchall()
-            for row in rows:
-                try:
-                    mids = _json.loads(row["memory_ids"]) if row["memory_ids"] else []
-                except (_json.JSONDecodeError, TypeError):
-                    mids = []
-                for mid in mids:
-                    scored[mid] = scored.get(mid, 0) + row["count"]
+        placeholders = ",".join("?" * len(entity_names))
+        rows = conn.execute(
+            f"SELECT entity_a, memory_ids, count FROM entity_pair WHERE entity_a IN ({placeholders})",
+            entity_names,
+        ).fetchall()
+        for row in rows:
+            try:
+                mids = _json.loads(row["memory_ids"]) if row["memory_ids"] else []
+            except (_json.JSONDecodeError, TypeError):
+                mids = []
+            for mid in mids:
+                scored[mid] = scored.get(mid, 0) + row["count"]
         sorted_ids = sorted(scored.items(), key=lambda x: -x[1])
         return [mid for mid, _ in sorted_ids[:self.MAX_MEMORIES]]
 

@@ -38,7 +38,12 @@ _PROMPT_PATH = os.path.join(
 )
 
 
+import functools
+
+
+@functools.lru_cache(maxsize=1)
 def load_system_prompt() -> str:
+    """读取系统 prompt 文件，结果缓存避免每次对话重复磁盘 I/O。"""
     try:
         with open(_PROMPT_PATH, "r", encoding="utf-8") as f:
             return f.read().strip()
@@ -340,6 +345,7 @@ class LLMClient:
         timeline_recent: Optional[List[dict]] = None,
         session_context: Optional[str] = None,
         tools: Optional[List[dict]] = None,
+        max_tokens: int = 32768,
     ):
         """流式生成，逐个 token 产出。支持追加消息和工具调用。"""
         if cognitive_state is not None:
@@ -432,7 +438,7 @@ class LLMClient:
             "model": self.model,
             "messages": messages,
             "temperature": 0.7,
-            "max_tokens": 32768,
+            "max_tokens": max_tokens,
             "stream": True,
         }
         if tools:

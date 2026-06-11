@@ -259,7 +259,7 @@ def query_memory(collection, query: str = "", from_date: str = "", to_date: str 
         # 原文主动检索：去 ChromaDB 原文里搜字面匹配
         text_matched_ids = set()
         try:
-            all_docs = collection.get(include=["documents", "metadatas"])
+            all_docs = collection.get(include=["documents", "metadatas"], limit=50000)
             query_lower = query.strip().lower()
             for i, doc in enumerate(all_docs.get("documents", [])):
                 if doc and query_lower in doc.lower():
@@ -326,7 +326,7 @@ def query_memory(collection, query: str = "", from_date: str = "", to_date: str 
             try:
                 _kws = extract_tags(query, topk=5) if query else []
                 if _kws:
-                    _all_meta = collection.get(include=["metadatas"])
+                    _all_meta = collection.get(include=["metadatas"], limit=50000)
                     _matched_ids = []
                     for _i, _mid in enumerate(_all_meta.get("ids", [])):
                         _tags = (_all_meta["metadatas"][_i].get("tags", "") or "") if _all_meta.get("metadatas") else ""
@@ -411,7 +411,7 @@ def query_memory(collection, query: str = "", from_date: str = "", to_date: str 
         try:
             _kws = extract_tags(query, topk=5) if query else []
             if _kws:
-                _all_docs = collection.get(include=["documents", "metadatas"])
+                _all_docs = collection.get(include=["documents", "metadatas"], limit=50000)
                 _existing_ids = {m["id"] for m in memories}
                 _matched = []
                 for _i, _mid in enumerate(_all_docs.get("ids", [])):
@@ -712,7 +712,7 @@ def query_explore(mode: str = "timeline", _collection=None, **kwargs) -> str:
             from app.config.settings import CHROMA_PERSIST_DIR
             coll = _get_chroma_collection(CHROMA_PERSIST_DIR)
         try:
-            r = coll.get(include=["metadatas"])
+            r = coll.get(include=["metadatas"], limit=50000)
         except Exception as e:
             return f"查询失败: {e}"
         results = []
@@ -793,9 +793,7 @@ def analyze_pattern(memory_ids: list[str] = None, analysis_type: str = "summary"
     if not memory_ids:
         return "请提供要分析的记忆 ID 列表"
     from app.config.settings import CHROMA_PERSIST_DIR
-    import chromadb
-    client = chromadb.PersistentClient(path=CHROMA_PERSIST_DIR)
-    coll = client.get_or_create_collection("memories", embedding_function=None)
+    coll = _get_chroma_collection(CHROMA_PERSIST_DIR, "memories")
     try:
         results = coll.get(ids=memory_ids, include=["documents", "metadatas"])
     except Exception as e:

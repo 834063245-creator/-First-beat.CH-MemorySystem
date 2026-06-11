@@ -566,6 +566,7 @@ class AppContext:
                 v2_meta["emotion_valence_bin"] = emo_category
                 v2_meta["emotional_intensity"] = emotional_intensity
                 v2_meta["timestamp"] = datetime.now().timestamp()
+                # 注：emotion 结果会被 AI 侧复用（full_text == ai_full_text），避免重复 LLM 调用
                 try:
                     if self.chat_history and len(self.chat_history.records) >= 1:
                         prev_ts = self.chat_history.records[-1].get("timestamp", "")
@@ -597,75 +598,13 @@ class AppContext:
                         self.hyperedge_index.record(entity_texts, memory_id)
                     except Exception:
                         pass
-                try:
-                    # Phase 0a: AI 记忆入库元数据补全 — 与用户记忆完全镜像
-                    ai_full_text = f"用户：{user_message}\nAI：{ai_message}"
-                    ai_summary = _get_local_llm().summarize(f"AI：{ai_message}")
-                    if not ai_summary:
-                        ai_summary = ai_message[:50]
-                    ai_tags = _extract_noun_tags(ai_message)
-                    if not ai_tags:
-                        ai_tags = ["AI表达"]
-                    # 提取 AI 消息中的实体，补全标签覆盖
-                    ai_entities = extract_entities(ai_summary)
-                    ai_entity_texts = [e["text"] for e in ai_entities
-                                       if e.get("type") in ("PERSON", "LOCATION", "ORGANIZATION") and len(e["text"]) >= 2]
-                    ai_tags = list(dict.fromkeys(ai_tags + ai_entity_texts))[:10]
-                    ai_embedding = local_embed(f"AI：{ai_message}")
-                    # AI 情绪: 基于 full_text 计算，对齐用户侧公式
-                    ai_valence, ai_arousal, ai_emo_category = analyze_emotion_2d(ai_full_text)
-                    ai_intensity = min(
-                        ai_full_text.count("！") + ai_full_text.count("!") +
-                        len(re.findall(r'[😊😂😭😡😍🥰😢😤🤯💔❤️🔥😅😱🤗]', ai_full_text)),
-                        3,
-                    )
-                    # time_features: 与用户侧完全相同的 10 个子字段
-                    from app.config.settings import TIME_PERIOD_MAP as _tpm_ai
-                    now = datetime.now()
-                    h = now.hour
-                    ai_period = "晚上"
-                    for (lo, hi), name in _tpm_ai.items():
-                        if lo <= h <= hi:
-                            ai_period = name
-                            break
-                    ai_date_tag = now.strftime("%Y-%m-%d")
-                    ai_time_features = {
-                        "date": ai_date_tag,
-                        "year": now.year,
-                        "month": now.month,
-                        "day": now.day,
-                        "week": now.isocalendar()[1],
-                        "day_of_week": now.weekday(),
-                        "quarter": (now.month - 1) // 3 + 1,
-                        "season": (now.month % 12 + 3) // 3,
-                        "year_month": now.strftime("%Y-%m"),
-                        "time_period": ai_period,
-                        "emotion_valence": ai_valence,
-                        "emotion_arousal": ai_arousal,
-                        "emotion_valence_bin": ai_emo_category,
-                        "emotional_intensity": ai_intensity,
-                        "timestamp": now.timestamp(),
-                    }
-                    # session_continued 标记
-                    try:
-                        if self.chat_history and len(self.chat_history.records) >= 1:
-                            prev_ts = self.chat_history.records[-1].get("timestamp", "")
-                            if prev_ts and timestamp:
-                                gap = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S") - datetime.strptime(prev_ts, "%Y-%m-%d %H:%M:%S")
-                                if gap.total_seconds() < 1800:
-                                    ai_time_features["session_continued"] = True
-                    except (ValueError, OSError):
-                        pass
-                    self.ai_chroma_service.add_memory(
-                        user_message="[AI]", ai_message=ai_message,
-                        summary=ai_summary, tags=ai_tags, embedding=ai_embedding,
-                        entities=ai_entities,
-                        date_tag=ai_date_tag,
-                        time_features=ai_time_features,
-                        source="ai",
-                    )
-                except Exception as ai_exc:
-                    logger.warning("AI 侧入库失败（不影响用户侧）: %s", ai_exc)
+
+                # AI 侧入库与用户侧并行（不同 ChromaDB，无竞态）
+                ai_future = self.storage_executor.submit(
+                    self._store_ai_side, user_message, ai_message, timestamp,
+                    valence, arousal, emo_category,
+                )
+
                 self.chat_history.update_chroma_id(timestamp, memory_id)
                 try:
                     if embedding is not None and tags:
@@ -755,6 +694,11 @@ class AppContext:
                             self.chroma_service._emb_cache[memory_id] = embedding
                 except Exception:
                     pass
+                # 等待并行 AI 侧入库完成（不影响主流程）
+                try:
+                    ai_future.result(timeout=30)
+                except Exception:
+                    pass  # AI 侧失败不影响用户侧
                 return
             except Exception as exc:
                 last_exc = exc
@@ -774,6 +718,69 @@ class AppContext:
                 }, ensure_ascii=False) + chr(10))
         except Exception:
             pass
+
+    def _store_ai_side(self, user_message: str, ai_message: str, timestamp: str,
+                       valence: float, arousal: float, emo_category: str):
+        """AI 侧记忆入库（独立于用户侧，与用户侧并行执行）。
+
+        操作独立的 ai_chroma_service，不与用户侧 ChromaDB 竞争。
+        失败不影响用户侧，由上层 try/except 捕获。
+        """
+        from app.llm.embed import local_embed
+        from app.analysis.entity import extract_entities
+        ai_full_text = f"用户：{user_message}\nAI：{ai_message}"
+        ai_summary = _get_local_llm().summarize(f"AI：{ai_message}")
+        if not ai_summary:
+            ai_summary = ai_message[:50]
+        ai_tags = _extract_noun_tags(ai_message)
+        if not ai_tags:
+            ai_tags = ["AI表达"]
+        ai_entities = extract_entities(ai_summary)
+        ai_entity_texts = [e["text"] for e in ai_entities
+                           if e.get("type") in ("PERSON", "LOCATION", "ORGANIZATION") and len(e["text"]) >= 2]
+        ai_tags = list(dict.fromkeys(ai_tags + ai_entity_texts))[:10]
+        ai_embedding = local_embed(f"AI：{ai_message}")
+        # 复用用户侧情绪分析结果
+        ai_valence, ai_arousal, ai_emo_category = valence, arousal, emo_category
+        ai_intensity = min(
+            ai_full_text.count("！") + ai_full_text.count("!") +
+            len(re.findall(r'[😊😂😭😡😍🥰😢😤🤯💔❤️🔥😅😱🤗]', ai_full_text)),
+            3,
+        )
+        from app.config.settings import TIME_PERIOD_MAP as _tpm_ai
+        now = datetime.now()
+        h = now.hour
+        ai_period = "晚上"
+        for (lo, hi), name in _tpm_ai.items():
+            if lo <= h <= hi:
+                ai_period = name
+                break
+        ai_date_tag = now.strftime("%Y-%m-%d")
+        ai_time_features = {
+            "date": ai_date_tag, "year": now.year, "month": now.month,
+            "day": now.day, "week": now.isocalendar()[1],
+            "day_of_week": now.weekday(), "quarter": (now.month - 1) // 3 + 1,
+            "season": (now.month % 12 + 3) // 3, "year_month": now.strftime("%Y-%m"),
+            "time_period": ai_period,
+            "emotion_valence": ai_valence, "emotion_arousal": ai_arousal,
+            "emotion_valence_bin": ai_emo_category, "emotional_intensity": ai_intensity,
+            "timestamp": now.timestamp(),
+        }
+        try:
+            if self.chat_history and len(self.chat_history.records) >= 1:
+                prev_ts = self.chat_history.records[-1].get("timestamp", "")
+                if prev_ts and timestamp:
+                    gap = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S") - datetime.strptime(prev_ts, "%Y-%m-%d %H:%M:%S")
+                    if gap.total_seconds() < 1800:
+                        ai_time_features["session_continued"] = True
+        except (ValueError, OSError):
+            pass
+        self.ai_chroma_service.add_memory(
+            user_message="[AI]", ai_message=ai_message,
+            summary=ai_summary, tags=ai_tags, embedding=ai_embedding,
+            entities=ai_entities, date_tag=ai_date_tag,
+            time_features=ai_time_features, source="ai",
+        )
 
     # ── 预热 ─────────────────────────────────────────────────
 
@@ -894,6 +901,12 @@ class AppContext:
                 asyncio.run(_impulse_httpx.aclose())
             except Exception:
                 pass
+        except Exception:
+            pass
+        # 关闭所有 SQLite 连接（WAL 文件清理 + 避免资源泄漏）
+        try:
+            from app.core.db import close_all
+            close_all()
         except Exception:
             pass
 

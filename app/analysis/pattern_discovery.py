@@ -303,10 +303,24 @@ class PatternDiscovery:
     # ---- 辅助方法 ----
 
     def _load_recent_chat(self, limit: int = 100) -> list[dict]:
-        """从 ChatHistory JSONL 加载最近的记录。"""
+        """从 ChatHistory JSONL 加载最近的记录。
+
+        实例级缓存：同一次检测周期内多个检测器共享结果，避免重复文件 I/O。
+        缓存 key 为 max(limit, 上一次调用的 limit)，取最大窗口。
+        """
         path = self._chat_history_path
         if not path or not os.path.exists(path):
             return []
+
+        # 检查缓存：本次检测周期内已加载且窗口足够
+        cache_key = (path, os.path.getmtime(path))
+        cached_limit = getattr(self, '_recent_chat_cache_limit', 0)
+        if (getattr(self, '_recent_chat_cache_key', None) == cache_key
+                and cached_limit >= limit
+                and getattr(self, '_recent_chat_cache', None) is not None):
+            entries = self._recent_chat_cache
+            return entries[-limit:] if len(entries) > limit else entries
+
         try:
             entries = []
             with open(path, "r", encoding="utf-8") as f:
@@ -317,7 +331,13 @@ class PatternDiscovery:
                             entries.append(json.loads(line))
                         except json.JSONDecodeError:
                             continue
-            return entries[-limit:]
+            # 取最大窗口，后续检测器用更大的 limit 也能命中
+            effective_limit = max(limit, cached_limit)
+            cached_entries = entries[-effective_limit:] if len(entries) > effective_limit else entries
+            self._recent_chat_cache = cached_entries
+            self._recent_chat_cache_key = cache_key
+            self._recent_chat_cache_limit = effective_limit
+            return entries[-limit:] if len(entries) > limit else entries
         except Exception:
             return []
 

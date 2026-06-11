@@ -176,7 +176,7 @@ def api_status():
             mem_count = ctx.chroma_service.count()
             heat_dist = {}
             try:
-                all_mems = ctx.chroma_service.list_all()
+                all_mems = ctx.chroma_service.list_all_cached()
                 for m in all_mems:
                     h = (m.get("metadata") or {}).get("heat", "unknown")
                     heat_dist[h] = heat_dist.get(h, 0) + 1

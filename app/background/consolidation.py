@@ -685,6 +685,13 @@ class ConsolidationEngine:
 
             superseded = 0
 
+            # 预计算所有旧记忆的 L2 范数（避免内层循环重复 N×M 次）
+            old_norms: dict[str, float] = {}
+            for old_m in old_mems:
+                old_emb = self._chroma._emb_cache.get(old_m["id"])
+                if old_emb:
+                    old_norms[old_m["id"]] = (sum(b * b for b in old_emb) ** 0.5) or 1e-10
+
             for new_m in new_mems:
                 new_meta = new_m.get("metadata") or {}
                 new_tags_str = new_meta.get("tags", "") or ""
@@ -719,7 +726,7 @@ class ConsolidationEngine:
                     # ── 第二层：embedding 语义精筛 ──
                     dot = sum(a * b for a, b in zip(new_emb, old_emb))
                     n1 = (sum(a * a for a in new_emb) ** 0.5) or 1e-10
-                    n2 = (sum(b * b for b in old_emb) ** 0.5) or 1e-10
+                    n2 = old_norms.get(old_m["id"], 1e-10)  # 使用预计算范数
                     sim = dot / (n1 * n2)
 
                     if sim < self.CONTRADICTION_SIM_LOW:

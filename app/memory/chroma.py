@@ -200,78 +200,85 @@ class ChromaService:
     def _apply_emotional_desensitization(self):
         """情绪淡化：扫描所有 emotional_intensity>=1 的记忆，
         超过 EMOTION_DECAY_DAYS 天未被提及则 emotional_intensity 减 1，
-        事实保留，情绪标签淡化。"""
-        with self._lock:
-            try:
-                result = self._collection.get(
-                    where={"emotional_intensity": {"$gte": 1}},
-                    include=["metadatas"],
-                )
-            except Exception as exc:
-                logger.warning("情绪淡化查询失败: %s", exc)
-                return
+        事实保留，情绪标签淡化。
 
-            if not result["ids"]:
-                return
+        查询移出锁外，仅 update 时持有锁，避免阻塞前台写入。
+        """
+        # 查询阶段：不持锁
+        try:
+            result = self._collection.get(
+                where={"emotional_intensity": {"$gte": 1}},
+                include=["metadatas"],
+            )
+        except Exception as exc:
+            logger.warning("情绪淡化查询失败: %s", exc)
+            return
 
-            now = datetime.now()
-            cutoff = now - timedelta(days=self.EMOTION_DECAY_DAYS)
-            updated = []
+        if not result["ids"]:
+            return
 
-            for memory_id, meta in zip(result["ids"], result["metadatas"]):
-                meta = dict(meta)
-                ei = meta.get("emotional_intensity", 0)
-                if ei <= 0:
-                    continue
+        now = datetime.now()
+        cutoff = now - timedelta(days=self.EMOTION_DECAY_DAYS)
+        updates: list[tuple[str, int]] = []  # (memory_id, new_ei)
 
-                # 获取最后命中时间，兜底用创建时间
-                last_hit = meta.get("last_hit_time")
-                if last_hit is not None:
+        for memory_id, meta in zip(result["ids"], result["metadatas"]):
+            meta = dict(meta)
+            ei = meta.get("emotional_intensity", 0)
+            if ei <= 0:
+                continue
+
+            # 获取最后命中时间，兜底用创建时间
+            last_hit = meta.get("last_hit_time")
+            if last_hit is not None:
+                try:
+                    last_dt = datetime.fromtimestamp(
+                        last_hit if isinstance(last_hit, (int, float))
+                        else float(last_hit)
+                    )
+                except (ValueError, TypeError, OSError):
+                    last_dt = None
+            else:
+                last_dt = None
+
+            # 无 last_hit_time 时，用原始时间戳兜底
+            if last_dt is None:
+                ts = meta.get("timestamp")
+                if ts:
                     try:
                         last_dt = datetime.fromtimestamp(
-                            last_hit if isinstance(last_hit, (int, float))
-                            else float(last_hit)
+                            ts if isinstance(ts, (int, float))
+                            else float(ts)
                         )
                     except (ValueError, TypeError, OSError):
-                        last_dt = None
-                else:
-                    last_dt = None
-
-                # 无 last_hit_time 时，用原始时间戳兜底
-                if last_dt is None:
-                    ts = meta.get("timestamp")
-                    if ts:
-                        try:
-                            last_dt = datetime.fromtimestamp(
-                                ts if isinstance(ts, (int, float))
-                                else float(ts)
-                            )
-                        except (ValueError, TypeError, OSError):
-                            continue
-                    else:
                         continue
+                else:
+                    continue
 
-                if last_dt < cutoff:
-                    new_ei = max(0, ei - self.EMOTION_DECREMENT)
+            if last_dt < cutoff:
+                new_ei = max(0, ei - self.EMOTION_DECREMENT)
+                updates.append((memory_id, new_ei))
+
+        if not updates:
+            return
+
+        # 写入阶段：持锁批量 update
+        with self._lock:
+            for memory_id, new_ei in updates:
+                try:
                     self._collection.update(
                         ids=[memory_id],
                         metadatas=[{"emotional_intensity": new_ei}],
                     )
-                    summary = (meta.get("summary", "") or "")[:30]
-                    updated.append((memory_id[:8], ei, new_ei, summary))
+                except Exception:
+                    continue
 
-            if updated:
-                for mid, old_ei, new_ei, sm in updated:
-                    if new_ei == 0:
-                        logger.info(
-                            "情绪淡化归零 id=%s emotional_intensity=%d→%d summary=%s",
-                            mid, old_ei, new_ei, sm,
-                        )
-                    else:
-                        logger.info(
-                            "情绪淡化 id=%s emotional_intensity=%d→%d",
-                            mid, old_ei, new_ei,
-                        )
+        # 日志（锁外）
+        for memory_id, new_ei in updates:
+            mid_short = memory_id[:8]
+            if new_ei == 0:
+                logger.info("情绪淡化归零 id=%s emotional_intensity→0", mid_short)
+            else:
+                logger.info("情绪淡化 id=%s emotional_intensity→%d", mid_short, new_ei)
 
     # ------------------------------------------------------------------
     # 事实时序：取代标记
@@ -327,11 +334,21 @@ class ChromaService:
     def list_memories(self, page: int = 1, per_page: int = 20,
                       sort: str = "time", order: str = "desc",
                       tag: str = "", date_from: float = 0, date_to: float = 0) -> dict:
-        """分页返回记忆列表，支持筛选和排序。"""
-        result = self._collection.get(include=["metadatas"])
+        """分页返回记忆列表，支持筛选和排序。
+
+        使用缓存的全量数据 + Python 过滤/排序/分页。
+        list_all_cached() 有 5 分钟 TTL，避免每次请求全量扫描 ChromaDB。
+        """
+        # 有筛选条件时走缓存全量数据，无筛选条件时尝试 ChromaDB 原生分页
+        if tag or date_from or date_to:
+            all_result = self.list_all_cached()
+        else:
+            all_result = self.list_all_cached()
+
         items = []
-        for i, mid in enumerate(result["ids"]):
-            meta = result["metadatas"][i]
+        for mem in all_result:
+            mid = mem.get("id", "")
+            meta = mem.get("metadata") or {}
             # 标签筛选（逗号分隔，OR 逻辑）
             if tag:
                 filter_tags = [t.strip() for t in tag.split(",") if t.strip()]
@@ -433,21 +450,16 @@ class ChromaService:
         }
 
     def total_hits(self) -> int:
-        """所有记忆的总命中次数。"""
-        result = self._collection.get(include=["metadatas"])
-        return sum(meta.get("hit_count", 0) for meta in result["metadatas"])
+        """所有记忆的总命中次数（复用 stats 一次全量扫描）。"""
+        return self.stats()["total_hits"]
 
     def earliest_timestamp(self):
-        """最早记忆的时间戳。"""
-        result = self._collection.get(include=["metadatas"])
-        ts_list = [meta.get("timestamp", 0) for meta in result["metadatas"] if meta.get("timestamp")]
-        return min(ts_list) if ts_list else None
+        """最早记忆的时间戳（复用 stats 一次全量扫描）。"""
+        return self.stats()["earliest"]
 
     def latest_timestamp(self):
-        """最新记忆的时间戳。"""
-        result = self._collection.get(include=["metadatas"])
-        ts_list = [meta.get("timestamp", 0) for meta in result["metadatas"] if meta.get("timestamp")]
-        return max(ts_list) if ts_list else None
+        """最新记忆的时间戳（复用 stats 一次全量扫描）。"""
+        return self.stats()["latest"]
 
     # ------------------------------------------------------------------
     # Embedding 模型版本化 — 回填

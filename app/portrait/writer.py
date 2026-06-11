@@ -197,32 +197,29 @@ class PortraitWriter:
     def shallow_update(self, ctx_obj: Any):
         """浅巩固画像更新 — dim 3/5/6 (用户) + AI 镜像。
 
-        4 步流程:
-          1. 拉数据: 从各模块读取特征数据
-          2. 解析画像基线: 提取现有条目
-          3. 四态分类: 引擎规则判断 keep/delete/modify/new
-          4. LLM 合成: 调用本地小模型合并文本
+        用户侧和 AI 侧并行执行（独立 ChromaDB，无竞态）。
         """
         import time as _time
         now = _time.time()
         from app.config.settings import PORTRAIT_SHALLOW_HOURS
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
         if now - self._last_shallow_update < PORTRAIT_SHALLOW_HOURS * 3600:
             return
         self._last_shallow_update = now
 
-        # ── 用户侧 ──
-        try:
-            ctx = ctx_obj
-            self._shallow_update_user(ctx)
-        except Exception as exc:
-            logger.warning("用户画像浅巩固失败: %s", exc)
-
-        # ── AI 侧 ──
-        try:
-            self._shallow_update_ai(ctx_obj)
-        except Exception as exc:
-            logger.warning("AI 画像浅巩固失败: %s", exc)
+        # 用户侧 + AI 侧并行
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = {
+                pool.submit(self._shallow_update_user, ctx_obj): "user",
+                pool.submit(self._shallow_update_ai, ctx_obj): "ai",
+            }
+            for fut in as_completed(futures):
+                label = futures[fut]
+                try:
+                    fut.result()
+                except Exception as exc:
+                    logger.warning("%s画像浅巩固失败: %s", label, exc)
 
         # 应用状态机转换
         self._manager.apply_state_machine()

@@ -25,16 +25,40 @@ class ChatHistory:
         self._load()
 
     def _load(self):
-        """启动时只加载最近max_memory条到内存"""
+        """启动时加载最近 max_memory 条记录，过滤逻辑删除标记。"""
         if not os.path.exists(self.path):
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
             return
+        deleted_ts: set[str] = set()
         with open(self.path, "r", encoding="utf-8") as f:
             all_lines = f.readlines()
+            # 扫描全文件收集删除标记
+            for line in all_lines:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if rec.get("action") == "delete":
+                    target = rec.get("target_timestamp", "")
+                    if target:
+                        deleted_ts.add(target)
+            # 加载非删除标记的最后 N 条
             for line in all_lines[-self.max_memory:]:
                 line = line.strip()
-                if line:
-                    self.records.append(json.loads(line))
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if rec.get("action") == "delete":
+                    continue
+                if rec.get("timestamp", "") in deleted_ts:
+                    continue
+                self.records.append(rec)
 
     def append(self, user_message: str, llm_reply: str, timestamp: str):
         """同步调用，LLM生成回复后立即写入"""
@@ -60,55 +84,47 @@ class ChatHistory:
                     break
 
     def delete_by_timestamp(self, timestamp: str) -> bool:
-        """删除指定 timestamp 的对话记录。返回是否找到并删除。"""
+        """逻辑删除指定 timestamp 的对话记录。追加 delete marker 到 JSONL，不重写文件。"""
         with self._lock:
             before = len(self.records)
             self.records = [r for r in self.records if r.get("timestamp") != timestamp]
             if len(self.records) == before:
                 return False
             self._chroma_map.pop(timestamp, None)
-            # 重写文件（在锁保护内）
+            # 追加逻辑删除标记（不重写文件）
             try:
-                lines = []
-                with open(self.path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line:
-                            rec = json.loads(line)
-                            if rec.get("timestamp") != timestamp:
-                                cid = self._chroma_map.get(rec["timestamp"]) or rec.get("chroma_id")
-                                if cid:
-                                    rec["chroma_id"] = cid
-                                lines.append(json.dumps(rec, ensure_ascii=False))
-                with open(self.path, "w", encoding="utf-8") as f:
-                    f.write("\n".join(lines) + "\n")
+                atomic_append(self.path, json.dumps(
+                    {"action": "delete", "target_timestamp": timestamp},
+                    ensure_ascii=False,
+                ))
             except Exception as e:
-                logger.error("删除对话记录时文件重写失败: %s", e)
+                logger.error("逻辑删除标记写入失败: %s", e)
                 return False
         return True
 
     def delete_by_chroma_id(self, chroma_id: str) -> bool:
-        """按 chroma_id 删除对话记录。从全量 JSONL 中删除，不回写到内存缓存。"""
+        """按 chroma_id 逻辑删除对话记录。"""
         with self._lock:
+            # 找到对应 timestamp
+            target_ts = None
+            for r in self.records:
+                if r.get("chroma_id") == chroma_id:
+                    target_ts = r.get("timestamp", "")
+                    break
+            if not target_ts:
+                return False
             before = len(self.records)
             self.records = [r for r in self.records if r.get("chroma_id") != chroma_id]
             if len(self.records) == before:
                 return False
-            # 从全量 JSONL 中精确删除该条记录
+            # 追加逻辑删除标记
             try:
-                if os.path.exists(self.path):
-                    with open(self.path, "r", encoding="utf-8") as f:
-                        all_lines = [line for line in f if line.strip()]
-                    kept = [line for line in all_lines
-                            if json.loads(line).get("chroma_id") != chroma_id]
-                    if len(kept) < len(all_lines):
-                        import tempfile
-                        fd, tmp = tempfile.mkstemp(suffix=".tmp", dir=os.path.dirname(self.path))
-                        with os.fdopen(fd, "w", encoding="utf-8") as f:
-                            f.writelines(kept)
-                        os.replace(tmp, self.path)
+                atomic_append(self.path, json.dumps(
+                    {"action": "delete", "target_timestamp": target_ts},
+                    ensure_ascii=False,
+                ))
             except Exception as e:
-                logger.error(f"按 chroma_id 删除对话时文件重写失败: {e}")
+                logger.error("逻辑删除标记写入失败（chroma_id）: %s", e)
                 return False
         return True
 
@@ -221,24 +237,25 @@ class ChatHistory:
 
     @staticmethod
     def annotate_chunks(records: list[dict], chunk_size: int = 10) -> list[str]:
-        """从后往前分组标注话题标签，每 chunk_size 轮插入一组关键词。
+        """从后往前分组，为整段对话提取话题关键词（一次 embedding 调用）。
 
         返回逐行字符串列表，可直接拼入 prompt 的【最近发生了什么】区。
         """
         lines = []
-        # 从后往前分组
+        # 一次提取整段对话的话题关键词（替代逐块 N 次调用）
+        all_text = " ".join(r.get("user_message", "") for r in records)
+        all_keywords = extract_tags(all_text, topk=10) if all_text.strip() else []
+        filtered_all = [kw for kw in all_keywords if len(kw) > 1 and kw not in
+                        ("的", "了", "是", "我", "你", "他", "她", "它", "们", "在", "有", "和", "就", "不", "也", "这", "那", "都", "要")]
+
+        # 从后往前分组，仅第一组（最近）插入话题标签
         for chunk_start in range(len(records), 0, -chunk_size):
             chunk = records[max(0, chunk_start - chunk_size):chunk_start]
             if not chunk:
                 continue
-            # 取该组所有 user_message 拼接做关键词提取
-            text = " ".join(r.get("user_message", "") for r in chunk)
-            keywords = extract_tags(text, topk=5)
-            # 过滤单字词和基础停用词
-            filtered = [kw for kw in keywords if len(kw) > 1 and kw not in
-                        ("的", "了", "是", "我", "你", "他", "她", "它", "们", "在", "有", "和", "就", "不", "也", "这", "那", "都", "要")]
-            if len(filtered) >= 3:
-                lines.append(f"[话题：{', '.join(filtered[:3])}]")
+            # 只在最近一组插入话题标签
+            if chunk_start == len(records) and len(filtered_all) >= 3:
+                lines.append(f"[话题：{', '.join(filtered_all[:3])}]")
             # 组内记录按原始顺序（时间正序）输出
             for rec in chunk:
                 ts = rec.get("timestamp", "")

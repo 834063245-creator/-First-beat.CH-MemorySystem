@@ -99,6 +99,7 @@ class CoOccurrenceTracker:
             return
         conn = self._conn
         now = datetime.now().isoformat()
+        conn.execute("BEGIN IMMEDIATE")  # 显式事务：一次 fsync，避免 SQLITE_BUSY
         for i in range(len(memory_ids)):
             for j in range(i + 1, len(memory_ids)):
                 a, b = sorted([memory_ids[i], memory_ids[j]])
@@ -158,15 +159,22 @@ class CoOccurrenceTracker:
         return pairs[: self.EXTEND_TOP_K]
 
     def get_co_counts(self, memory_ids: list[str]) -> dict[str, int]:
-        """返回每个 memory_id 的共现度数。"""
+        """返回每个 memory_id 的共现度数（单次 GROUP BY 查询，非 N+1）。"""
         counts = {mid: 0 for mid in memory_ids}
+        if not memory_ids:
+            return counts
         conn = self._conn
-        for mid in memory_ids:
-            row = conn.execute(
-                "SELECT COUNT(*) as n FROM cooccurrence WHERE id_a = ? OR id_b = ?",
-                (mid, mid),
-            ).fetchone()
-            counts[mid] = row["n"]
+        placeholders = ",".join("?" * len(memory_ids))
+        rows = conn.execute(
+            f"SELECT id, SUM(n) as n FROM ("
+            f"  SELECT id_a as id, COUNT(*) as n FROM cooccurrence WHERE id_a IN ({placeholders}) GROUP BY id_a"
+            f"  UNION ALL"
+            f"  SELECT id_b as id, COUNT(*) as n FROM cooccurrence WHERE id_b IN ({placeholders}) GROUP BY id_b"
+            f") GROUP BY id",
+            memory_ids + memory_ids,
+        ).fetchall()
+        for row in rows:
+            counts[row["id"]] = row["n"]
         return counts
 
     def get_co_count(self, memory_id: str) -> int:
@@ -254,15 +262,17 @@ class CoOccurrenceTracker:
         conn.execute("DELETE FROM cooccurrence")
         conn.commit()
 
-    def export_for_symmetry(self) -> dict[str, dict[str, int]]:
+    def export_for_symmetry(self, limit: int = 10000) -> dict[str, dict[str, int]]:
         """导出为对称性分析兼容格式：{entity: {related_entity: count}}。
 
         将 SQLite 中 (id_a, id_b, count) 的行重建为嵌套 dict，
         供 PersonaSymmetry 消费，替代旧 JSON 文件直接读取。
+        limit 防止大数据量时 OOM。
         """
         conn = self._conn
         rows = conn.execute(
-            "SELECT id_a, id_b, count FROM cooccurrence ORDER BY count DESC"
+            "SELECT id_a, id_b, count FROM cooccurrence ORDER BY count DESC LIMIT ?",
+            (limit,),
         ).fetchall()
         data: dict[str, dict[str, int]] = {}
         for row in rows:

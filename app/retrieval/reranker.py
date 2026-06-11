@@ -35,7 +35,7 @@ def rerank(
     attn = attention_boosts or {}
 
     try:
-        from app.llm.embed import local_embed
+        from app.llm.embed import local_embed, local_embed_batch
 
         query_emb = local_embed(query)
         if query_emb is None:
@@ -44,16 +44,28 @@ def rerank(
 
         q = np.array(query_emb, dtype=np.float32)
 
-        scored = []
-        for c in candidates:
+        # ── 批量 embedding：收集所有候选文本，一次 Ollama HTTP 调用 ──
+        texts: list[str] = []
+        text_indices: list[int] = []  # texts pos → candidates pos
+        empty_copies: list[dict] = []  # 无文本的候选直接给 0 分
+        for i, c in enumerate(candidates):
             text = (c.get("summary") or c.get("document") or "")[:200]
             mid = c.get("id", "")
             if not text:
                 c_copy = c.copy()
                 c_copy["_rr_score"] = 0.0
-                scored.append(c_copy)
+                empty_copies.append(c_copy)
                 continue
-            emb = local_embed(text)
+            texts.append(text)
+            text_indices.append(i)
+
+        batch_embs = local_embed_batch(texts) if texts else []
+
+        scored = list(empty_copies)
+        for pos, c_idx in enumerate(text_indices):
+            c = candidates[c_idx]
+            mid = c.get("id", "")
+            emb = batch_embs[pos] if pos < len(batch_embs) else None
             if emb is not None:
                 d = np.array(emb, dtype=np.float32)
                 sim = float(np.dot(q, d))  # 已归一化，余弦=点积
