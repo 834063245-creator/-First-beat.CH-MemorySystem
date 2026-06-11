@@ -502,6 +502,8 @@ class ImpulseScheduler:
                         self._last_fingerprints[name] = content
                     self.feed_impulse(content, priority, name)
                     logger.info("冲动源 '%s' 产出: %s (优先级=%s)", name, content[:40], priority)
+                else:
+                    logger.debug("冲动源 '%s' 本轮无产出", name)
             except Exception as exc:
                 logger.warning("冲动源 '%s' 异常已隔离: %s", name, exc)
 

@@ -17,7 +17,7 @@ class BM25FullTextIndex:
         ids = index.search("用户的查询", top_k=20)
         # → [memory_id, ...] 按 BM25 分数降序
 
-    新增记忆后索引自动检测 rebuild（对比 doc_count），也可手动调用 rebuild()。
+    新增记忆后索引自动检测 rebuild（对比 doc_count），带 30s 冷却防抖。
     """
 
     def __init__(self, chroma_service):
@@ -25,6 +25,8 @@ class BM25FullTextIndex:
         self._doc_ids: list[str] = []
         self._bm25: BM25Okapi | None = None
         self._doc_count: int = 0
+        self._last_rebuild: float = 0.0
+        self._rebuild_cooldown: float = 30.0  # 最少间隔 30 秒
         self._build()
 
     def _build(self):
@@ -61,14 +63,19 @@ class BM25FullTextIndex:
         logger.info("BM25 全文索引构建完成: %d 条文档", len(corpus))
 
     def _maybe_rebuild(self):
-        """如果 ChromaDB 有新增文档，增量重建索引。"""
+        """如果 ChromaDB 有新增文档且超过冷却期，重建索引。"""
+        import time as _time
         try:
             current_count = self._chroma.count()
         except Exception:
             return
         if current_count != self._doc_count:
+            now = _time.monotonic()
+            if now - self._last_rebuild < self._rebuild_cooldown:
+                return  # 冷却期内跳过，防抖
             logger.info("BM25 检测到文档数变化 (%d → %d)，重建索引",
                         self._doc_count, current_count)
+            self._last_rebuild = now
             self._build()
 
     def search(self, query: str, top_k: int = 20) -> list[str]:

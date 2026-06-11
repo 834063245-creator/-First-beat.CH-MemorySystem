@@ -227,6 +227,8 @@ class AppContext:
                                 except OSError:
                                     tmp = None
                                 logger.info("队列取出 %d 条任务待处理 for %s", len(tasks), self.data_dir)
+                                if len(tasks) > 50:
+                                    logger.warning("队列积压: %d 条待处理 for %s", len(tasks), self.data_dir)
 
                     if tasks:
                         for i, task in enumerate(tasks):

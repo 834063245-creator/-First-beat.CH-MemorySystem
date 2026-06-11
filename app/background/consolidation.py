@@ -683,6 +683,7 @@ class ConsolidationEngine:
                 if old_tags:
                     old_mem_tags[old_m["id"]] = old_tags
 
+            # 硬上限: 500×500=250K 次点积最坏情况，tag 预滤大幅削减实际计算量
             superseded = 0
 
             # 预计算所有旧记忆的 L2 范数（避免内层循环重复 N×M 次）

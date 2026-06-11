@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import datetime
 from typing import List, Optional, TYPE_CHECKING
 
@@ -292,25 +293,43 @@ class LLMClient:
         if tools:
             body["tools"] = tools
 
-        try:
-            resp = await self._client.post(
-                f"{self.base_url}/v1/chat/completions",
-                headers={"Authorization": f"Bearer {self.api_key}"},
-                json=body,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-                # 缓存状态日志(DeepSeek 返回 prompt_cache_hit_tokens 和 eo-cache-status 头)
-            usage_data = data.get("usage", {})
-            cached = usage_data.get("prompt_cache_hit_tokens", 0) or 0
-            total_prompt = usage_data.get("prompt_tokens", 0) or 0
-            miss = usage_data.get("prompt_cache_miss_tokens", 0) or 0
-            if total_prompt:
-                    hit_pct = cached / total_prompt * 100
-                    logger.info("DeepSeek 缓存: total=%d hit=%d miss=%d (%.0f%%)", total_prompt, cached, miss, hit_pct)
-        except httpx.TimeoutException:
-            logger.error("DeepSeek 调用超时 (connect=10s, read=60s)")
-            raise
+        _t0 = time.monotonic()
+        max_retries = 3
+        data = None
+        for attempt in range(max_retries):
+            try:
+                resp = await self._client.post(
+                    f"{self.base_url}/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                    json=body,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                break
+            except httpx.HTTPStatusError as exc:
+                status = exc.response.status_code
+                if attempt < max_retries - 1 and (status == 429 or status >= 500):
+                    wait = 2 ** attempt  # 指数退避: 1s, 2s, 4s
+                    logger.warning("DeepSeek HTTP %d, 重试 %d/%d (%.1fs 后)",
+                                   status, attempt + 1, max_retries, wait)
+                    await asyncio.sleep(wait)
+                    continue
+                raise
+            except httpx.TimeoutException:
+                logger.error("DeepSeek 调用超时 (connect=10s, read=60s)")
+                raise
+        _elapsed = time.monotonic() - _t0
+
+        # 缓存状态日志（DeepSeek 返回 prompt_cache_hit_tokens 和 eo-cache-status 头）
+        usage_data = data.get("usage", {})
+        cached = usage_data.get("prompt_cache_hit_tokens", 0) or 0
+        total_prompt = usage_data.get("prompt_tokens", 0) or 0
+        miss = usage_data.get("prompt_cache_miss_tokens", 0) or 0
+        if total_prompt:
+            hit_pct = cached / total_prompt * 100
+            logger.info("DeepSeek 缓存: total=%d hit=%d miss=%d (%.0f%%) | 延迟: %.2fs", total_prompt, cached, miss, hit_pct, _elapsed)
+        else:
+            logger.info("DeepSeek 请求耗时: %.2fs", _elapsed)
 
         choice = data["choices"][0]
         msg = choice["message"]

@@ -145,63 +145,68 @@ class HyperEdgeIndex:
 
         conn = self._conn
         sorted_entities = sorted(entities)
-        conn.execute("BEGIN IMMEDIATE")
+        try:
+            conn.execute("BEGIN IMMEDIATE")
 
-        # 插入超边
-        cur = conn.execute(
-            "INSERT INTO hyper_edge(entities, memory_ids) VALUES (?, ?)",
-            (_json.dumps(sorted_entities, ensure_ascii=False),
-             _json.dumps([memory_id], ensure_ascii=False)),
-        )
-        edge_id = cur.lastrowid
-
-        # 更新 entity_index + entity_edge
-        for e1 in entities:
-            # entity_edge
-            conn.execute(
-                "INSERT OR IGNORE INTO entity_edge(entity, edge_id) VALUES (?, ?)",
-                (e1, edge_id),
+            # 插入超边
+            cur = conn.execute(
+                "INSERT INTO hyper_edge(entities, memory_ids) VALUES (?, ?)",
+                (_json.dumps(sorted_entities, ensure_ascii=False),
+                 _json.dumps([memory_id], ensure_ascii=False)),
             )
+            edge_id = cur.lastrowid
 
-            # entity_index: upsert
-            conn.execute(
-                "INSERT OR IGNORE INTO entity_index(entity, co_entities, memory_ids) "
-                "VALUES (?, '{}', '[]')",
-                (e1,),
-            )
-            # 追加 memory_id
-            conn.execute(
-                "UPDATE entity_index SET memory_ids = "
-                "CASE WHEN ? NOT IN (SELECT value FROM json_each(entity_index.memory_ids)) "
-                "THEN json_insert(entity_index.memory_ids, '$[#]', ?) "
-                "ELSE entity_index.memory_ids END "
-                "WHERE entity = ?",
-                (memory_id, memory_id, e1),
-            )
+            # 更新 entity_index + entity_edge
+            # 预计算所有 e2 的累加结果，避免内层循环重复 JSON 解析
+            for e1 in entities:
+                # entity_edge
+                conn.execute(
+                    "INSERT OR IGNORE INTO entity_edge(entity, edge_id) VALUES (?, ?)",
+                    (e1, edge_id),
+                )
 
-            # 读一次 co_entities，内存中累加所有 e2，最后写一次（替代 O(N²) 读写）
-            row = conn.execute(
-                "SELECT co_entities FROM entity_index WHERE entity = ?", (e1,)
-            ).fetchone()
-            try:
-                co = _json.loads(row["co_entities"]) if row else {}
-            except (_json.JSONDecodeError, TypeError):
-                co = {}
-            for e2 in entities:
-                if e2 == e1:
-                    continue
-                co[e2] = co.get(e2, 0) + 1
-            conn.execute(
-                "UPDATE entity_index SET co_entities = ? WHERE entity = ?",
-                (_json.dumps(co, ensure_ascii=False), e1),
-            )
+                # entity_index: upsert
+                conn.execute(
+                    "INSERT OR IGNORE INTO entity_index(entity, co_entities, memory_ids) "
+                    "VALUES (?, '{}', '[]')",
+                    (e1,),
+                )
+                # 追加 memory_id
+                conn.execute(
+                    "UPDATE entity_index SET memory_ids = "
+                    "CASE WHEN ? NOT IN (SELECT value FROM json_each(entity_index.memory_ids)) "
+                    "THEN json_insert(entity_index.memory_ids, '$[#]', ?) "
+                    "ELSE entity_index.memory_ids END "
+                    "WHERE entity = ?",
+                    (memory_id, memory_id, e1),
+                )
 
-        # 裁剪
-        total = conn.execute("SELECT COUNT(*) as n FROM hyper_edge").fetchone()["n"]
-        if total > self.MAX_EDGES:
-            self._prune()
+                # 读一次 co_entities，内存中累加所有 e2，最后写一次
+                row = conn.execute(
+                    "SELECT co_entities FROM entity_index WHERE entity = ?", (e1,)
+                ).fetchone()
+                try:
+                    co = _json.loads(row["co_entities"]) if row else {}
+                except (_json.JSONDecodeError, TypeError):
+                    co = {}
+                for e2 in entities:
+                    if e2 == e1:
+                        continue
+                    co[e2] = co.get(e2, 0) + 1
+                conn.execute(
+                    "UPDATE entity_index SET co_entities = ? WHERE entity = ?",
+                    (_json.dumps(co, ensure_ascii=False), e1),
+                )
 
-        conn.commit()
+            # 裁剪
+            total = conn.execute("SELECT COUNT(*) as n FROM hyper_edge").fetchone()["n"]
+            if total > self.MAX_EDGES:
+                self._prune()
+
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
     def _prune(self):
         """裁剪最老的超边，保留最近一半，重建 entity_index。"""

@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from app.brain.semantic import extract_tags, tokenize as _sem_tokenize
 
@@ -22,6 +23,9 @@ from app.analysis.emotion import resolve_emotion_category
 from app.analysis.entity import extract_entities
 
 logger = logging.getLogger(__name__)
+
+# 模块级 ThreadPoolExecutor 单例，避免检索热路径上每次新建线程池
+_retrieval_executor: ThreadPoolExecutor | None = None
 
 
 # ── 检索门控：意图 → 各路配额 ────────────────────────────────
@@ -353,7 +357,6 @@ def retrieve_all(
     """
     import math
     import threading
-    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     SEMANTIC_HARD_CAP = 500
     MIN_SIMILARITY = 0.1 if _BM else 0.3
@@ -627,13 +630,15 @@ def retrieve_all(
     paths = [_path_semantic, _path_keyword, _path_tag,
              _path_entity, _path_temporal, _path_topic, _path_attention,
              _path_bm25_fulltext, _path_ai_memory]
-    with ThreadPoolExecutor(max_workers=min(len(paths), 8)) as executor:
-        futures = {executor.submit(p): p for p in paths}
-        for f in as_completed(futures):
-            try:
-                f.result()
-            except Exception:
-                pass
+    global _retrieval_executor
+    if _retrieval_executor is None:
+        _retrieval_executor = ThreadPoolExecutor(max_workers=min(len(paths), 8))
+    futures = {_retrieval_executor.submit(p): p for p in paths}
+    for f in as_completed(futures):
+        try:
+            f.result()
+        except Exception:
+            pass
 
     # ── 合并去重 ──
     seen_ids: set[str] = set()

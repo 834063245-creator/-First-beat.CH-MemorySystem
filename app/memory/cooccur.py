@@ -45,6 +45,7 @@ class CoOccurrenceTracker:
             );
             CREATE INDEX IF NOT EXISTS idx_cooc_a ON cooccurrence(id_a);
             CREATE INDEX IF NOT EXISTS idx_cooc_b ON cooccurrence(id_b);
+            CREATE INDEX IF NOT EXISTS idx_cooc_count_last ON cooccurrence(count, last_time);
         """)
         conn.commit()
         self._conn = conn
@@ -99,18 +100,22 @@ class CoOccurrenceTracker:
             return
         conn = self._conn
         now = datetime.now().isoformat()
-        conn.execute("BEGIN IMMEDIATE")  # 显式事务：一次 fsync，避免 SQLITE_BUSY
-        for i in range(len(memory_ids)):
-            for j in range(i + 1, len(memory_ids)):
-                a, b = sorted([memory_ids[i], memory_ids[j]])
-                conn.execute(
-                    "INSERT INTO cooccurrence(id_a, id_b, count, last_time) "
-                    "VALUES (?, ?, 1, ?) "
-                    "ON CONFLICT(id_a, id_b) DO UPDATE SET "
-                    "count = cooccurrence.count + 1, last_time = excluded.last_time",
-                    (a, b, now),
-                )
-        conn.commit()
+        try:
+            conn.execute("BEGIN IMMEDIATE")  # 显式事务：一次 fsync，避免 SQLITE_BUSY
+            for i in range(len(memory_ids)):
+                for j in range(i + 1, len(memory_ids)):
+                    a, b = sorted([memory_ids[i], memory_ids[j]])
+                    conn.execute(
+                        "INSERT INTO cooccurrence(id_a, id_b, count, last_time) "
+                        "VALUES (?, ?, 1, ?) "
+                        "ON CONFLICT(id_a, id_b) DO UPDATE SET "
+                        "count = cooccurrence.count + 1, last_time = excluded.last_time",
+                        (a, b, now),
+                    )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
         self._maybe_cleanup()
 
     def _maybe_cleanup(self):

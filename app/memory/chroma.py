@@ -123,13 +123,13 @@ class ChromaService:
         if time_features:
             meta.update(time_features)
 
-        with self._lock:
-            self._collection.add(
-                ids=[memory_id],
-                documents=[document],
-                embeddings=[embedding],
-                metadatas=[meta],
-            )
+        self._collection.add(
+            ids=[memory_id],
+            documents=[document],
+            embeddings=[embedding],
+            metadatas=[meta],
+        )
+        logger.info("记忆写入完成 id=%s source=%s summary=%s", memory_id[:8], source, summary[:60])
         self._invalidate_list_all_cache()
         return memory_id
 
@@ -261,16 +261,12 @@ class ChromaService:
         if not updates:
             return
 
-        # 写入阶段：持锁批量 update
+        # 写入阶段：持锁批量 update（一次调用替代 N+1 逐条更新）
         with self._lock:
-            for memory_id, new_ei in updates:
-                try:
-                    self._collection.update(
-                        ids=[memory_id],
-                        metadatas=[{"emotional_intensity": new_ei}],
-                    )
-                except Exception:
-                    continue
+            if updates:
+                batch_ids = [mid for mid, _ in updates]
+                batch_metas = [{"emotional_intensity": new_ei} for _, new_ei in updates]
+                self._collection.update(ids=batch_ids, metadatas=batch_metas)
 
         # 日志（锁外）
         for memory_id, new_ei in updates:
@@ -339,11 +335,7 @@ class ChromaService:
         使用缓存的全量数据 + Python 过滤/排序/分页。
         list_all_cached() 有 5 分钟 TTL，避免每次请求全量扫描 ChromaDB。
         """
-        # 有筛选条件时走缓存全量数据，无筛选条件时尝试 ChromaDB 原生分页
-        if tag or date_from or date_to:
-            all_result = self.list_all_cached()
-        else:
-            all_result = self.list_all_cached()
+        all_result = self.list_all_cached()  # 缓存全量数据 + Python 侧筛选/分页
 
         items = []
         for mem in all_result:
@@ -418,7 +410,8 @@ class ChromaService:
                         ids=[mid],
                         metadatas=[{"archived": True}],
                     )
-                except Exception:
+                except Exception as exc:
+                    logger.warning("归档失败 id=%s: %s", mid[:8], exc)
                     continue
         self._invalidate_list_all_cache()
         logger.info("归档: tag=%s, %d 条", tag, len(memory_ids))
@@ -448,18 +441,6 @@ class ChromaService:
             "earliest": earliest,
             "latest": latest,
         }
-
-    def total_hits(self) -> int:
-        """所有记忆的总命中次数（复用 stats 一次全量扫描）。"""
-        return self.stats()["total_hits"]
-
-    def earliest_timestamp(self):
-        """最早记忆的时间戳（复用 stats 一次全量扫描）。"""
-        return self.stats()["earliest"]
-
-    def latest_timestamp(self):
-        """最新记忆的时间戳（复用 stats 一次全量扫描）。"""
-        return self.stats()["latest"]
 
     # ------------------------------------------------------------------
     # Embedding 模型版本化 — 回填

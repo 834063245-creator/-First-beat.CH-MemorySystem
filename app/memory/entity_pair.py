@@ -190,9 +190,11 @@ class EntityPairTracker:
     def remove_memory(self, memory_id: str):
         """删除记忆时同步清理。"""
         conn = self._conn
-        # 查找包含此 memory_id 的所有行
+        # 使用 json_each 精确过滤包含该 memory_id 的行，替代全表扫描
         rows = conn.execute(
-            "SELECT entity_a, entity_b, memory_ids FROM entity_pair"
+            "SELECT entity_a, entity_b, memory_ids FROM entity_pair "
+            "WHERE EXISTS (SELECT 1 FROM json_each(memory_ids) WHERE value = ?)",
+            (memory_id,),
         ).fetchall()
 
         for row in rows:

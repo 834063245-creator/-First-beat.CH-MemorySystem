@@ -256,16 +256,20 @@ def query_memory(collection, query: str = "", from_date: str = "", to_date: str 
             logger.warning("query_memory 语义搜索失败: %s", e)
             return []
 
+        # 预取全量数据一次，后续原文匹配/标签补充/关键词扩展全复用
+        # 替代原 3 次独立 collection.get(limit=50000) 全量扫描
+        _all_data = None
+
         # 原文主动检索：去 ChromaDB 原文里搜字面匹配
         text_matched_ids = set()
         try:
-            all_docs = collection.get(include=["documents", "metadatas"], limit=50000)
+            _all_data = collection.get(include=["documents", "metadatas"])
             query_lower = query.strip().lower()
-            for i, doc in enumerate(all_docs.get("documents", [])):
+            for i, doc in enumerate(_all_data.get("documents", [])):
                 if doc and query_lower in doc.lower():
-                    text_matched_ids.add(all_docs["ids"][i])
-        except Exception:
-            pass
+                    text_matched_ids.add(_all_data["ids"][i])
+        except Exception as exc:
+            logger.warning("query_memory 原文匹配扫描失败: %s", exc)
 
         memories = []
         docs_for_bm25 = []
@@ -291,8 +295,8 @@ def query_memory(collection, query: str = "", from_date: str = "", to_date: str 
                         "context_after": mem_ctx.get("context_after", []),
                     })
                     docs_for_bm25.append(doc)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("query_memory 原文匹配结果获取失败: %s", exc)
 
         for i, mem_id in enumerate(results.get("ids", [[]])[0]):
             if time_filtered_ids is not None and mem_id not in time_filtered_ids:
@@ -321,42 +325,42 @@ def query_memory(collection, query: str = "", from_date: str = "", to_date: str 
             })
             docs_for_bm25.append(doc)
 
-        # 标签关键词补充检索：语义不足时用 jieba 关键词匹配 tags 字段
-        if len(memories) < top_k:
+        # 标签关键词补充检索：语义不足时用关键词匹配 tags 字段
+        # 复用 _all_data 避免额外全量扫描
+        if len(memories) < top_k and _all_data is not None:
             try:
                 _kws = extract_tags(query, topk=5) if query else []
                 if _kws:
-                    _all_meta = collection.get(include=["metadatas"], limit=50000)
                     _matched_ids = []
-                    for _i, _mid in enumerate(_all_meta.get("ids", [])):
-                        _tags = (_all_meta["metadatas"][_i].get("tags", "") or "") if _all_meta.get("metadatas") else ""
+                    for _i, _mid in enumerate(_all_data.get("ids", [])):
+                        _meta = _all_data["metadatas"][_i] if _all_data.get("metadatas") else {}
+                        _tags = _meta.get("tags", "") or ""
                         if any(k in _tags for k in _kws):
-                            if not (_all_meta["metadatas"][_i] if _all_meta.get("metadatas") else {}).get("stale", False):
+                            if not _meta.get("stale", False):
                                 _matched_ids.append(_mid)
                     if _matched_ids:
                         _existing = {m.get("id") for m in memories}
-                        _extra = collection.get(ids=_matched_ids, include=["documents", "metadatas"])
                         _added = 0
-                        for _j, _mid in enumerate(_extra.get("ids", [])):
-                            if _mid in _existing:
+                        for _i, _mid in enumerate(_all_data.get("ids", [])):
+                            if _mid not in _matched_ids or _mid in _existing:
                                 continue
-                            _m = _extra["metadatas"][_j] if _extra.get("metadatas") else {}
-                            _d = _extra["documents"][_j] if _extra.get("documents") else ""
+                            _meta = _all_data["metadatas"][_i] if _all_data.get("metadatas") else {}
+                            _doc = _all_data["documents"][_i] if _all_data.get("documents") else ""
                             memories.append({
-                                "id": _mid, "summary": _m.get("summary", "")[:80],
-                                "tags": _m.get("tags", ""), "similarity": 0.5,
-                                "hit_count": _m.get("hit_count", 0),
+                                "id": _mid, "summary": _meta.get("summary", "")[:80],
+                                "tags": _meta.get("tags", ""), "similarity": 0.5,
+                                "hit_count": _meta.get("hit_count", 0),
                                 "source": "tag_match",
                             })
-                            docs_for_bm25.append(_d)
+                            docs_for_bm25.append(_doc)
                             _existing.add(_mid)
                             _added += 1
                             if _added >= 10:
                                 break
                         if _added:
                             logger.info("query_memory 标签补充检索: 新增%d条", _added)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("query_memory 标签补充检索失败: %s", exc)
 
         # BM25 关键词重排序（基于候选集原文）
         try:
@@ -387,9 +391,9 @@ def query_memory(collection, query: str = "", from_date: str = "", to_date: str 
                                     if _mid:
                                         error_counts[_mid] = error_counts.get(_mid, 0) + 1
                                 except Exception:
-                                    pass
-            except Exception:
-                pass
+                                    pass  # 单行 JSON 解析失败，跳过
+            except Exception as exc:
+                logger.warning("query_memory 错误报告加载失败: %s", exc)
             memories.sort(key=lambda x:
                 compute_score(
                     similarity=x.get("similarity", 0),
@@ -407,35 +411,35 @@ def query_memory(collection, query: str = "", from_date: str = "", to_date: str 
         # ★ 先截断到 top_k，再扩展补充检索（防止补充条目被截掉）
         memories = memories[:top_k]
 
-        # 关键词文本补充检索：截断后扫描全文，提取包含≥2个查询关键词的记忆（bonus）
-        try:
-            _kws = extract_tags(query, topk=5) if query else []
-            if _kws:
-                _all_docs = collection.get(include=["documents", "metadatas"], limit=50000)
-                _existing_ids = {m["id"] for m in memories}
-                _matched = []
-                for _i, _mid in enumerate(_all_docs.get("ids", [])):
-                    if _mid in _existing_ids:
-                        continue
-                    _m = _all_docs["metadatas"][_i] if _all_docs.get("metadatas") else {}
-                    if _m.get("stale", False):
-                        continue
-                    _text = _m.get("summary", "") or ""
-                    # 如果请求带了时间范围，跳过范围外的记忆
-                    if from_date or to_date:
-                        _ts = _m.get("timestamp", 0)
-                        if _ts:
-                            if from_date:
-                                _from_ts = datetime.strptime(from_date, "%Y-%m-%d").timestamp()
-                                if _ts < _from_ts:
-                                    continue
-                            if to_date:
-                                _to_ts = datetime.strptime(to_date, "%Y-%m-%d").timestamp() + 86400
-                                if _ts > _to_ts:
-                                    continue
-                    _cnt = sum(1 for k in _kws if k in _text)
-                    if _cnt >= 2:
-                        _matched.append((_mid, _m, _cnt))
+        # 关键词文本补充检索：复用 _all_data 避免第三次全量扫描
+        if _all_data is not None:
+            try:
+                _kws = extract_tags(query, topk=5) if query else []
+                if _kws:
+                    _existing_ids = {m["id"] for m in memories}
+                    _matched = []
+                    for _i, _mid in enumerate(_all_data.get("ids", [])):
+                        if _mid in _existing_ids:
+                            continue
+                        _m = _all_data["metadatas"][_i] if _all_data.get("metadatas") else {}
+                        if _m.get("stale", False):
+                            continue
+                        _text = _m.get("summary", "") or ""
+                        # 如果请求带了时间范围，跳过范围外的记忆
+                        if from_date or to_date:
+                            _ts = _m.get("timestamp", 0)
+                            if _ts:
+                                if from_date:
+                                    _from_ts = datetime.strptime(from_date, "%Y-%m-%d").timestamp()
+                                    if _ts < _from_ts:
+                                        continue
+                                if to_date:
+                                    _to_ts = datetime.strptime(to_date, "%Y-%m-%d").timestamp() + 86400
+                                    if _ts > _to_ts:
+                                        continue
+                        _cnt = sum(1 for k in _kws if k in _text)
+                        if _cnt >= 2:
+                            _matched.append((_mid, _m, _cnt))
                 if _matched:
                     _matched.sort(key=lambda x: -x[2])
                     for _mid, _m, _ in _matched[:3]:
@@ -450,8 +454,8 @@ def query_memory(collection, query: str = "", from_date: str = "", to_date: str 
                         _existing_ids.add(_mid)
                     if _matched:
                         logger.info("query_memory 关键词文本补充: 候选%d条", len(_matched))
-        except Exception:
-            pass
+            except Exception as exc:
+                logger.warning("query_memory 关键词文本补充检索失败: %s", exc)
 
         # 共现扩展：top3 结果的共现伙伴追加到结果中
         if co_tracker is not None and memories:
@@ -692,7 +696,8 @@ def query_explore(mode: str = "timeline", _collection=None, **kwargs) -> str:
         for ws, we, wn in wl:
             try:
                 rr = coll.get(where={"$and": [{"timestamp": {"$gte": ws.timestamp()}}, {"timestamp": {"$lte": we.timestamp()+86399}}]}, include=["metadatas"])
-            except: continue
+            except Exception:
+                    continue
             if rr["ids"]:
                 its = []
                 for i, mid in enumerate(rr["ids"]):

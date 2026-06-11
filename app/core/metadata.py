@@ -1,4 +1,8 @@
-"""入库元数据提取 — 存储层无损索引，非检索逻辑。"""
+"""入库元数据提取 — 存储层无损索引，非检索逻辑。
+
+⚠️ DEPRECATED (2026-06-11): 本模块未集成到任何生产路径。仅 test_metadata.py 引用。
+TODO: 集成到 ChromaDB write() 路径或移入 legacy/。
+"""
 
 import logging
 from datetime import datetime

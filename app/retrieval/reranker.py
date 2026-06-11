@@ -1,4 +1,8 @@
-"""Reranker — 基于 embedding 余弦相似度的本地精排，带纠正反馈加成。"""
+"""Reranker — 基于 embedding 余弦相似度的本地精排，带纠正反馈加成。
+
+⚠️ UNUSED (2026-06-11): 精排逻辑完整但未接入任何生产检索路径。
+TODO: 集成到 retrieval/pipeline.py 或移入 legacy/。
+"""
 import logging
 from typing import Optional
 

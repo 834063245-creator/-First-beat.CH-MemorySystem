@@ -35,6 +35,8 @@ def get_db(file_path: str) -> sqlite3.Connection:
 
         conn = sqlite3.connect(abs_path, check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=5000")
         conn.execute("PRAGMA foreign_keys=ON")
         conn.row_factory = sqlite3.Row
         _registry[abs_path] = conn
