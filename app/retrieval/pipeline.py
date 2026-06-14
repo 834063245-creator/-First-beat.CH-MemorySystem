@@ -24,10 +24,6 @@ from app.analysis.entity import extract_entities
 
 logger = logging.getLogger(__name__)
 
-# 模块级 ThreadPoolExecutor 单例，避免检索热路径上每次新建线程池
-_retrieval_executor: ThreadPoolExecutor | None = None
-
-
 # ── 检索门控：意图 → 各路配额 ────────────────────────────────
 # 配额含义是 ChromaDB query 的 n_results（不是截断上限）。
 # 截断由引擎 weave_context 统一决策（不再有硬 K）。
@@ -218,6 +214,7 @@ def run_chat_retrieval(
                 user_message, query_embedding_for_retrieval, ctx_obj,
                 intent=_intent,
                 cached_tags=_cached_q_tags,
+                executor=getattr(ctx_obj, 'retrieval_executor', None),
             )
         except Exception as exc:
             logger.warning("全量检索失败: %s", exc)
@@ -309,17 +306,23 @@ def run_chat_retrieval(
         except Exception as exc:
             logger.warning("工作记忆兜底也失败了: %s", exc)
 
-    # ── 命中计数 ──
-    for mem in memories:
-        try:
+    # ── 命中计数（批量，一次 ChromaDB 往返）──
+    try:
+        ids_and_deltas = []
+        for mem in memories:
+            mid = mem.get("id")
+            if not mid:
+                continue
             s = mem.get("source", "")
             d = 2 if s in (
                 "co_occurrence", "time_triggered", "time_rhythm",
                 "keyword_expand", "kw_match", "tag_match",
             ) else 1
-            ctx_obj.chroma_service.increment_hit_count(mem["id"], delta=d)
-        except Exception:
-            pass
+            ids_and_deltas.append((mid, d))
+        if ids_and_deltas:
+            ctx_obj.chroma_service.batch_increment_hit_count(ids_and_deltas)
+    except Exception:
+        pass
 
     # ── 共现记录 ──
     try:
@@ -344,6 +347,8 @@ def retrieve_all(
     ctx_obj,
     intent: str | None = None,
     cached_tags: list[str] | None = None,
+    *,
+    executor: ThreadPoolExecutor | None = None,
 ) -> list[dict]:
     """全量检索，9 路独立并行 + 1 路依赖合并 + 1 路 AI 表达检索。
 
@@ -637,10 +642,10 @@ def retrieve_all(
     paths = [_path_semantic, _path_keyword, _path_tag,
              _path_entity, _path_temporal, _path_topic, _path_attention,
              _path_bm25_fulltext, _path_ai_memory]
-    global _retrieval_executor
-    if _retrieval_executor is None:
-        _retrieval_executor = ThreadPoolExecutor(max_workers=min(len(paths), 8))
-    futures = {_retrieval_executor.submit(p): p for p in paths}
+    _ex = executor
+    if _ex is None:
+        _ex = ThreadPoolExecutor(max_workers=min(len(paths), 8))
+    futures = {_ex.submit(p): p for p in paths}
     for f in as_completed(futures):
         try:
             f.result()

@@ -298,11 +298,15 @@ def local_embed(text: str) -> Optional[List[float]]:
             return val
 
     # 中速路径：语义近似命中（n-gram 复合相似度，微秒级）
+    # v2: 长度过滤 + 早停优化，避免扫描全部 1024 条缓存
     with _embed_cache_lock:
         if _embed_cache:
             q_ng = _ngram_sig(text)
             best_key = None
             best_sim = -1.0
+            scanned = 0
+            _SCAN_LIMIT = 200       # 早停：扫描 200 条仍无可用匹配则放弃
+            _STRONG_MATCH = 0.98    # 强匹配：立即停止
             for cached_text in _embed_cache:
                 if abs(len(text) - len(cached_text)) / max(len(text), len(cached_text), 1) > 0.3:
                     continue
@@ -310,8 +314,12 @@ def local_embed(text: str) -> Optional[List[float]]:
                 if sim > best_sim:
                     best_sim = sim
                     best_key = cached_text
-                    if sim >= 0.98:
+                    if sim >= _STRONG_MATCH:
                         break
+                scanned += 1
+                # 早停：已扫描足够条数但未找到可用的近似匹配
+                if scanned >= _SCAN_LIMIT and best_sim < 0.55:
+                    break
             if best_sim >= 0.55 and best_key:
                 val = _embed_cache.pop(best_key)
                 _embed_cache[text] = val

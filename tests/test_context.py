@@ -336,14 +336,18 @@ class TestQueueWorker:
     """测试队列 worker 消费行为。"""
 
     def test_worker_consumes_from_file(self, isolated_env):
-        """worker 启动后从文件恢复队列任务。"""
+        """worker 启动后从文件恢复队列任务（崩溃恢复场景）。"""
         ctx = isolated_env
         import json
-        # 预写入队列文件
+        # 模拟崩溃恢复：先停 worker → 写文件 → 重启（触发 loop_count==1 读盘）
+        ctx._stop_event.set()
+        ctx._queue_thread.join(timeout=2)
         task = {"user_message": "文件恢复测试", "ai_message": "回复", "timestamp": "2026-06-15 10:00:00"}
         with open(ctx._store_queue_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(task, ensure_ascii=False) + "\n")
-        # 让 worker 有时间消费
+        # 重启 worker，首次循环即检查磁盘
+        ctx._stop_event.clear()
+        ctx._start_queue_worker()
         import time; time.sleep(1.5)
         all_mems = ctx.chroma_service.list_all()
         assert len(all_mems) >= 1, "worker应从文件恢复并入库"

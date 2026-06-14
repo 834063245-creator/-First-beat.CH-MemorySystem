@@ -63,6 +63,10 @@ class ChromaService:
         self._list_all_cache_time: float = 0.0
         self._list_all_cache_lock = threading.Lock()
         self._list_all_cache_ttl: float = 300  # 默认 5 分钟
+        # stats() 运行计数器，避免全量 metadata 遍历
+        self._total_hits: int = 0
+        self._earliest_ts: float | None = None
+        self._latest_ts: float | None = None
 
         coll_name = collection_name or EMBED_MODELS[DEFAULT_EMBED_MODEL]["collection"]
         self._collection = self._client.get_or_create_collection(
@@ -130,6 +134,11 @@ class ChromaService:
             metadatas=[meta],
         )
         logger.info("记忆写入完成 id=%s source=%s summary=%s", memory_id[:8], source, summary[:60])
+        # 更新统计计数器
+        if self._earliest_ts is None or timestamp < self._earliest_ts:
+            self._earliest_ts = timestamp
+        if self._latest_ts is None or timestamp > self._latest_ts:
+            self._latest_ts = timestamp
         self._invalidate_list_all_cache()
         return memory_id
 
@@ -186,9 +195,65 @@ class ChromaService:
                     or meta.get("emotion_valence_bin", "") in ("positive", "negative")):
                 meta["heat"] = "hot"
             self._collection.update(ids=[memory_id], metadatas=[meta])
+            # 更新统计计数器
+            self._total_hits += delta
 
         # 情绪淡化独立触发：每 50 次命中检查一次，3 天未提及则淡化
         self._desensitization_counter += 1
+        if self._desensitization_counter >= self.DESENSITIZATION_CHECK_INTERVAL:
+            self._desensitization_counter = 0
+            self._apply_emotional_desensitization()
+
+    def batch_increment_hit_count(self, ids_and_deltas: list[tuple[str, int]]):
+        """批量命中计数：一次锁、一次 get、一次 update，替代逐条调用。
+
+        用于检索管线——200 条命中 = 1 次 ChromaDB 往返，而非 200 次。
+        保留完整的 hit_count 递增、last_hit_time 更新、热升级、情感淡化计数。
+        """
+        if not ids_and_deltas:
+            return
+
+        with self._lock:
+            all_ids = [mid for mid, _ in ids_and_deltas]
+            result = self._collection.get(ids=all_ids, include=["metadatas"])
+            if not result["ids"]:
+                return
+
+            # 建立 id → metadata 索引
+            meta_map: dict[str, dict] = {}
+            for i, mid in enumerate(result["ids"]):
+                meta_map[mid] = dict(result["metadatas"][i])
+
+            # 按 delta 聚合（同一 id 可能被多条检索路径命中）
+            aggregated: dict[str, int] = {}
+            for mid, delta in ids_and_deltas:
+                aggregated[mid] = aggregated.get(mid, 0) + delta
+
+            now = time.time()
+            update_ids = []
+            update_metas = []
+
+            for mid, total_delta in aggregated.items():
+                meta = meta_map.get(mid)
+                if meta is None:
+                    continue
+                meta["hit_count"] = meta.get("hit_count", 0) + total_delta
+                meta["last_hit_time"] = now
+                # 热升级：hit_count ≥ 3 或 情绪强度 ≥ 2 → hot
+                if (meta.get("hit_count", 0) >= 3
+                        or (meta.get("emotional_intensity", 0) or 0) >= 2
+                        or meta.get("emotion_valence_bin", "") in ("positive", "negative")):
+                    meta["heat"] = "hot"
+                update_ids.append(mid)
+                update_metas.append(meta)
+
+            if update_ids:
+                self._collection.update(ids=update_ids, metadatas=update_metas)
+            # 更新统计计数器
+            self._total_hits += sum(aggregated.values())
+
+        # 情绪淡化计数：按去重前的调用次数递增（与旧逐条行为一致）
+        self._desensitization_counter += len(ids_and_deltas)
         if self._desensitization_counter >= self.DESENSITIZATION_CHECK_INTERVAL:
             self._desensitization_counter = 0
             self._apply_emotional_desensitization()
@@ -416,30 +481,28 @@ class ChromaService:
         self._invalidate_list_all_cache()
         logger.info("归档: tag=%s, %d 条", tag, len(memory_ids))
 
-    # TODO: 数据量大后 stats 应改为维护独立统计文件，避免全量遍历
     def stats(self) -> dict:
-        """记忆统计：总数、总命中、最早/最新时间。"""
+        """记忆统计：使用运行计数器，零 ChromaDB I/O。"""
         total = self._collection.count()
         if total == 0:
             return {"total": 0, "total_hits": 0, "earliest": None, "latest": None}
 
-        result = self._collection.get(include=["metadatas"])
-        total_hits = 0
-        earliest = None
-        latest = None
-        for meta in result["metadatas"]:
-            total_hits += meta.get("hit_count", 0)
-            ts = meta.get("timestamp", 0)
-            if earliest is None or ts < earliest:
-                earliest = ts
-            if latest is None or ts > latest:
-                latest = ts
+        # 兜底：计数器未初始化（旧数据升级），一次性全量遍历回填
+        if self._total_hits == 0 and total > 0:
+            result = self._collection.get(include=["metadatas"])
+            for meta in result["metadatas"]:
+                self._total_hits += meta.get("hit_count", 0)
+                ts = meta.get("timestamp", 0)
+                if self._earliest_ts is None or ts < self._earliest_ts:
+                    self._earliest_ts = ts
+                if self._latest_ts is None or ts > self._latest_ts:
+                    self._latest_ts = ts
 
         return {
             "total": total,
-            "total_hits": total_hits,
-            "earliest": earliest,
-            "latest": latest,
+            "total_hits": self._total_hits,
+            "earliest": self._earliest_ts,
+            "latest": self._latest_ts,
         }
 
     # ------------------------------------------------------------------

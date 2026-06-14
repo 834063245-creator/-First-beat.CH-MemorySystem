@@ -253,10 +253,27 @@ async def chat_stream(req: ChatRequest, user_ctx = Depends(get_user_context)):
             else:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 loop = asyncio.get_running_loop()
-                await loop.run_in_executor(user_ctx.storage_executor, user_ctx.chat_history.append, user_message, full_text, timestamp)
-                await loop.run_in_executor(user_ctx.storage_executor, user_ctx._enqueue_store_task, user_message, full_text, timestamp)
-                from app.memory.working import incremental_update
-                await loop.run_in_executor(user_ctx.storage_executor, lambda: incremental_update(user_ctx.chat_history.records, wm_path=f"{user_ctx.data_dir}/working_memory.json"))
+
+                async def _safe_append():
+                    try:
+                        await loop.run_in_executor(user_ctx.storage_executor, user_ctx.chat_history.append, user_message, full_text, timestamp)
+                    except Exception:
+                        pass
+
+                async def _safe_enqueue():
+                    try:
+                        await loop.run_in_executor(user_ctx.storage_executor, user_ctx._enqueue_store_task, user_message, full_text, timestamp)
+                    except Exception:
+                        pass
+
+                async def _safe_incremental():
+                    try:
+                        from app.memory.working import incremental_update
+                        await loop.run_in_executor(user_ctx.storage_executor, lambda: incremental_update(user_ctx.chat_history.records, wm_path=f"{user_ctx.data_dir}/working_memory.json"))
+                    except Exception:
+                        pass
+
+                await asyncio.gather(_safe_append(), _safe_enqueue(), _safe_incremental())
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
@@ -273,7 +290,7 @@ async def chat(req: ChatRequest, user_ctx = Depends(get_user_context)):
     query_embedding_for_retrieval = await _timed("query_embedding", local_embed_async(user_message))
     loop = asyncio.get_running_loop()
     timeline_recent, session_context, personalities, memories = await loop.run_in_executor(
-        user_ctx.storage_executor, run_chat_retrieval, user_message, query_embedding_for_retrieval, user_ctx)
+        user_ctx.retrieval_executor, run_chat_retrieval, user_message, query_embedding_for_retrieval, user_ctx)
 
     utterance_spec = await loop.run_in_executor(
         user_ctx.storage_executor,
@@ -346,11 +363,28 @@ async def chat(req: ChatRequest, user_ctx = Depends(get_user_context)):
         await loop.run_in_executor(user_ctx.storage_executor, user_ctx._enqueue_store_task, user_message, ai_response, timestamp)
     else:
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(user_ctx.storage_executor, user_ctx.chat_history.append, user_message, ai_response, timestamp)
-        await loop.run_in_executor(user_ctx.storage_executor, user_ctx._enqueue_store_task, user_message, ai_response, timestamp)
-        from app.memory.working import incremental_update
-        await loop.run_in_executor(user_ctx.storage_executor, lambda: incremental_update(
-            user_ctx.chat_history.records, wm_path=f"{user_ctx.data_dir}/working_memory.json"))
+
+        async def _safe_append():
+            try:
+                await loop.run_in_executor(user_ctx.storage_executor, user_ctx.chat_history.append, user_message, ai_response, timestamp)
+            except Exception:
+                pass
+
+        async def _safe_enqueue():
+            try:
+                await loop.run_in_executor(user_ctx.storage_executor, user_ctx._enqueue_store_task, user_message, ai_response, timestamp)
+            except Exception:
+                pass
+
+        async def _safe_incremental():
+            try:
+                from app.memory.working import incremental_update
+                await loop.run_in_executor(user_ctx.storage_executor, lambda: incremental_update(
+                    user_ctx.chat_history.records, wm_path=f"{user_ctx.data_dir}/working_memory.json"))
+            except Exception:
+                pass
+
+        await asyncio.gather(_safe_append(), _safe_enqueue(), _safe_incremental())
 
     debug_info = None
     if req.debug:

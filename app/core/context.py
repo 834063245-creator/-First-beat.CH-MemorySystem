@@ -212,31 +212,37 @@ class AppContext:
         """启动用户专属入库队列 worker。"""
         def _worker():
             logger.info("入库队列 worker 已启动 for %s", self.data_dir)
+            _loop_count = 0
+            _disk_check_interval = 30  # 每30次循环检查一次磁盘遗留（~30秒空闲）
             while not self._stop_event.is_set():
                 try:
                     tasks = []
-                    with self._store_queue_lock:
-                        if os.path.exists(self._store_queue_path):
-                            with open(self._store_queue_path, "r", encoding="utf-8") as f:
-                                lines = f.readlines()
-                            for line in lines:
-                                line = line.strip()
-                                if not line:
-                                    continue
-                                try:
-                                    tasks.append(json.loads(line))
-                                except json.JSONDecodeError:
-                                    continue
-                            tmp = None
-                            if tasks:
-                                tmp = self._store_queue_path + ".tmp." + str(time.time())
-                                try:
-                                    os.rename(self._store_queue_path, tmp)
-                                except OSError:
-                                    tmp = None
-                                logger.info("队列取出 %d 条任务待处理 for %s", len(tasks), self.data_dir)
-                                if len(tasks) > 50:
-                                    logger.warning("队列积压: %d 条待处理 for %s", len(tasks), self.data_dir)
+                    _loop_count += 1
+
+                    # 磁盘恢复检查：仅启动后首次 + 每30次循环执行
+                    if _loop_count == 1 or _loop_count % _disk_check_interval == 0:
+                        with self._store_queue_lock:
+                            if os.path.exists(self._store_queue_path):
+                                with open(self._store_queue_path, "r", encoding="utf-8") as f:
+                                    lines = f.readlines()
+                                for line in lines:
+                                    line = line.strip()
+                                    if not line:
+                                        continue
+                                    try:
+                                        tasks.append(json.loads(line))
+                                    except json.JSONDecodeError:
+                                        continue
+                                tmp = None
+                                if tasks:
+                                    tmp = self._store_queue_path + ".tmp." + str(time.time())
+                                    try:
+                                        os.rename(self._store_queue_path, tmp)
+                                    except OSError:
+                                        tmp = None
+                                    logger.info("队列取出 %d 条任务待处理 for %s", len(tasks), self.data_dir)
+                                    if len(tasks) > 50:
+                                        logger.warning("队列积压: %d 条待处理 for %s", len(tasks), self.data_dir)
 
                     if tasks:
                         for i, task in enumerate(tasks):
@@ -702,11 +708,13 @@ class AppContext:
                             self.chroma_service._emb_cache[memory_id] = embedding
                 except Exception:
                     pass
-                # 等待并行 AI 侧入库完成（不影响主流程）
-                try:
-                    ai_future.result(timeout=30)
-                except Exception:
-                    pass  # AI 侧失败不影响用户侧
+                # AI 侧入库 fire-and-forget：done callback 记录结果，不阻塞 queue worker
+                def _ai_store_done(fut):
+                    try:
+                        fut.result(timeout=0)  # callback 时已就绪
+                    except Exception:
+                        pass  # AI 侧失败不影响用户侧
+                ai_future.add_done_callback(_ai_store_done)
 
                 # Part A: 偏移率检测 (纯规则, <1ms)
                 try:
