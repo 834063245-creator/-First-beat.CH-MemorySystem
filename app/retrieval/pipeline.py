@@ -642,7 +642,7 @@ def retrieve_all(
     paths = [_path_semantic, _path_keyword, _path_tag,
              _path_entity, _path_temporal, _path_topic, _path_attention,
              _path_bm25_fulltext, _path_ai_memory]
-    _ex = executor
+    _ex = executor if isinstance(executor, ThreadPoolExecutor) else None
     if _ex is None:
         _ex = ThreadPoolExecutor(max_workers=min(len(paths), 8))
     futures = {_ex.submit(p): p for p in paths}
