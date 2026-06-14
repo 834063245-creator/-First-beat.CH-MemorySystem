@@ -306,7 +306,7 @@ class TestPortraitManagerSaveLoad:
         mgr.save()
 
         # 检查磁盘上的原始文件
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             raw = f.read()
         # 应包含 entry ID 注释
         assert "<!-- entry:usr5-003 -->" in raw
@@ -323,7 +323,7 @@ class TestPortraitManagerSaveLoad:
         mgr.save()
 
         # 模拟另一个进程修改文件
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             raw = f.read()
         modified = raw.replace("初始文本", "外部修改")
         with open(path, "w", encoding="utf-8") as f:

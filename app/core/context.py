@@ -223,7 +223,7 @@ class AppContext:
                     if _loop_count == 1 or _loop_count % _disk_check_interval == 0:
                         with self._store_queue_lock:
                             if os.path.exists(self._store_queue_path):
-                                with open(self._store_queue_path, "r", encoding="utf-8") as f:
+                                with open(self._store_queue_path, encoding="utf-8") as f:
                                     lines = f.readlines()
                                 for line in lines:
                                     line = line.strip()

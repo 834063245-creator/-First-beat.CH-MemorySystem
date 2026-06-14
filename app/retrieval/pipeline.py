@@ -77,7 +77,7 @@ def _load_error_counts(data_dir: str) -> dict[str, int]:
         counts: dict[str, int] = {}
         try:
             if os.path.exists(path):
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     for line in f:
                         line = line.strip()
                         if not line:
@@ -106,7 +106,7 @@ def _load_correction_boosts(data_dir: str) -> dict[str, float]:
         edit_counts: dict[str, int] = {}
         try:
             if os.path.exists(_path):
-                with open(_path, "r", encoding="utf-8") as f:
+                with open(_path, encoding="utf-8") as f:
                     for line in f:
                         line = line.strip()
                         if not line:

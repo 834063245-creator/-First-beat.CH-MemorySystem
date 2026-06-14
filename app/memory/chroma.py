@@ -47,8 +47,8 @@ class ChromaService:
     EMOTION_DECAY_DAYS = 3               # 3天未提及则淡化
     EMOTION_DECREMENT = 1                # 每次减1
 
-    def __init__(self, persist_dir: Optional[str] = None, *,
-                 collection_name: Optional[str] = None):
+    def __init__(self, persist_dir: str | None = None, *,
+                 collection_name: str | None = None):
         chroma_path = persist_dir or CHROMA_PERSIST_DIR
         # ChromaDB PersistentClient 内部有连接池，线程安全，无需读写分离
         self._client = chromadb.PersistentClient(path=chroma_path)
@@ -82,13 +82,13 @@ class ChromaService:
         user_message: str,
         ai_message: str,
         summary: str,
-        tags: List[str],
-        embedding: List[float],
+        tags: list[str],
+        embedding: list[float],
         *,
         model_id: str = DEFAULT_EMBED_MODEL,
-        entities: Optional[list[dict]] = None,
-        date_tag: Optional[str] = None,
-        time_features: Optional[dict] = None,
+        entities: list[dict] | None = None,
+        date_tag: str | None = None,
+        time_features: dict | None = None,
         source: str = "user",
     ) -> str:
         """写入一轮对话到 ChromaDB。
@@ -437,7 +437,7 @@ class ChromaService:
         items = items[offset:offset + per_page]
         return {"items": items, "total": total, "page": page, "per_page": per_page}
 
-    def get_memory_detail(self, memory_id: str) -> Optional[dict]:
+    def get_memory_detail(self, memory_id: str) -> dict | None:
         """单条记忆详情，含原始对话、元信息、上下文。"""
         result = self._collection.get(
             ids=[memory_id],

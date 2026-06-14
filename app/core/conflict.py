@@ -33,7 +33,7 @@ def check_resolution(
     pending_conflicts: list[dict],
     chroma_service,
     co_tracker,
-) -> Optional[dict]:
+) -> dict | None:
     """检查用户消息是否确认了某条冲突的旧记忆是错的。
 
     参数:

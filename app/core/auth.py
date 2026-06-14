@@ -19,7 +19,7 @@ _DEFAULT_USER = "admin"
 
 def get_current_user(
     request: Request,
-    x_chuhen_user: Optional[str] = Header(None, alias="X-Chuhen-User"),
+    x_chuhen_user: str | None = Header(None, alias="X-Chuhen-User"),
 ) -> str:
     """返回当前用户。优先级：Header > Cookie > 默认 admin。"""
     # 1) X-Chuhen-User 请求头

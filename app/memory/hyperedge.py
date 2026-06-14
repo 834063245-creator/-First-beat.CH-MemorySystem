@@ -32,7 +32,7 @@ class HyperEdgeIndex:
 
     def __init__(self, file_path: str = _HYPEREDGE_FILE):
         self._file = file_path
-        self._conn: "sqlite3.Connection | None" = None
+        self._conn: sqlite3.Connection | None = None
         self._init_db()
 
     def _init_db(self):
@@ -73,7 +73,7 @@ class HyperEdgeIndex:
 
         logger.info("超边索引迁移 JSON → SQLite: %s", json_path)
         try:
-            with open(json_path, "r", encoding="utf-8") as f:
+            with open(json_path, encoding="utf-8") as f:
                 data = _json.load(f)
         except Exception:
             return

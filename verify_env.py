@@ -155,7 +155,7 @@ try:
         check(f"Ollama 响应异常 ({ollama_url})", False,
               f"HTTP {r.status_code}，请检查 Ollama 是否正常运行")
 except ImportError:
-    check(f"httpx 未安装", False, "pip install httpx")
+    check("httpx 未安装", False, "pip install httpx")
 except Exception as e:
     err = str(e)
     if "Connection refused" in err or "ConnectError" in err:
@@ -202,9 +202,9 @@ except Exception as e:
 print("\n[7] 配置文件")
 env_file = ".env"
 if os.path.exists(env_file):
-    check(f".env 存在", True)
+    check(".env 存在", True)
     # 检查关键配置
-    with open(env_file, "r", encoding="utf-8") as f:
+    with open(env_file, encoding="utf-8") as f:
         content = f.read()
     key_checks = [
         ("OLLAMA_EMBED_MODEL", "Embedding 模型"),
@@ -217,10 +217,10 @@ if os.path.exists(env_file):
             warn(f"  缺少配置项: {key} ({desc})")
 else:
     if os.path.exists(".env.example"):
-        check(f".env 不存在", False,
+        check(".env 不存在", False,
               "运行: copy .env.example .env  然后编辑")
     else:
-        check(f".env 和 .env.example 都不存在", False,
+        check(".env 和 .env.example 都不存在", False,
               "项目文件不完整，请重新 clone")
 
 # ── 总结 ──

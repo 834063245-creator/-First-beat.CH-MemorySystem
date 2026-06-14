@@ -32,7 +32,7 @@ class TopicAffinity:
     def _load(self):
         try:
             if os.path.exists(self._path):
-                with open(self._path, "r", encoding="utf-8") as f:
+                with open(self._path, encoding="utf-8") as f:
                     self._matrix = json.load(f)
         except (json.JSONDecodeError, OSError):
             self._matrix = {}

@@ -224,10 +224,10 @@ class CircuitOrchestrator:
         query_embedding: list,
         ctx_obj,
         *,
-        timeline_recent: Optional[list] = None,
-        session_context: Optional[str] = None,
-        personalities: Optional[list] = None,
-        memories: Optional[list] = None,
+        timeline_recent: list | None = None,
+        session_context: str | None = None,
+        personalities: list | None = None,
+        memories: list | None = None,
     ) -> UtteranceSpec:
         """回路①→②→③→④ 顺序执行，返回 UtteranceSpec。
 

@@ -26,7 +26,7 @@ def _load(wm_path: str) -> dict:
         if not os.path.exists(wm_path):
             return {"summary": "", "topics": [], "current_state": "", "last_updated": "", "version": 0}
         try:
-            with open(wm_path, "r", encoding="utf-8") as f:
+            with open(wm_path, encoding="utf-8") as f:
                 return json.load(f)
         except (json.JSONDecodeError, OSError):
             return {"summary": "", "topics": [], "current_state": "", "last_updated": "", "version": 0}

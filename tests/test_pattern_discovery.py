@@ -519,7 +519,7 @@ class TestSave:
         pd._tuning = {"emotional_dampening": True, "formality_shift": 1, "proactive_suppression": False}
         pd._save()
         assert os.path.exists(pd._cache_path)
-        with open(pd._cache_path, "r", encoding="utf-8") as f:
+        with open(pd._cache_path, encoding="utf-8") as f:
             data = json.load(f)
         assert data["version"] == 3
         assert len(data["observations"]) == 1
@@ -533,7 +533,7 @@ class TestSave:
         pd._save()
         pd._save()
         pd._save()
-        with open(pd._cache_path, "r", encoding="utf-8") as f:
+        with open(pd._cache_path, encoding="utf-8") as f:
             data = json.load(f)
         assert len(data["trajectory"]) == 3
 
@@ -544,7 +544,7 @@ class TestSave:
         for i in range(35):
             pd._tuning["formality_shift"] = i
             pd._save()
-        with open(pd._cache_path, "r", encoding="utf-8") as f:
+        with open(pd._cache_path, encoding="utf-8") as f:
             data = json.load(f)
         assert len(data["trajectory"]) <= 30
 

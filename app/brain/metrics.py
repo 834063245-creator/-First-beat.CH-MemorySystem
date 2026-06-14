@@ -35,13 +35,13 @@ def _load():
     if not os.path.exists(METRICS_PATH):
         return _default()
     try:
-        with open(METRICS_PATH, "r", encoding="utf-8") as f:
+        with open(METRICS_PATH, encoding="utf-8") as f:
             data = json.load(f)
         # 补全缺失的顶层 key（兼容旧版 schema）
         for key, val in _default().items():
             data.setdefault(key, val)
         return data
-    except (json.JSONDecodeError, IOError):
+    except (OSError, json.JSONDecodeError):
         return _default()
 
 

@@ -30,7 +30,7 @@ class TagEmbeddingIndex:
     MAX_NEAREST = 10
     CACHE_FILE = "tag_embeddings.json"
 
-    def __init__(self, data_dir: str, embed_fn: Optional[callable] = None):
+    def __init__(self, data_dir: str, embed_fn: callable | None = None):
         self._path = os.path.join(data_dir, self.CACHE_FILE)
         self._lock = threading.Lock()
         # tag → embedding (list[float], 1024-dim)
@@ -133,7 +133,7 @@ class TagEmbeddingIndex:
     def _load(self):
         try:
             if os.path.exists(self._path):
-                with open(self._path, "r", encoding="utf-8") as f:
+                with open(self._path, encoding="utf-8") as f:
                     data = json.load(f)
                 self._embeddings = data.get("embeddings", {})
         except Exception:

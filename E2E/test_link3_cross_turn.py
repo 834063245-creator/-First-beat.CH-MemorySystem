@@ -439,7 +439,7 @@ def test_X6_emotion_flip(isolated_env):
     reversals_path = os.path.join(ctx.data_dir, "emotional_reversals.jsonl")
     reversal_found = False
     if os.path.exists(reversals_path):
-        with open(reversals_path, "r", encoding="utf-8") as f:
+        with open(reversals_path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -486,7 +486,7 @@ def test_X6_emotion_flip(isolated_env):
     # 在两种模式下 stale 记忆都在检索结果中但被降权
     retrieved_ids = [m.get("id", "") for m in memories]
     assert run_id in retrieved_ids, (
-        f"X6 失败：stale 记忆仍应在检索结果中（降权但不屏蔽）"
+        "X6 失败：stale 记忆仍应在检索结果中（降权但不屏蔽）"
     )
 
 

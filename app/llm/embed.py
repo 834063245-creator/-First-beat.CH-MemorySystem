@@ -61,7 +61,7 @@ _COALESCE_MAX_BATCH = 64         # 单批上限
 _coalesce_lock = threading.Lock()
 _coalesce_pending: dict[int, tuple[str, threading.Event, list]] = {}  # id → (text, event, [result])
 _coalesce_counter: int = 0
-_coalesce_timer: Optional[threading.Timer] = None
+_coalesce_timer: threading.Timer | None = None
 
 
 def _drain_coalesce():
@@ -107,7 +107,7 @@ def _schedule_drain():
     _coalesce_timer.start()
 
 
-def _coalesced_embed(text: str) -> Optional[List[float]]:
+def _coalesced_embed(text: str) -> list[float] | None:
     """将单条 embed 请求入队，等待合并窗口后批量发送。"""
     global _coalesce_counter
 
@@ -181,7 +181,7 @@ def _ngram_sim(a: dict[str, float], b: dict[str, float]) -> float:
 
 # ── httpx 客户端单例 ──
 
-_embed_client: Optional[httpx.Client] = None
+_embed_client: httpx.Client | None = None
 _embed_client_lock = threading.Lock()
 
 
@@ -198,7 +198,7 @@ def _get_embed_client() -> httpx.Client:
     return _embed_client
 
 
-def _embed_via_ollama(text: str) -> Optional[List[float]]:
+def _embed_via_ollama(text: str) -> list[float] | None:
     """通过 Ollama API 嵌入（GPU 推理）— 单条路径，仅作兜底。"""
     text = text.strip()[:2000]
     if not text:
@@ -223,14 +223,14 @@ def _embed_via_ollama(text: str) -> Optional[List[float]]:
     return None
 
 
-def _embed_via_ollama_batch(texts: List[str]) -> List[Optional[List[float]]]:
+def _embed_via_ollama_batch(texts: list[str]) -> list[list[float] | None]:
     """批量嵌入 — 一次 HTTP 调用嵌入多条文本（coalescer 的核心路径）。
 
     调用 Ollama /api/embed，微批次 16 条，返回归一化向量。
     """
-    results: List[Optional[List[float]]] = [None] * len(texts)
-    clean_texts: List[str] = []
-    index_map: List[int] = []  # clean_texts pos → original pos
+    results: list[list[float] | None] = [None] * len(texts)
+    clean_texts: list[str] = []
+    index_map: list[int] = []  # clean_texts pos → original pos
     for i, t in enumerate(texts):
         t = (t or "").strip()[:2000]
         if t:
@@ -278,7 +278,7 @@ def _embed_via_ollama_batch(texts: List[str]) -> List[Optional[List[float]]]:
 # 公开 API
 # ═══════════════════════════════════════════════════════════════
 
-def local_embed(text: str) -> Optional[List[float]]:
+def local_embed(text: str) -> list[float] | None:
     """单条文本嵌入，返回 1024 维归一化向量。失败返回 None。
 
     缓存策略（三级）：
@@ -338,7 +338,7 @@ def local_embed(text: str) -> Optional[List[float]]:
     return result
 
 
-def local_embed_batch(texts: List[str]) -> List[Optional[List[float]]]:
+def local_embed_batch(texts: list[str]) -> list[list[float] | None]:
     """批量嵌入 — 先查请求缓存 → 全局缓存，未命中的通过一次 Ollama HTTP 嵌入。
 
     返回的向量做归一化 + 写两级缓存。
@@ -349,9 +349,9 @@ def local_embed_batch(texts: List[str]) -> List[Optional[List[float]]]:
         return [local_embed(texts[0])]
 
     req_cache = _get_request_cache()
-    results: List[Optional[List[float]]] = [None] * len(texts)
-    to_embed: List[int] = []
-    to_embed_texts: List[str] = []
+    results: list[list[float] | None] = [None] * len(texts)
+    to_embed: list[int] = []
+    to_embed_texts: list[str] = []
 
     for i, t in enumerate(texts):
         t = (t or "").strip()[:2000]
@@ -391,7 +391,7 @@ def local_embed_batch(texts: List[str]) -> List[Optional[List[float]]]:
     return results
 
 
-async def local_embed_async(text: str) -> Optional[List[float]]:
+async def local_embed_async(text: str) -> list[float] | None:
     """异步版。"""
     import asyncio
     loop = asyncio.get_running_loop()

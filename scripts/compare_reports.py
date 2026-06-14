@@ -50,9 +50,7 @@ def compare(old_path: str, new_path: str) -> None:
             os_display = str(old_score)[:10]
             ns_display = str(new_score)[:10]
 
-        print("{:25s} | {:>10s} | {:>10s} | {:>8s}".format(
-            cat_name, os_display, ns_display, diff_str
-        ))
+        print(f"{cat_name:25s} | {os_display:>10s} | {ns_display:>10s} | {diff_str:>8s}")
 
     print("-" * 62)
     ow = old.get("weighted_total", 0)

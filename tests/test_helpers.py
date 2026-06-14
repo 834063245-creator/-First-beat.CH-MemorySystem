@@ -104,7 +104,7 @@ class TestLoadJsonlCached:
             calls = [0]
             def parse():
                 calls[0] += 1
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     return [json.loads(line) for line in f if line.strip()]
 
             # 清除模块级缓存避免测试间污染
@@ -127,7 +127,7 @@ class TestLoadJsonlCached:
             calls = [0]
             def parse():
                 calls[0] += 1
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     return [json.loads(line) for line in f if line.strip()]
 
             with h._jsonl_cache_lock:

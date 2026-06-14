@@ -90,7 +90,7 @@ CORE_INFRA_MODULES = {"db", "helpers", "bottleneck", "heartbeat"}
 _MODULE_TO_LAYER: dict[str, str] = {}
 
 
-def _get_layer(file_path: str) -> Optional[str]:
+def _get_layer(file_path: str) -> str | None:
     """从文件路径推导所属层名。"""
     rel = os.path.relpath(file_path, APP_DIR).replace("\\", "/")
     parts = rel.split("/")
@@ -117,7 +117,7 @@ def _detect_type_checking_block(lines: list[str], line_idx: int) -> bool:
     return False
 
 
-def _extract_import_target(import_line: str) -> Optional[str]:
+def _extract_import_target(import_line: str) -> str | None:
     """从 import 语句提取目标 app 子模块名。
 
     'from app.memory.chroma import X' → 'memory'
@@ -576,9 +576,7 @@ def check_settings_walls():
 
         # 对于表达式/函数调用类型，检查是否包含期望默认值
         if val_type == "expr":
-            if isinstance(expected_val, str) and f'"{expected_val}"' not in val and f"'{expected_val}'" not in val:
-                issues.append(f"⚠ {key} ({desc}) — 默认值可能已变: {val[:80]}")
-            elif isinstance(expected_val, int) and str(expected_val) not in val:
+            if isinstance(expected_val, str) and f'"{expected_val}"' not in val and f"'{expected_val}'" not in val or isinstance(expected_val, int) and str(expected_val) not in val:
                 issues.append(f"⚠ {key} ({desc}) — 默认值可能已变: {val[:80]}")
         elif val_type == "constant" and val != expected_val:
             issues.append(f"⚠ {key} ({desc}) — 期望 {expected_val!r}, 实际 {val!r}")
@@ -813,10 +811,7 @@ def check_bare_except():
         lines = content.split("\n")
         for i, line in enumerate(lines):
             stripped = line.strip()
-            if stripped == "except:" or stripped == "except: continue":
-                total_bare += 1
-                bare_except_files[py_file.name] += 1
-            elif stripped.startswith("except Exception"):
+            if stripped == "except:" or stripped == "except: continue" or stripped.startswith("except Exception"):
                 total_bare += 1
                 bare_except_files[py_file.name] += 1
 
@@ -864,7 +859,7 @@ def check_env_defaults():
         lines = content.split("\n")
         for line in lines:
             stripped = line.strip()
-            if "os.getenv(" in stripped and not "os.getenv(" in stripped.split("#")[0]:
+            if "os.getenv(" in stripped and "os.getenv(" not in stripped.split("#")[0]:
                 if stripped.count(",") == 0 and stripped.endswith(")"):
                     no_default.append(f"{py_file.name}: {stripped[:80]}")
 

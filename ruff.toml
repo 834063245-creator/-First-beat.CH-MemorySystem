@@ -1,0 +1,54 @@
+# 初痕 (First Beat) ruff 配置
+# 策略：抓真 bug，不放行风格噪音。E501/F401/E402 大量存在且有合理原因。
+target-version = "py311"
+
+[lint]
+select = [
+    "F",     # pyflakes — 未定义变量、重复 import 等
+    "E",     # pycodestyle — 语法/缩进错误
+    "B",     # flake8-bugbear — 常见陷阱
+    "SIM",   # flake8-simplify — 简化建议
+    "UP",    # pyupgrade — 新语法建议
+    # T20 不选 — 61 print 在脚本/审计/etc 中，非应用层
+]
+
+ignore = [
+    "E501",   # 行太长（822处，大量 docstring/注释，不值得修）
+    "E402",   # 非顶部 import（18处，刻意懒加载避免循环导入）
+    "F401",   # 未用 import（191处，TYPE_CHECKING/重导出/__init__）
+    "F841",   # 未用变量（44处，大量 _ 接收解包/异常）
+    "E702",   # 多语句分号（26处，风格选择）
+    "E701",   # 多语句冒号（15处，风格选择）
+    "B008",   # 函数调用作默认参数（14处，需逐个审核）
+    "B007",   # 未用循环变量（12处，有意为之）
+    "B905",   # zip 无 strict（8处，Python 3.11 前无此特性，可后补）
+    "E741",   # 歧义变量名 l/I/O（3处，知道在做什么）
+    "SIM108", # if-else 三元表达式建议（风格选择）
+    "SIM105", # contextlib.suppress 建议
+    "SIM113", # 建议 enumerate 替代 range(len())
+    "SIM117", # 多层 with 合并建议（风格选择）
+    "SIM102", # 嵌套 if 合并建议（风格选择）
+    "SIM101", # 重复 isinstance 建议
+    "SIM103", # needless-bool 建议
+    "UP035",  # 弃用 import（旧版 typing 路径）
+    "UP036",  # outdated-version-block
+    "E731",   # lambda 赋值（风格选择）
+]
+
+[lint.per-file-ignores]
+"__init__.py" = ["F403"]  # F403: import * — __init__.py 刻意为之
+"tests/*.py" = ["F811"]   # 测试允许函数重定义（pytest fixtures/参数化）
+"E2E/*.py" = ["F811"]     # E2E 同测试规范
+".hologram/**" = ["F", "E", "B", "SIM"]  # 运行时文件不管
+"app/core/circuit.py" = ["F821"]  # "WovenContext" 前向引用字符串注解
+"app/core/context.py" = ["F821"]  # "LocalLLM" 前向引用字符串注解
+"app/core/user_context.py" = ["F821"]  # "AppContext" 前向引用字符串注解
+"app/memory/cooccur.py" = ["F821"]  # "sqlite3.Connection" 前向引用字符串注解
+"app/memory/entity_pair.py" = ["F821"]  # "sqlite3.Connection" 前向引用字符串注解
+"app/memory/hyperedge.py" = ["F821"]  # "sqlite3.Connection" 前向引用字符串注解
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

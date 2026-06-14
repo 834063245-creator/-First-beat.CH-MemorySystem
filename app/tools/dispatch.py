@@ -161,9 +161,7 @@ def query_memory(collection, query: str = "", from_date: str = "", to_date: str 
     has_time = bool(from_date or to_date)
 
     # filters 兜底
-    if not filters or not isinstance(filters, dict):
-        filters = None
-    elif not any(v is not None for v in filters.values()):
+    if not filters or not isinstance(filters, dict) or not any(v is not None for v in filters.values()):
         filters = None
     has_filters = filters is not None
 
@@ -662,7 +660,7 @@ def query_explore(mode: str = "timeline", _collection=None, **kwargs) -> str:
         mid = kwargs.get("memory_id", ""); tk = kwargs.get("top_k", 5)
         from app.memory.cooccur import CoOccurrenceTracker
         co = CoOccurrenceTracker(); related = co.get_co_with(mid)
-        if not related: return f"未找到共现关系"
+        if not related: return "未找到共现关系"
         pids = [r["id"] for r in related[:tk]]
         r2 = coll.get(ids=pids, include=["metadatas"])
         lines = []

@@ -10,7 +10,7 @@ class UserContextManager:
     """按用户懒初始化 AppContext，管理生命周期。"""
 
     def __init__(self):
-        self._contexts: dict[str, "AppContext"] = {}
+        self._contexts: dict[str, AppContext] = {}
         self._lock = threading.Lock()
 
     def get_context(self, user_id: str, data_dir: str) -> "AppContext":

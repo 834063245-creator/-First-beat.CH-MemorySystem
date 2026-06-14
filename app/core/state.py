@@ -61,10 +61,10 @@ class MemoryDirective:
     certainty: float = 0.0
 
     # 情绪上下文（可选），注入时写作一句话而非标签
-    emotional_context: Optional[str] = None
+    emotional_context: str | None = None
 
     # 时间信息（可选），注入时写作 "昨天下午" 而非时间戳
-    time_hint: Optional[str] = None
+    time_hint: str | None = None
 
     # 认知来源——这条记忆是怎么被想起来的，用于 prompt 分维度展示
     source: str = "semantic"
@@ -114,13 +114,13 @@ class CognitiveState:
     suppressed_ids: set[str] = dataclasses.field(default_factory=set)
 
     # 冲动信号
-    impulse: Optional[ImpulseDirective] = None
+    impulse: ImpulseDirective | None = None
 
     # 引擎对用户的状态判断
-    user_mood: Optional[str] = None  # "positive" / "negative" / "neutral"
+    user_mood: str | None = None  # "positive" / "negative" / "neutral"
 
     # 情境情感态 — 引擎对当前对话气氛的判断
-    affective_context: Optional[str] = None
+    affective_context: str | None = None
     # "intimate" / "focused_work" / "casual_chat" / "conflict"
 
     # 今日话题（引擎从今日记忆中提取）
@@ -133,7 +133,7 @@ class CognitiveState:
     # (tag, 旧版本摘要, 新版本摘要)
 
     # 行为预测（引擎对用户下一步行为的预判）
-    mirror_prediction: Optional[dict] = None
+    mirror_prediction: dict | None = None
     # {"next_intent": "recall", "shift_topics": ["话题A", "话题B"]} 或 None
 
     # 人格画像中与当前轮次相关的条目（str 或 {"content": str, "type": str}）
@@ -288,18 +288,18 @@ class UtteranceSpec:
     impulses: list = dataclasses.field(default_factory=list)
     # 门控放行的 ImpulseDirective
     gate: GatingDecision = dataclasses.field(default_factory=GatingDecision)
-    timeline_recent: Optional[list] = None
-    session_context: Optional[str] = None
+    timeline_recent: list | None = None
+    session_context: str | None = None
     personality_notes: list = dataclasses.field(default_factory=list)
     personality_notes_ai: list = dataclasses.field(default_factory=list)
     """AI 自我模型的表达习惯描述（source=ai 的人格标签）。"""
-    mirror_prediction: Optional[dict] = None
+    mirror_prediction: dict | None = None
     emotional_reversals: list[dict] = dataclasses.field(default_factory=list)
     topic_notes: list[dict] = dataclasses.field(default_factory=list)
-    relationship: Optional[RelationshipState] = None
+    relationship: RelationshipState | None = None
     stale_context: list = dataclasses.field(default_factory=list)
     """v2.1: 被取代但保留为背景参考的记忆（stale=True 但不屏蔽）"""
-    woven_context: Optional["WovenContext"] = None
+    woven_context: WovenContext | None = None
     # Phase 2: 画像系统 — 常驻注入 prompt
     portrait_stable: str = ""
     """渲染后的稳定画像 (8维度)，注入 message[0] system prompt (可缓存)"""

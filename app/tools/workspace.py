@@ -19,7 +19,7 @@ def read_file(path: str) -> str:
     """读取文件内容。"""
     resolved = _resolve_path(path)
     try:
-        with open(resolved, "r", encoding="utf-8") as f:
+        with open(resolved, encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
         return f"文件不存在: {path}"
@@ -27,7 +27,7 @@ def read_file(path: str) -> str:
         return f"没有读取权限: {path}"
     except UnicodeDecodeError:
         try:
-            with open(resolved, "r", encoding="gbk") as f:
+            with open(resolved, encoding="gbk") as f:
                 return f.read()
         except Exception as exc:
             return f"文件编码错误: {exc}"
@@ -51,7 +51,7 @@ def edit_file(path: str, old_str: str, new_str: str) -> str:
     """精确字符串替换——在文件中找到 old_str 并替换为 new_str。"""
     resolved = _resolve_path(path)
     try:
-        with open(resolved, "r", encoding="utf-8") as f:
+        with open(resolved, encoding="utf-8") as f:
             content = f.read()
     except FileNotFoundError:
         return f"文件不存在: {path}"
@@ -113,7 +113,7 @@ def grep_files(pattern: str, glob_pattern: str = "**/*.py") -> str:
             break
         full = os.path.join(_PROJECT_ROOT, fpath)
         try:
-            with open(full, "r", encoding="utf-8", errors="ignore") as f:
+            with open(full, encoding="utf-8", errors="ignore") as f:
                 for lineno, line in enumerate(f, 1):
                     if regex.search(line):
                         results.append(f"{fpath}:{lineno}: {line.strip()[:200]}")

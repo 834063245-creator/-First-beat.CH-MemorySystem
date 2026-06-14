@@ -3,9 +3,9 @@
 > 10 路并行检索 · 12 维认知画像 · 5 源泊松冲动 · 3 层存储架构 · 引擎自主节律 · 填 Key 就跑
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-1098%20passed%2C%200%20failed-green.svg)]()
-[![Coverage](https://img.shields.io/badge/line%20coverage-80%25-brightgreen.svg)]()
+[![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
+[![CI](https://github.com/834063245-creator/-First-beat.CH-MemorySystem/actions/workflows/ci.yml/badge.svg)](https://github.com/834063245-creator/-First-beat.CH-MemorySystem/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-pytest--cov-brightgreen.svg)]()
 [![E2E](https://img.shields.io/badge/E2E%2BInt-163%20nodes%20%E2%9C%93-brightgreen.svg)]()
 [English](README_EN.md)
 

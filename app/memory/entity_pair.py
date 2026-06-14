@@ -31,7 +31,7 @@ class EntityPairTracker:
 
     def __init__(self, file_path: str = _ENTITY_PAIR_FILE):
         self._file = file_path  # 公开，向后兼容（E2E 测试引用）
-        self._conn: "sqlite3.Connection | None" = None
+        self._conn: sqlite3.Connection | None = None
         self._init_db()
 
     def _init_db(self):
@@ -64,7 +64,7 @@ class EntityPairTracker:
 
         logger.info("实体对迁移 JSON → SQLite: %s", json_path)
         try:
-            with open(json_path, "r", encoding="utf-8") as f:
+            with open(json_path, encoding="utf-8") as f:
                 data = _json.load(f)
         except Exception:
             return

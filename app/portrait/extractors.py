@@ -28,7 +28,7 @@ def extract_keywords(text: str, topk: int = 10) -> list[str]:
         return []
 
 
-def recency_score(ts: float, now: Optional[float] = None) -> float:
+def recency_score(ts: float, now: float | None = None) -> float:
     """计算时间戳的新近度分数 [0, 1]。
 
     从 app/background/distill.py._recency_score 迁移。

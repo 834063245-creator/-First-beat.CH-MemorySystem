@@ -41,7 +41,7 @@ class TestChatHistory:
             records = h.get_recent(10)
             assert len(records) <= 10
             # 应该是最新的 10 条
-            assert any(f"msg19" in str(r) for r in records)
+            assert any("msg19" in str(r) for r in records)
 
     def test_delete_by_timestamp(self, history):
         history.append("msg1", "r1", "2025-06-01 10:00:00")

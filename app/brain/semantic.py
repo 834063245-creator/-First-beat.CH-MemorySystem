@@ -127,8 +127,8 @@ _EMOTION_PROTOTYPES = {
 # 惰性原型 embedding 缓存
 # ═════════════════════════════════════════════════════════════
 
-_INTENT_PROTO: Optional[dict[str, np.ndarray]] = None
-_EMOTION_PROTO: Optional[dict[str, np.ndarray]] = None
+_INTENT_PROTO: dict[str, np.ndarray] | None = None
+_EMOTION_PROTO: dict[str, np.ndarray] | None = None
 _PROTO_LOCK = threading.Lock()
 
 
@@ -270,7 +270,7 @@ def extract_tags(text: str, topk: int = 5) -> list[str]:
     return result[:topk]
 
 
-def classify_intent(text: str, embedding: Optional[List[float]] = None) -> str:
+def classify_intent(text: str, embedding: list[float] | None = None) -> str:
     """意图分类 — embedding 原型匹配。
 
     返回: recall | emotional_sharing | conflict | ask_fact | request | meta | casual
@@ -301,7 +301,7 @@ def classify_intent(text: str, embedding: Optional[List[float]] = None) -> str:
     return best_label
 
 
-def analyze_emotion(text: str, embedding: Optional[List[float]] = None) -> str:
+def analyze_emotion(text: str, embedding: list[float] | None = None) -> str:
     """情绪分析 — embedding 原型匹配。
 
     返回: intimate | positive | negative | frustrated | neutral

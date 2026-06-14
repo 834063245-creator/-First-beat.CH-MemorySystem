@@ -170,7 +170,7 @@ class TopicTree:
     def _load(self):
         try:
             if os.path.exists(self._path):
-                with open(self._path, "r", encoding="utf-8") as f:
+                with open(self._path, encoding="utf-8") as f:
                     data = json.load(f)
                 self._tree = data.get("tree", {"name": "root", "children": []})
                 self._tag_to_branch = data.get("tag_to_branch", {})

@@ -7,6 +7,7 @@ import threading
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.deps import AppContext, get_user_context
+from app.config.settings import CONTEXT_ROUNDS
 from app.brain.semantic import extract_tags
 
 logger = logging.getLogger(__name__)

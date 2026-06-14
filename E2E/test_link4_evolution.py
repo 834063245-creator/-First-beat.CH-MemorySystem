@@ -335,7 +335,7 @@ class TestM4TagEmbeddingIndex:
             f"tag_embeddings.json 应存在: {tag_embed_path}"
         )
 
-        with open(tag_embed_path, "r", encoding="utf-8") as f:
+        with open(tag_embed_path, encoding="utf-8") as f:
             data = json.load(f)
 
         embeddings = data.get("embeddings", {})
@@ -584,7 +584,7 @@ class TestM9PersonalitySymmetry:
             f"blind_spots.json 应存在: {blind_spots_path}"
         )
 
-        with open(blind_spots_path, "r", encoding="utf-8") as f:
+        with open(blind_spots_path, encoding="utf-8") as f:
             blind_data = json.load(f)
 
         observations = blind_data.get("observations", [])
@@ -715,7 +715,7 @@ class TestM11TopicNotes:
 
         assert os.path.exists(notes_path), f"topic_notes.json 应存在: {notes_path}"
 
-        with open(notes_path, "r", encoding="utf-8") as f:
+        with open(notes_path, encoding="utf-8") as f:
             notes = json.load(f)
 
         assert len(notes) > 0, "应至少有一个话题笔记"
@@ -727,9 +727,9 @@ class TestM11TopicNotes:
         assert note["memory_count"] >= 5, (
             f"笔记记忆数应 ≥ 5，实际 {note['memory_count']}"
         )
-        assert "time_range" in note, f"笔记缺少 time_range"
-        assert "top_keywords" in note, f"笔记缺少 top_keywords"
-        assert "dominant_valence" in note, f"笔记缺少 dominant_valence"
+        assert "time_range" in note, "笔记缺少 time_range"
+        assert "top_keywords" in note, "笔记缺少 top_keywords"
+        assert "dominant_valence" in note, "笔记缺少 dominant_valence"
 
 
 # ═══════════════════════════════════════════════════════════════════

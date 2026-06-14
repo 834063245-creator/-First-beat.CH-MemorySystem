@@ -113,7 +113,7 @@ class TestIntConsolidation:
         state_path = dmn._state_path
         assert os.path.exists(state_path), f"状态文件应存在: {state_path}"
         import json
-        with open(state_path, "r", encoding="utf-8") as f:
+        with open(state_path, encoding="utf-8") as f:
             state = json.load(f)
         assert isinstance(state, dict), "状态文件应为 JSON 字典"
         assert len(state) >= 1, "状态文件不应为空"

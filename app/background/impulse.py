@@ -41,7 +41,7 @@ def _load_state(state_path: str) -> dict:
     if not os.path.exists(path):
         return _default_state()
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         merged = _default_state()
         merged.update(data)
@@ -145,7 +145,7 @@ def source_emotion_trend(chroma_service, all_mems=None) -> tuple | None:
             excerpt = _pick_content(emotional, min_score=1)
             if excerpt:
                 return (excerpt, 50)
-            return (f"今天的对话里，用户情绪起伏比平时明显", 50)
+            return ("今天的对话里，用户情绪起伏比平时明显", 50)
         elif len(today_mems) >= 5 and ratio < 0.15:
             # 异常平静时，挑一条今天的内容
             excerpt = _pick_content(today_mems)

@@ -123,7 +123,7 @@ class PersonaSymmetry:
         try:
             if not os.path.exists(path):
                 return {}
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 return json.load(f)
         except (json.JSONDecodeError, OSError) as exc:
             logger.debug("人格对称性: 无法加载 %s: %s", path, exc)

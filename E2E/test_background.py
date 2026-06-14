@@ -510,7 +510,7 @@ class TestPatternDiscovery:
         )
 
         # 读取并验证结构
-        with open(cache_path, "r", encoding="utf-8") as f:
+        with open(cache_path, encoding="utf-8") as f:
             data = json.load(f)
 
         assert "version" in data, f"缓存缺少 version 字段: {list(data.keys())}"

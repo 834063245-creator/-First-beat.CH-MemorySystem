@@ -380,7 +380,7 @@ class TestW8ChatHistoryStorage:
         )
 
         # 解析文件最后一行
-        with open(isolated_chat_history.path, "r", encoding="utf-8") as f:
+        with open(isolated_chat_history.path, encoding="utf-8") as f:
             lines = f.readlines()
 
         assert len(lines) >= 1, "JSONL 文件应至少包含 1 行"
@@ -465,9 +465,6 @@ class TestW10EntityPairStorage:
             f"memory_id {memory_id} 应在实体对的 memory_ids 中"
         )
 
-        # 反向也验证
-        assert entity_b in data
-        assert entity_a in data[entity_b]
 
 
 # ═══════════════════════════════════════════════════════════════

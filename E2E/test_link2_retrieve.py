@@ -611,7 +611,7 @@ class TestR14_RecencyWeight:
         for mem in memories:
             meta = mem.get("metadata", {})
             assert "recency_weight" in mem or _BM, \
-                f"记忆应包含 recency_weight 字段（BM 模式除外）"
+                "记忆应包含 recency_weight 字段（BM 模式除外）"
 
 
 # ═══════════════════════════════════════════════════════════════════

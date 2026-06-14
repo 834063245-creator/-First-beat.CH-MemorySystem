@@ -341,7 +341,7 @@ class TestFullPipelineRecall:
 
         for m in memories:
             assert "score" in m, f"记忆 {m.get('id','')} 缺少 score"
-            assert isinstance(m["score"], (int, float)), f"score 应为数值"
+            assert isinstance(m["score"], (int, float)), "score 应为数值"
 
     def test_multi_source_recall(self, pipeline_ctx, embed_fn):
         """recall 意图下应产出多条记忆（不限通路来源）。"""

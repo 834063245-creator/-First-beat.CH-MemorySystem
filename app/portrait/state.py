@@ -36,8 +36,8 @@ class PortraitEntry:
     confidence: float = 1.0
     status: EntryStatus = EntryStatus.ACTIVE
     evidence_count: int = 0
-    first_observed: Optional[str] = None       # ISO date
-    last_observed: Optional[str] = None        # ISO date
+    first_observed: str | None = None       # ISO date
+    last_observed: str | None = None        # ISO date
 
     @property
     def days_since_last_observed(self) -> float:
@@ -68,9 +68,7 @@ class EntryStateMachine:
         """根据距上次观察时间更新状态。"""
         days = entry.days_since_last_observed
 
-        if days > EntryStateMachine.DELETE_THRESHOLD_DAYS:
-            entry.status = EntryStatus.DECAYED
-        elif days > EntryStateMachine.DECAY_THRESHOLD_DAYS:
+        if days > EntryStateMachine.DELETE_THRESHOLD_DAYS or days > EntryStateMachine.DECAY_THRESHOLD_DAYS:
             entry.status = EntryStatus.DECAYED
         elif days > EntryStateMachine.COOLING_THRESHOLD_DAYS:
             entry.status = EntryStatus.COOLING

@@ -53,7 +53,7 @@ class TestBottleneck:
                 bn.record("step3", 50.0)
                 # step2 超过阈值触发了 _dump
                 assert os.path.exists(log_path)
-                with open(log_path, "r", encoding="utf-8") as f:
+                with open(log_path, encoding="utf-8") as f:
                     content = f.read()
                 assert "卡顿捕获" in content
                 assert "step2" in content

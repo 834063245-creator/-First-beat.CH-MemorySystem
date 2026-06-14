@@ -169,7 +169,7 @@ class PortraitWriter:
     # ── 提取辅助 ──────────────────────────────────────────
 
     @staticmethod
-    def _extract_emotion_from_text(text: str) -> Optional[str]:
+    def _extract_emotion_from_text(text: str) -> str | None:
         """从条目标题中提取情绪值。
 
         匹配格式: **情绪**: xxx
@@ -499,7 +499,7 @@ class PortraitWriter:
                 )
 
     @staticmethod
-    def _call_local_llm(prompt: str, timeout: int = 30) -> Optional[str]:
+    def _call_local_llm(prompt: str, timeout: int = 30) -> str | None:
         """调用本地小模型（qwen2.5:7b / Ollama）进行文本合成。
 
         失败时返回 None，调用方应优雅降级（跳过本次更新）。

@@ -63,7 +63,7 @@ def _load_state(state_path: str) -> dict:
     if not os.path.exists(path):
         return _default_state()
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         # 确保所有字段存在
         merged = _default_state()
@@ -973,7 +973,7 @@ class ConsolidationEngine:
         if not os.path.exists(notes_path):
             return {}
         try:
-            with open(notes_path, "r", encoding="utf-8") as f:
+            with open(notes_path, encoding="utf-8") as f:
                 return json.load(f)
         except (json.JSONDecodeError, OSError):
             return {}

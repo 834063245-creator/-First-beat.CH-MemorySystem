@@ -14,7 +14,7 @@ class TestLogErrorReport:
             log_error_report("mem_001", "内容不准确", "用户反馈", data_dir=td)
             path = os.path.join(td, "error_reports.jsonl")
             assert os.path.exists(path)
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 lines = [line for line in f if line.strip()]
             assert len(lines) == 1
             record = json.loads(lines[0])
@@ -28,7 +28,7 @@ class TestLogErrorReport:
             log_error_report("mem_001", "错误1", "user", data_dir=td)
             log_error_report("mem_002", "错误2", "system", data_dir=td)
             path = os.path.join(td, "error_reports.jsonl")
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 lines = [line for line in f if line.strip()]
             assert len(lines) == 2
             assert json.loads(lines[0])["memory_id"] == "mem_001"
@@ -44,7 +44,7 @@ class TestClearMemoryErrors:
             result = clear_memory_errors("mem_001", data_dir=td)
             assert result == 0
             path = os.path.join(td, "error_reports.jsonl")
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 lines = [line for line in f if line.strip()]
             assert len(lines) == 2
             clear_record = json.loads(lines[1])

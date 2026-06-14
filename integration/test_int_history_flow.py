@@ -42,7 +42,7 @@ class TestIntHistoryFlow:
 
         history_path = os.path.join(ctx.data_dir, "chat_history.jsonl")
         assert os.path.exists(history_path), "chat_history.jsonl 应存在"
-        with open(history_path, "r", encoding="utf-8") as f:
+        with open(history_path, encoding="utf-8") as f:
             lines = f.readlines()
         assert len(lines) >= 1, f"JSONL 应至少 1 行，实际 {len(lines)}"
 

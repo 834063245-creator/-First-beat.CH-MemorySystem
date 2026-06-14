@@ -28,7 +28,7 @@ class CoOccurrenceTracker:
 
     def __init__(self, file_path: str = _CO_OCCURRENCE_FILE):
         self._file_path = file_path
-        self._conn: "sqlite3.Connection | None" = None
+        self._conn: sqlite3.Connection | None = None
         self._ltd_lock = threading.Lock()
         self._ltd_counter = 0
         self._init_db()
@@ -66,7 +66,7 @@ class CoOccurrenceTracker:
         logger.info("共现记录迁移 JSON → SQLite: %s", json_path)
         try:
             import json as _json
-            with open(json_path, "r", encoding="utf-8") as f:
+            with open(json_path, encoding="utf-8") as f:
                 data = _json.load(f)
         except Exception:
             return

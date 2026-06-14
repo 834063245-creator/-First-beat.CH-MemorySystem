@@ -10,15 +10,18 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
 
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 安装 Python
+      - name: 安装 Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           cache: pip
 
       - name: 安装依赖
@@ -26,11 +29,31 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: 单元测试
-        run: python -m pytest tests/ -q --tb=short
+      - name: ruff 静态检查
+        run: python -m ruff check
 
       - name: 约定检查
         run: python scripts/check_conventions.py
+
+      - name: 单元测试 + 覆盖率
+        run: |
+          python -m pytest tests/ -q --tb=short \
+            --cov=app \
+            --cov-report=term-missing \
+            --cov-report=html \
+            --cov-report=xml
+
+      - name: 上传覆盖率 HTML
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html-py${{ matrix.python-version }}
+          path: htmlcov/
+
+      - name: 上传覆盖率 XML
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml-py${{ matrix.python-version }}
+          path: coverage.xml
 
       - name: 快速审计
         run: python scripts/audit.py --quick

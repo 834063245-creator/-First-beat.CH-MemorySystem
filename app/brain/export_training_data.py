@@ -3,7 +3,10 @@
 用法: python -m app.brain.export_training_data
 输出: app/brain/training_data.jsonl
 """
-import sys, os, json, logging
+import sys
+import os
+import json
+import logging
 from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -60,7 +63,7 @@ def main():
     for hp in history_paths:
         if not os.path.exists(hp):
             continue
-        with open(hp, "r", encoding="utf-8") as f:
+        with open(hp, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:

@@ -62,7 +62,8 @@ class TestContradictionDetection:
         """同话题分支 + 情绪翻转 → 应被标记。"""
         from app.background.consolidation import ConsolidationEngine
         from app.memory.chroma import ChromaService
-        import tempfile, os
+        import tempfile
+        import os
 
         mock_time.time.return_value = 1_000_000_000.0  # 冻结时间
 

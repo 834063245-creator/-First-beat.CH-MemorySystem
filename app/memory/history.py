@@ -30,7 +30,7 @@ class ChatHistory:
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
             return
         deleted_ts: set[str] = set()
-        with open(self.path, "r", encoding="utf-8") as f:
+        with open(self.path, encoding="utf-8") as f:
             all_lines = f.readlines()
             # 扫描全文件收集删除标记
             for line in all_lines:

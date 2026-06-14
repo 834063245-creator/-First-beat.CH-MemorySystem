@@ -170,7 +170,7 @@ class PortraitManager:
         """从磁盘加载 PORTRAIT.md 并解析条目。"""
         with self._lock:
             try:
-                with open(self._path, "r", encoding="utf-8") as f:
+                with open(self._path, encoding="utf-8") as f:
                     raw = f.read()
                 self._parse(raw)
             except (OSError, json.JSONDecodeError) as exc:
@@ -374,7 +374,7 @@ class PortraitManager:
 
     # ── 条目 CRUD ────────────────────────────────────────
 
-    def get_entry(self, entry_id: str) -> Optional[PortraitEntry]:
+    def get_entry(self, entry_id: str) -> PortraitEntry | None:
         """按 ID 获取条目。"""
         return self._entries.get(entry_id)
 

@@ -32,7 +32,7 @@ _USERS = json.loads(os.getenv("USERS", '{"admin":"admin"}'))
 def _load_auth_tokens():
     if os.path.exists(_AUTH_TOKEN_PATH):
         try:
-            with open(_AUTH_TOKEN_PATH, "r") as f:
+            with open(_AUTH_TOKEN_PATH) as f:
                 return json.load(f)
         except (json.JSONDecodeError, OSError):
             pass
@@ -94,7 +94,6 @@ def api_user_list():
 @router.post("/api/user/switch")
 def api_user_switch(user: str):
     """切换当前用户（写入 cookie，前端配合刷新）。"""
-    from fastapi.responses import JSONResponse
     resp = JSONResponse({"ok": True, "user": user})
     resp.set_cookie(key="chuhen_user", value=user, path="/")
     return resp
@@ -123,7 +122,7 @@ def api_get_prompt():
     project_dir = os.path.join(os.path.dirname(__file__), "..", "..")
     path = os.path.join(project_dir, prompt_file)
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return {"content": f.read()}
     except FileNotFoundError:
         return {"content": ""}

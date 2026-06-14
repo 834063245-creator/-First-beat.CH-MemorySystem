@@ -326,7 +326,7 @@ class PatternDiscovery:
 
         try:
             entries = []
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if line:
@@ -381,7 +381,7 @@ class PatternDiscovery:
             hist = []
             if os.path.exists(self._cache_path):
                 try:
-                    with open(self._cache_path, "r", encoding="utf-8") as f:
+                    with open(self._cache_path, encoding="utf-8") as f:
                         old = json.load(f)
                         hist = old.get("trajectory", [])
                 except (json.JSONDecodeError, OSError):
@@ -408,7 +408,7 @@ class PatternDiscovery:
         """从磁盘加载缓存（启动时恢复）。兼容 v1/v2/v3。"""
         try:
             if os.path.exists(self._cache_path):
-                with open(self._cache_path, "r", encoding="utf-8") as f:
+                with open(self._cache_path, encoding="utf-8") as f:
                     data = json.load(f)
                 ver = data.get("version", 1)
                 self._observations = data.get("observations", [])
@@ -439,7 +439,7 @@ class PatternDiscovery:
         try:
             hist = []
             if os.path.exists(self._cache_path):
-                with open(self._cache_path, "r", encoding="utf-8") as f:
+                with open(self._cache_path, encoding="utf-8") as f:
                     data = json.load(f)
                     hist = data.get("trajectory", [])
             if len(hist) < 4:

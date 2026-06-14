@@ -115,7 +115,7 @@ def _is_ollama_available() -> bool:
         return False
 
 
-def _get_embedding(text: str) -> Optional[list[float]]:
+def _get_embedding(text: str) -> list[float] | None:
     from app.llm.embed import local_embed
     return local_embed(text)
 
@@ -387,7 +387,7 @@ def test_portrait_consistency(sample_n: int = 3) -> dict:
                 )
                 if matched:
                     evidence_hits += 1
-            checks.append({"check": f"portrait entry evidence (tags match memories)",
+            checks.append({"check": "portrait entry evidence (tags match memories)",
                            "pass": evidence_hits >= max(1, len(sample) // 2),
                            "detail": f"{evidence_hits}/{len(sample)} entries have tag evidence in ChromaDB"})
         else:

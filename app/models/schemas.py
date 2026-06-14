@@ -22,15 +22,15 @@ class TraceItem(BaseModel):
 
 class DebugInfo(BaseModel):
     retrieved_count: int = 0
-    retrieved_ids: List[str] = []
-    hit_counts: List[int] = []
+    retrieved_ids: list[str] = []
+    hit_counts: list[int] = []
 
 
 class ChatResponse(BaseModel):
     response: str
-    debug: Optional[DebugInfo] = None
-    trace: Optional[List[TraceItem]] = None
-    debug_info: Optional[dict] = None
+    debug: DebugInfo | None = None
+    trace: list[TraceItem] | None = None
+    debug_info: dict | None = None
 
 
 from dataclasses import dataclass, field

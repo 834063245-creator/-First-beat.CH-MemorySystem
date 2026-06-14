@@ -46,7 +46,7 @@ import functools
 def load_system_prompt() -> str:
     """读取系统 prompt 文件，结果缓存避免每次对话重复磁盘 I/O。"""
     try:
-        with open(_PROMPT_PATH, "r", encoding="utf-8") as f:
+        with open(_PROMPT_PATH, encoding="utf-8") as f:
             return f.read().strip()
     except (FileNotFoundError, OSError) as exc:
         logger.warning("系统 prompt 文件缺失: %s (%s)", _PROMPT_PATH, exc)
@@ -92,7 +92,7 @@ _CORE_RULES = (
 # ===================================================================
 
 # ── 共享 httpx 客户端单例（避免多个 AppContext 耗尽文件句柄）──
-_shared_async_client: Optional[httpx.AsyncClient] = None
+_shared_async_client: httpx.AsyncClient | None = None
 _shared_async_client_lock = threading.Lock()
 
 
@@ -118,7 +118,7 @@ class LLMClient:
         self.model = LLM_MODEL
         self._client = _get_shared_async_client()
         self._own_client = False  # 标记非自有，close 时不关闭共享实例
-        self._pattern_discovery: Optional["PatternDiscovery"] = None
+        self._pattern_discovery: PatternDiscovery | None = None
 
     def set_pattern_discovery(self, pd: "PatternDiscovery"):
         self._pattern_discovery = pd
@@ -142,11 +142,12 @@ class LLMClient:
 
         # 人格对称性观察（盲区检测，由 consolidate_shallow 写入）
         try:
-            import os, json
+            import os
+            import json
             cache_dir = os.path.dirname(self._pattern_discovery._cache_path)
             blind_spots_path = os.path.join(cache_dir, "blind_spots.json")
             if os.path.exists(blind_spots_path):
-                with open(blind_spots_path, "r", encoding="utf-8") as f:
+                with open(blind_spots_path, encoding="utf-8") as f:
                     data = json.load(f)
                 obs.extend(data.get("observations", []))
         except Exception:
@@ -187,15 +188,15 @@ class LLMClient:
     async def generate(
         self,
         user_message: str,
-        memories: Optional[List[dict]] = None,
+        memories: list[dict] | None = None,
         *,
         cognitive_state: Optional["UtteranceSpec"] = None,
-        tools: Optional[List[dict]] = None,
-        extra_messages: Optional[List[dict]] = None,
+        tools: list[dict] | None = None,
+        extra_messages: list[dict] | None = None,
         max_tokens: int = 32768,
-        personalities: Optional[List[str]] = None,
-        timeline_recent: Optional[List[dict]] = None,
-        session_context: Optional[str] = None,
+        personalities: list[str] | None = None,
+        timeline_recent: list[dict] | None = None,
+        session_context: str | None = None,
     ) -> dict:
         """生成回答，支持工具调用和追加消息。"""
         if cognitive_state is not None:
@@ -361,14 +362,14 @@ class LLMClient:
     async def generate_stream(
         self,
         user_message: str,
-        memories: Optional[List[dict]] = None,
+        memories: list[dict] | None = None,
         *,
         cognitive_state: Optional["UtteranceSpec"] = None,
-        extra_messages: Optional[List[dict]] = None,
-        personalities: Optional[List[str]] = None,
-        timeline_recent: Optional[List[dict]] = None,
-        session_context: Optional[str] = None,
-        tools: Optional[List[dict]] = None,
+        extra_messages: list[dict] | None = None,
+        personalities: list[str] | None = None,
+        timeline_recent: list[dict] | None = None,
+        session_context: str | None = None,
+        tools: list[dict] | None = None,
         max_tokens: int = 32768,
     ):
         """流式生成，逐个 token 产出。支持追加消息和工具调用。"""
@@ -584,10 +585,10 @@ class LLMClient:
 
     @staticmethod
     def _build_prompt(
-            memories: List[dict],
-            personalities: Optional[List[str]] = None,
-            timeline_recent: Optional[List[dict]] = None,
-            session_context: Optional[str] = None,
+            memories: list[dict],
+            personalities: list[str] | None = None,
+            timeline_recent: list[dict] | None = None,
+            session_context: str | None = None,
         ) -> str:
             system_prompt = load_system_prompt()
             sections = [system_prompt]
@@ -727,7 +728,7 @@ class LLMClient:
     @staticmethod
     def _build_stable_system_prompt(
         cognitive_state: "UtteranceSpec",
-        session_context: Optional[str] = None,
+        session_context: str | None = None,
     ) -> str:
         """构建缓存稳定的 system prompt（不含每次变化的记忆内容）。
 

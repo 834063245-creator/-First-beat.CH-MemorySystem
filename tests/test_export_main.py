@@ -55,7 +55,7 @@ class TestExportMain:
 
             # 验证输出文件存在且有内容
             assert os.path.exists(output_file), f"输出文件未生成: {output_file}"
-            with open(output_file, "r", encoding="utf-8") as f:
+            with open(output_file, encoding="utf-8") as f:
                 lines = [line for line in f if line.strip()]
 
             # 4 条有效消息（"ab" 被跳过）

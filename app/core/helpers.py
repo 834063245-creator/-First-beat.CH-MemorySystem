@@ -125,7 +125,7 @@ def load_recent_reversals(data_dir: str = DATA_DIR) -> list[dict]:
         try:
             if not os.path.exists(path):
                 return results
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if not line:

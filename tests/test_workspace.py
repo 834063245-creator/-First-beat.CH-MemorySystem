@@ -53,7 +53,7 @@ class TestWriteFile:
             fpath = os.path.join(td, "test.txt")
             result = write_file(fpath, "hello")
             assert "已写入" in result
-            with open(fpath, "r", encoding="utf-8") as f:
+            with open(fpath, encoding="utf-8") as f:
                 assert f.read() == "hello"
 
     def test_creates_parent_dirs(self):

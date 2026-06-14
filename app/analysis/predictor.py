@@ -88,7 +88,7 @@ class BehaviorPredictor:
     # ── 推理（多步预测）──────────────────────────────────────
 
     def predict(self, current_intent: str, current_topics: list[str],
-                recent_intents: Optional[list[str]] = None) -> dict:
+                recent_intents: list[str] | None = None) -> dict:
         """根据当前 intent + 近几轮意图序列，预测后续 1-3 步。
 
         返回::
@@ -154,7 +154,7 @@ class BehaviorPredictor:
     def _load(self):
         try:
             if os.path.exists(self._path):
-                with open(self._path, "r", encoding="utf-8") as f:
+                with open(self._path, encoding="utf-8") as f:
                     data = json.load(f)
                 merged = _default_table()
                 merged.update(data)
