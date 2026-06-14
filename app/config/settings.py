@@ -197,6 +197,11 @@ CO_OCCURRENCE_FILE = os.path.join(DATA_DIR, "co_occurrence.db")
 STORE_FAILURES_PATH = os.path.join(DATA_DIR, "store_failures.jsonl")
 
 # ============================================================
+# 偏移率追踪 (Drift Velocity) — Part A
+# ============================================================
+DRIFT_DECISION_LOG = os.path.join(DATA_DIR, "drift_decisions.jsonl")
+
+# ============================================================
 # Debug 模式
 # ============================================================
 DEBUG_INCLUDE_PROMPT = os.getenv("DEBUG_INCLUDE_PROMPT", "false").lower() == "true"

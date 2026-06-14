@@ -32,6 +32,7 @@ from app.config.settings import (                  # noqa: E402
     WORK_MEMORY_TOKEN_BUDGET, USER_DATA_DIRS,
     BENCHMARK_MODE,
     PORTRAIT_FILE_PATH,
+    DRIFT_DECISION_LOG,
     STOP_WORDS as _STOP_WORDS,
 )
 from app.memory.chroma import ChromaService
@@ -167,6 +168,14 @@ class AppContext:
             temporal_pattern_index=self.temporal_pattern_index,
         )
         self.mirror_neuron = BehaviorPredictor(data_dir=data_dir)
+
+        # Part A: 偏移率追踪
+        from app.analysis.drift import DriftTracker
+        self.drift_tracker = DriftTracker(log_path=DRIFT_DECISION_LOG)
+
+        # Part B: 自我镜像
+        from app.analysis.self_mirror import SelfMirror
+        self.self_mirror = SelfMirror()
 
         # 每个用户的存储队列路径
         self._store_queue_path = f"{data_dir}/store_queue.jsonl"
@@ -701,6 +710,14 @@ class AppContext:
                     ai_future.result(timeout=30)
                 except Exception:
                     pass  # AI 侧失败不影响用户侧
+
+                # Part A: 偏移率检测 (纯规则, <1ms)
+                try:
+                    if hasattr(self, 'drift_tracker') and self.drift_tracker:
+                        self.drift_tracker.detect(user_message)
+                except Exception:
+                    pass
+
                 return
             except Exception as exc:
                 last_exc = exc

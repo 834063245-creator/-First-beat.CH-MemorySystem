@@ -504,6 +504,39 @@ class ChromaService:
         items = _build_items(result)
         return items[:limit]
 
+    def query_by_emotion(
+        self, valence_range: tuple[float, float], limit: int = 20,
+    ) -> list[dict]:
+        """按情绪 valence 范围检索记忆 (Python 侧过滤, AI 记忆库专用)。
+
+        Args:
+            valence_range: (min_valence, max_valence)，含边界
+            limit: 最多返回条数
+
+        Returns:
+            按 valence 接近度排序的记忆列表
+        """
+        all_items = self.list_all()
+        lo, hi = valence_range
+        candidates = []
+        for mem in all_items:
+            meta = mem.get("metadata") or {}
+            mv = meta.get("emotion_valence")
+            if mv is None:
+                continue
+            try:
+                mv = float(mv)
+            except (ValueError, TypeError):
+                continue
+            if lo <= mv <= hi:
+                candidates.append(mem)
+        # 按与范围中心的距离排序
+        center = (lo + hi) / 2
+        candidates.sort(key=lambda m: abs(
+            float((m.get("metadata") or {}).get("emotion_valence", 0)) - center
+        ))
+        return candidates[:limit]
+
     def list_before(self, before_ts: float, limit: int = 500) -> list[dict]:
         """按时间过滤：返回 timestamp < before_ts 的记忆，Server 端过滤。"""
         try:

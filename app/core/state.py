@@ -301,3 +301,11 @@ class UtteranceSpec:
     """渲染后的稳定画像 (8维度)，注入 message[0] system prompt (可缓存)"""
     portrait_dynamic: str = ""
     """渲染后的动态画像 (4维度)，注入 message[N+1] system prompt (每轮更新)"""
+
+    # Part A: 偏移率追踪
+    drift_text: str = ""
+    """偏移状态渲染文本，注入 message[N+1] dynamic system，如 "偏移: frugal(+25%) 连续3轮节省倾向" """
+
+    # Part B: 自我镜像
+    self_mirror_text: str = ""
+    """AI 自我镜像渲染文本，注入 message[N+6] execute_directive 之前"""

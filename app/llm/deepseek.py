@@ -223,6 +223,10 @@ class LLMClient:
         portrait_dynamic = getattr(cognitive_state, "portrait_dynamic", "") or "" if cognitive_state else ""
         if isinstance(portrait_dynamic, str) and portrait_dynamic.strip():
             _dyn_parts.append(portrait_dynamic.strip())
+        # Part A: 偏移率追踪 — 注入动态 system message
+        drift_text = getattr(cognitive_state, "drift_text", None) if cognitive_state else None
+        if isinstance(drift_text, str) and drift_text.strip():
+            _dyn_parts.append(f"【当前偏移】{drift_text}")
         if session_context:
             _dyn_parts.append(session_context)
         _dyn_parts.append(now_hint())
@@ -393,6 +397,10 @@ class LLMClient:
         portrait_dynamic = getattr(cognitive_state, "portrait_dynamic", "") or "" if cognitive_state else ""
         if isinstance(portrait_dynamic, str) and portrait_dynamic.strip():
             _dyn_parts.append(portrait_dynamic.strip())
+        # Part A: 偏移率追踪 — 注入动态 system message
+        drift_text = getattr(cognitive_state, "drift_text", None) if cognitive_state else None
+        if isinstance(drift_text, str) and drift_text.strip():
+            _dyn_parts.append(f"【当前偏移】{drift_text}")
         if session_context:
             _dyn_parts.append(session_context)
         _dyn_parts.append(now_hint())
@@ -776,6 +784,12 @@ class LLMClient:
     def _build_execute_directive(cognitive_state: "UtteranceSpec") -> str:
         """引擎执行指令，独立于记忆内容。"""
         parts = []
+
+        # Part B: 自我镜像 — 在执行指令之前注入
+        self_mirror_text = getattr(cognitive_state, "self_mirror_text", None)
+        if isinstance(self_mirror_text, str) and self_mirror_text.strip():
+            parts.append(self_mirror_text)
+
         pf = cognitive_state.user
         gate = cognitive_state.gate
         if pf.raw_text:

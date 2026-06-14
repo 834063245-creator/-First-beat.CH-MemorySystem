@@ -396,6 +396,51 @@ class CircuitOrchestrator:
         gate = basal_ganglia_gate(
             prefrontal, fact_memories, impulses, temp.personality_notes, ctx_obj)
 
+        # ── Part A: 偏移率门控调制 ──────────────────────────
+        drift_text = ""
+        try:
+            if ctx_obj is not None and hasattr(ctx_obj, 'drift_tracker') and ctx_obj.drift_tracker:
+                drift = ctx_obj.drift_tracker
+                drift_text = drift.render_for_prompt()
+                # 偏移调制 gate tone
+                if drift.current_direction.startswith("drift") and drift.current_offset < -40:
+                    gate.tone = "不要追问, 不要给方案"
+                    gate.response_mode = "soothe"
+                elif drift.current_direction == "frugal" and drift.consecutive >= 3:
+                    gate.tone = "soft"  # 用户连续省钱倾向, 收敛推销语气
+        except Exception:
+            pass
+
+        # ── Part B: 自我镜像 ─────────────────────────────────
+        self_mirror_text = ""
+        try:
+            if (ctx_obj is not None and hasattr(ctx_obj, 'self_mirror') and ctx_obj.self_mirror
+                    and hasattr(ctx_obj, 'ai_chroma_service') and hasattr(ctx_obj, 'chat_history')):
+                user_emotion = {
+                    "valence": 0.0,
+                    "arousal": 0.0,
+                    "category": prefrontal.emotion if prefrontal.emotion not in ("frustrated",) else "negative",
+                }
+                # 尝试从 emotion 分析中取精确值 (如果已调用过 analyze_emotion_2d)
+                if prefrontal.emotion == "positive":
+                    user_emotion["valence"] = 0.5
+                    user_emotion["arousal"] = 0.5
+                elif prefrontal.emotion in ("negative", "frustrated"):
+                    user_emotion["valence"] = -0.5
+                    user_emotion["arousal"] = 0.6
+                elif prefrontal.emotion == "intimate":
+                    user_emotion["valence"] = 0.4
+                    user_emotion["arousal"] = 0.3
+
+                self_mirror_text = ctx_obj.self_mirror.build_mirror(
+                    user_emotion=user_emotion,
+                    ai_chroma=ctx_obj.ai_chroma_service,
+                    chat_history=ctx_obj.chat_history,
+                    limit=3,
+                )
+        except Exception:
+            pass
+
         _log_step('response_gate')
         # ── 关系维度更新（基于当前轮对话信号） ────────────────────────
         from app.core.state import RelationshipState
@@ -469,6 +514,8 @@ class CircuitOrchestrator:
             woven_context=woven,
             portrait_stable=portrait_stable,
             portrait_dynamic=portrait_dynamic,
+            drift_text=drift_text,
+            self_mirror_text=self_mirror_text,
         )
 
     def weave_context(
