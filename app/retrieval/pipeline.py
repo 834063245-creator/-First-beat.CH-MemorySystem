@@ -172,7 +172,7 @@ def run_chat_retrieval(
         _ticks.append((name, time.perf_counter()))
 
     # ── 意图门控（intent 传递给 retrieve_all 复用） ──
-    _intent = intent if intent else _classify_intent(user_message)
+    _intent = intent if intent is not None else _classify_intent(user_message)
 
     _log_step('intent_gate')
     # ── 时间线近端历史 ──
@@ -345,12 +345,11 @@ def retrieve_all(
     intent: str | None = None,
     cached_tags: list[str] | None = None,
 ) -> list[dict]:
-    """全量检索，6 路独立并行 + 1 路依赖合并后执行。
+    """全量检索，9 路独立并行 + 1 路依赖合并 + 1 路 AI 表达检索。
 
-    原 8 路串行改为 ThreadPoolExecutor 并发：
-      - 6 条独立路径并行跑
+    ThreadPoolExecutor 并发:
+      - 9 条独立路径并行跑（语义/关键词/标签/实体/时间/话题/注意力/BM25/AI表达）
       - 共现扩展依赖其他路的 seen_ids，合并后单独跑
-      - 注意力漂移也在并行池中
 
     Returns: list of dicts, each with:
         id, document, metadata, distance, source, summary, hit_count
@@ -377,6 +376,14 @@ def retrieve_all(
             pool_results.append(results)
 
     def _make_mem(mid, meta, doc, dist, source):
+        # ChromaDB 存 entities 为 JSON 字符串，统一反序列化
+        if meta and isinstance(meta.get("entities"), str):
+            try:
+                meta = dict(meta)
+                meta["entities"] = json.loads(meta["entities"])
+            except (json.JSONDecodeError, TypeError):
+                meta = dict(meta or {})
+                meta["entities"] = []
         return {
             "id": mid, "document": doc or "", "metadata": meta or {},
             "summary": (meta or {}).get("summary", ""),

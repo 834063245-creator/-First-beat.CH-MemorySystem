@@ -48,7 +48,8 @@ def load_system_prompt() -> str:
     try:
         with open(_PROMPT_PATH, "r", encoding="utf-8") as f:
             return f.read().strip()
-    except (FileNotFoundError, OSError):
+    except (FileNotFoundError, OSError) as exc:
+        logger.warning("系统 prompt 文件缺失: %s (%s)", _PROMPT_PATH, exc)
         return ""
 
 

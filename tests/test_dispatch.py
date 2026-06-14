@@ -11,19 +11,17 @@ from unittest.mock import MagicMock, patch
 # ═══════════════════════════════════════════════════════════════
 
 class TestQueryMemory:
-    def test_no_query_no_time_returns_error(self):
+    def test_no_query_no_time_returns_empty(self):
         from app.tools.dispatch import query_memory
         coll = MagicMock()
         result = query_memory(coll, query="", from_date="", to_date="")
-        assert len(result) == 1
-        assert "error" in result[0]
+        assert result == []
 
     def test_query_with_empty_string(self):
         from app.tools.dispatch import query_memory
         coll = MagicMock()
         result = query_memory(coll, query="   ", from_date="", to_date="")
-        assert len(result) == 1
-        assert "error" in result[0]
+        assert result == []
 
     def test_with_query(self):
         from app.tools.dispatch import query_memory

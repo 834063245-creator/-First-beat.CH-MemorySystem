@@ -168,7 +168,8 @@ def query_memory(collection, query: str = "", from_date: str = "", to_date: str 
     has_filters = filters is not None
 
     if not has_query and not has_time and not has_filters:
-        return [{"error": "请提供搜索关键词或时间范围"}]
+        logger.warning("query_memory 无搜索条件，返回空列表")
+        return []
 
     # ── 时间过滤条件 ──
     # ChromaDB query() 不支持 $and（内部崩溃），改用 get() 取 ID 集 + query() 取语义交集

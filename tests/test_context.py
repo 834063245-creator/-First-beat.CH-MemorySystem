@@ -68,7 +68,7 @@ def _make_mocks():
 
     # 后台线程 — 全部 no-op
     bg_methods = ['_start_impulse_consumer', '_start_queue_worker',
-                  '_start_dmn_worker', '_start_consolidation_worker',
+                  '_start_dmn_worker',
                   '_start_ai_consolidation_worker', '_start_impulse_workers']
     for method in bg_methods:
         p = patch(f'app.core.context.AppContext.{method}', return_value=None)

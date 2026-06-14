@@ -265,7 +265,11 @@ class GatingDecision:
 
 @dataclasses.dataclass
 class AiState:
-    """AI 在本次回应中的表达状态（回复后捕获）。"""
+    """AI 在本次回应中的表达状态（回复后捕获）。
+
+    TODO: 当前值始终为默认值，LLM 回复后未回填 AiState。
+    字段已保留供未来路线图使用。
+    """
     emotion: str = "neutral"    # AI 回复的情绪倾向
     tone: str = "warm"          # AI 使用的语气
     formality: float = 0.3      # 正式度 0~1

@@ -188,7 +188,6 @@ class AppContext:
         self._start_impulse_workers()
         if self.dmn:
             self._start_dmn_worker()
-            self._start_consolidation_worker()
         self._start_ai_consolidation_worker()
         # 后台预热 embedding cache（不阻塞启动）
         self.storage_executor.submit(self._prewarm_retrieval)
@@ -463,10 +462,6 @@ class AppContext:
         self._dmn_thread = threading.Thread(target=_worker, daemon=True, name=f"dmn_ticker_{self.data_dir}")
         self._dmn_thread.start()
 
-    # _start_consolidation_worker 已合并到 _start_dmn_worker，保留空方法兼容旧调用
-    def _start_consolidation_worker(self):
-        pass
-
     # ── 入库 ─────────────────────────────────────────────────
 
     def _store_conversation(self, user_message: str, ai_message: str, timestamp: str):
@@ -563,7 +558,9 @@ class AppContext:
                             "year_month": dt.strftime("%Y-%m"),
                             "time_period": period,
                         }
+                        ts_float = dt.timestamp()
                     except (ValueError, OSError):
+                        ts_float = None
                         pass
                 v2_meta = {**({"date_tag": date_tag} if date_tag else {}), **(time_features or {})}
                 valence, arousal, emo_category = analyze_emotion_2d(full_text)
@@ -576,7 +573,7 @@ class AppContext:
                 v2_meta["emotion_arousal"] = arousal
                 v2_meta["emotion_valence_bin"] = emo_category
                 v2_meta["emotional_intensity"] = emotional_intensity
-                v2_meta["timestamp"] = datetime.now().timestamp()
+                v2_meta["timestamp"] = ts_float if ts_float is not None else datetime.now().timestamp()
                 # 注：emotion 结果会被 AI 侧复用（full_text == ai_full_text），避免重复 LLM 调用
                 try:
                     if self.chat_history and len(self.chat_history.records) >= 1:
@@ -767,23 +764,29 @@ class AppContext:
             3,
         )
         from app.config.settings import TIME_PERIOD_MAP as _tpm_ai
-        now = datetime.now()
-        h = now.hour
+        # 从传入的 timestamp 解析真实时间，队列积压时避免时间漂移
+        parsed = datetime.now()
+        try:
+            if timestamp and ' ' in timestamp:
+                parsed = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
+        except (ValueError, OSError):
+            pass
+        h = parsed.hour
         ai_period = "晚上"
         for (lo, hi), name in _tpm_ai.items():
             if lo <= h <= hi:
                 ai_period = name
                 break
-        ai_date_tag = now.strftime("%Y-%m-%d")
+        ai_date_tag = parsed.strftime("%Y-%m-%d")
         ai_time_features = {
-            "date": ai_date_tag, "year": now.year, "month": now.month,
-            "day": now.day, "week": now.isocalendar()[1],
-            "day_of_week": now.weekday(), "quarter": (now.month - 1) // 3 + 1,
-            "season": (now.month % 12 + 3) // 3, "year_month": now.strftime("%Y-%m"),
+            "date": ai_date_tag, "year": parsed.year, "month": parsed.month,
+            "day": parsed.day, "week": parsed.isocalendar()[1],
+            "day_of_week": parsed.weekday(), "quarter": (parsed.month - 1) // 3 + 1,
+            "season": (parsed.month % 12 + 3) // 3, "year_month": parsed.strftime("%Y-%m"),
             "time_period": ai_period,
             "emotion_valence": ai_valence, "emotion_arousal": ai_arousal,
             "emotion_valence_bin": ai_emo_category, "emotional_intensity": ai_intensity,
-            "timestamp": now.timestamp(),
+            "timestamp": parsed.timestamp(),
         }
         try:
             if self.chat_history and len(self.chat_history.records) >= 1:

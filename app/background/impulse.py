@@ -293,7 +293,7 @@ class ImpulseScheduler:
     def __init__(self, state_path: str, temporal_pattern_index=None):
         self._state_path = state_path
         self._temporal_index = temporal_pattern_index
-        self._pq = queue.PriorityQueue()
+        self._pq = queue.PriorityQueue()  # 无界：泊松源发射频率由 SOURCE_CONFIG 限制，排队项 < MAX_HISTORY
         self._lock = threading.Lock()
         self._history: list[dict] = []
         self._last_fingerprints: dict[str, str] = {}

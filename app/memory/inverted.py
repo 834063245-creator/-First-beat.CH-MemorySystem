@@ -86,7 +86,7 @@ class InvertedIndex:
             return result
 
     def add(self, memory_id: str, summary: str):
-        """增量更新：将一条新记忆的分词结果加入索引。"""
+        """增量更新：将一条新记忆的分词结果加入索引，定期清理空集合。"""
         words = self._tokenize(summary)
         with self._lock:
             for w in words:
@@ -96,6 +96,13 @@ class InvertedIndex:
                 if w not in self._exact_entities:
                     self._exact_entities[w] = set()
                 self._exact_entities[w].add(memory_id)
+            # 每 500 次 add 扫描清理空集合，防止无界增长
+            self._add_count = getattr(self, '_add_count', 0) + 1
+            if self._add_count % 500 == 0:
+                for d in (self._index, self._exact_entities, self._tag_index):
+                    empty_keys = [k for k, v in d.items() if not v]
+                    for k in empty_keys:
+                        del d[k]
 
     # ── Tag 倒排索引（独立于 summary 索引，用于替代 $contains 扫描） ──
 
@@ -148,6 +155,10 @@ class InvertedIndex:
                 self._exact_entities[w].discard(memory_id)
                 if not self._exact_entities[w]:
                     del self._exact_entities[w]
+            for w in list(self._tag_index.keys()):
+                self._tag_index[w].discard(memory_id)
+                if not self._tag_index[w]:
+                    del self._tag_index[w]
 
     def clear(self):
         """清空所有索引（benchmark reset 用）。"""

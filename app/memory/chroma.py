@@ -499,8 +499,9 @@ class ChromaService:
                 where={"timestamp": {"$gte": since_ts}},
                 include=["metadatas", "documents"],
             )
-        except Exception:
-            return self.list_all()  # ChromaDB where 不支持时回退
+        except Exception as exc:
+            logger.warning("list_since ChromaDB 过滤失败: %s", exc)
+            return []
         items = _build_items(result)
         return items[:limit]
 
@@ -544,8 +545,9 @@ class ChromaService:
                 where={"timestamp": {"$lt": before_ts}},
                 include=["metadatas", "documents"],
             )
-        except Exception:
-            return self.list_all()
+        except Exception as exc:
+            logger.warning("list_before ChromaDB 过滤失败: %s", exc)
+            return []
         items = _build_items(result)
         return items[:limit]
 
@@ -601,14 +603,39 @@ class ChromaService:
     _EMB_CACHE_MAX = 10000  # 10K 条封顶，超出 memory 上限的旧数据不缓存
 
     def _build_embedding_cache(self):
-        """构建 embedding 缓存 — ChromaDB get(include=["embeddings"]) 已知 bug。
+        """从 ChromaDB 批量读取已有记忆的 embedding 到内存缓存。
 
-        当前 skip 全量构建（每次 0 条，浪费 I/O），由 _get_embedding_cached
-        按需调用 local_embed 补齐。等 ChromaDB 修了再开。
+        使用 collection.get(ids=batch, include=["embeddings"]) 分批读取，
+        绕过全量 get(include=["embeddings"]) 的已知 ChromaDB bug。
+        每批 500 条，封顶 _EMB_CACHE_MAX 条。
         """
-        self._emb_cache = {}
+        try:
+            all_ids = self._collection.get(include=[])["ids"]
+            if not all_ids:
+                return
+            # UUID v4 尾部近似时间序，取最新
+            capped = all_ids[-self._EMB_CACHE_MAX:] if len(all_ids) > self._EMB_CACHE_MAX else all_ids
+            batch_size = 500
+            total = 0
+            for i in range(0, len(capped), batch_size):
+                batch = capped[i:i + batch_size]
+                result = self._collection.get(ids=batch, include=["embeddings"])
+                emb_list = result.get("embeddings") or []
+                id_list = result.get("ids") or []
+                with self._emb_cache_lock:
+                    for j, mid in enumerate(id_list):
+                        if j < len(emb_list) and emb_list[j] is not None:
+                            self._emb_cache[mid] = emb_list[j]
+                            total += 1
+            logger.info("embedding 缓存构建完成: %d/%d 条", total, len(capped))
+        except Exception as exc:
+            with self._emb_cache_lock:
+                self._emb_cache = {}
+            logger.warning("embedding 缓存构建失败，回退空缓存: %s", exc)
 
     def _get_embedding_cached(self, memory_id: str) -> list | None:
+        """获取缓存的 embedding。缓存由 _build_embedding_cache 预填充，
+        新记忆在 store-time 由 context.py 写入。"""
         return self._emb_cache.get(memory_id)
 
     def close(self):
@@ -616,5 +643,6 @@ class ChromaService:
         with self._lock:
             self._client = None
             self._collection = None
+        with self._emb_cache_lock:
             self._emb_cache = {}
 

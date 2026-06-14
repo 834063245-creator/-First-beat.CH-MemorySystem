@@ -266,7 +266,7 @@ async def chat_stream(req: ChatRequest, user_ctx = Depends(get_user_context)):
 async def chat(req: ChatRequest, user_ctx = Depends(get_user_context)):
     user_message = (req.message or "").strip()
     if not user_message:
-        return ChatResponse(response="请说点什么吧，我听着呢 😊")
+        return JSONResponse(status_code=400, content={"error": "请说点什么吧，我听着呢 😊"})
 
     logger.info("收到消息: %s", user_message[:80])
 
@@ -326,13 +326,15 @@ async def chat(req: ChatRequest, user_ctx = Depends(get_user_context)):
                 extra_messages=extra_messages,
                 personalities=personalities,
                 timeline_recent=timeline_recent,
+                cognitive_state=utterance_spec,
+                session_context=session_context,
             )
             ai_response = result["content"]
     except Exception as exc:
         logger.error("LLM 调用失败: %s %s", type(exc).__name__, exc)
         import traceback
         logger.error("LLM 调用详情:\n%s", traceback.format_exc())
-        return ChatResponse(response="抱歉，AI 服务暂时不可用，请稍后再试。")
+        return JSONResponse(status_code=503, content={"error": "抱歉，AI 服务暂时不可用，请稍后再试。"})
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if req.test_mode:
@@ -396,7 +398,7 @@ async def openai_chat_completions(raw: dict, user_ctx = Depends(get_user_context
     system_prompt, user_message, history = parse_openai_messages(messages)
     user_message = user_message.strip()
     if not user_message:
-        return {"error": "No user message found"}
+        return JSONResponse(status_code=400, content={"error": "No user message found"})
 
     # ── 检索 + 回路调度（与 /chat/stream 共享同一管线） ──
     query_emb = await local_embed_async(user_message)
@@ -475,8 +477,8 @@ async def openai_chat_completions(raw: dict, user_ctx = Depends(get_user_context
             await loop.run_in_executor(user_ctx.storage_executor, user_ctx._enqueue_store_task, user_message, full_text, now_ts)
             from app.memory.working import incremental_update as _iu
             await loop.run_in_executor(user_ctx.storage_executor, _iu, [{"user_message": user_message, "llm_reply": full_text}], f"{user_ctx.data_dir}/working_memory.json")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.error("OpenAI 流式保存对话失败: %s", exc)
 
         yield format_openai_chunk(model, "", finish_reason="stop")
         yield "data: [DONE]\n\n"
@@ -485,49 +487,53 @@ async def openai_chat_completions(raw: dict, user_ctx = Depends(get_user_context
         return StreamingResponse(_openai_stream(), media_type="text/event-stream")
 
     # 非流式分支
-    extra_msgs: list | None = None
-    final_text = ""
-    for round_idx in range(2):
-        stream_tools = ALL_TOOLS if round_idx == 0 and not extra_msgs else None
-        result = await user_ctx.llm_client.generate(
-            user_message,
-            cognitive_state=utterance_spec,
-            tools=stream_tools,
-            timeline_recent=timeline_recent,
-            session_context=session_context,
-            personalities=personalities,
-            extra_messages=extra_msgs,
-        )
-        content_text = result.get("content", "")
-        final_text += content_text
-        tool_calls = result.get("tool_calls", [])
-        if tool_calls:
-            extra_msgs = extra_msgs or []
-            for tc in tool_calls:
-                try:
-                    await _handle_tool_call(tc, extra_msgs, user_ctx,
-                                            reasoning_content=result.get("reasoning_content", ""))
-                except Exception as exc:
-                    logger.error("OpenAI 非流式工具调用失败: %s", exc)
-                    extra_msgs.append({"role": "tool", "content": json.dumps({"error": str(exc)}, ensure_ascii=False)})
-        else:
-            break
-
-    # ── 线程安全保存（避免阻塞事件循环） ──
     try:
-        now_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(user_ctx.storage_executor, user_ctx.chat_history.append, user_message, final_text, now_ts)
-        await loop.run_in_executor(user_ctx.storage_executor, user_ctx._enqueue_store_task, user_message, final_text, now_ts)
-        from app.memory.working import incremental_update as _iu
-        await loop.run_in_executor(user_ctx.storage_executor, _iu, [{"user_message": user_message, "llm_reply": final_text}], f"{user_ctx.data_dir}/working_memory.json")
-    except Exception as exc:
-        logger.debug("工作记忆更新失败: %s", exc)
+        extra_msgs: list | None = None
+        final_text = ""
+        for round_idx in range(2):
+            stream_tools = ALL_TOOLS if round_idx == 0 and not extra_msgs else None
+            result = await user_ctx.llm_client.generate(
+                user_message,
+                cognitive_state=utterance_spec,
+                tools=stream_tools,
+                timeline_recent=timeline_recent,
+                session_context=session_context,
+                personalities=personalities,
+                extra_messages=extra_msgs,
+            )
+            content_text = result.get("content", "")
+            final_text += content_text
+            tool_calls = result.get("tool_calls", [])
+            if tool_calls:
+                extra_msgs = extra_msgs or []
+                for tc in tool_calls:
+                    try:
+                        await _handle_tool_call(tc, extra_msgs, user_ctx,
+                                                reasoning_content=result.get("reasoning_content", ""))
+                    except Exception as exc:
+                        logger.error("OpenAI 非流式工具调用失败: %s", exc)
+                        extra_msgs.append({"role": "tool", "content": json.dumps({"error": str(exc)}, ensure_ascii=False)})
+            else:
+                break
 
-    return Response(
-        content=format_openai_response(model, final_text),
-        media_type="application/json",
-    )
+        # ── 线程安全保存（避免阻塞事件循环） ──
+        try:
+            now_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(user_ctx.storage_executor, user_ctx.chat_history.append, user_message, final_text, now_ts)
+            await loop.run_in_executor(user_ctx.storage_executor, user_ctx._enqueue_store_task, user_message, final_text, now_ts)
+            from app.memory.working import incremental_update as _iu
+            await loop.run_in_executor(user_ctx.storage_executor, _iu, [{"user_message": user_message, "llm_reply": final_text}], f"{user_ctx.data_dir}/working_memory.json")
+        except Exception as exc:
+            logger.debug("工作记忆更新失败: %s", exc)
+
+        return Response(
+            content=format_openai_response(model, final_text),
+            media_type="application/json",
+        )
+    except Exception as exc:
+        logger.error("OpenAI 非流式生成失败: %s", exc)
+        return JSONResponse(status_code=503, content={"error": "AI 服务暂时不可用"})
 
 
 # ── POST /benchmark/inject ─────────────────────────────────────

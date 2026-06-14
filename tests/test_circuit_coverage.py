@@ -1,7 +1,4 @@
-"""测试 circuit.py 未覆盖路径：GateDecisionMaker._rule_decide + weave_context 叙述层 + ChatCircuit.run() 分支。
-
-填补 548-741 行的大范围覆盖缺口 (~165 行)。
-"""
+"""测试 circuit.py 未覆盖路径：weave_context 叙述层 + ChatCircuit.run() 分支。"""
 import json
 import time
 from datetime import datetime
@@ -10,7 +7,6 @@ from unittest.mock import MagicMock, patch, PropertyMock
 import pytest
 
 from app.core.circuit import (
-    GateDecisionMaker, GateResult,
     CircuitOrchestrator, analyze_user_message,
     _compute_emotion_intensity,
 )
@@ -49,119 +45,7 @@ class TestComputeEmotionIntensity:
         assert score <= 1.0
 
 
-# ═══════════════════════════════════════════════════════════════════
-# GateDecisionMaker._rule_decide — 纯规则 (707-741)
-# ═══════════════════════════════════════════════════════════════════
-
-class TestGateDecisionMakerRuleDecide:
-    def make_gate(self):
-        return GateDecisionMaker()
-
-    def test_init(self):
-        g = GateDecisionMaker()
-        assert g.load() is True
-
-    def test_decide_delegates_to_rule(self):
-        g = GateDecisionMaker()
-        result = g.decide("emotional_sharing", "negative")
-        assert isinstance(result, GateResult)
-        assert result.tone == "caring"
-
-    # ── emotional_sharing ──
-
-    @pytest.mark.parametrize("emotion,exp_tone,exp_mode", [
-        ("negative", "caring", "soothe"),
-        ("intimate", "caring", "soothe"),
-        ("frustrated", "caring", "soothe"),
-    ])
-    def test_emotional_sharing_negative_intimate(self, emotion, exp_tone, exp_mode):
-        g = self.make_gate()
-        r = g._rule_decide("emotional_sharing", emotion)
-        assert r.tone == exp_tone
-        assert r.formality == 0.1
-        assert r.response_mode == exp_mode
-        assert r.intimacy >= 0.6
-
-    def test_emotional_sharing_positive(self):
-        g = self.make_gate()
-        r = g._rule_decide("emotional_sharing", "positive")
-        assert r.tone == "warm"
-        assert r.response_mode == "question_first"
-
-    def test_emotional_sharing_neutral(self):
-        g = self.make_gate()
-        r = g._rule_decide("emotional_sharing", "neutral")
-        assert r.tone == "warm"
-        assert r.response_mode == "question_first"
-
-    # ── conflict ──
-
-    def test_conflict(self):
-        g = self.make_gate()
-        r = g._rule_decide("conflict", "frustrated")
-        assert r.tone == "soft"
-        assert r.formality == 0.5
-        assert r.response_mode == "confirm"
-        assert r.intimacy == 0.1
-
-    def test_conflict_neutral(self):
-        g = self.make_gate()
-        r = g._rule_decide("conflict", "neutral")
-        assert r.tone == "soft"
-
-    # ── recall ──
-
-    def test_recall_neutral(self):
-        g = self.make_gate()
-        r = g._rule_decide("recall", "neutral")
-        assert r.tone == "direct"
-        assert r.response_mode == "auto"
-
-    def test_recall_positive(self):
-        g = self.make_gate()
-        r = g._rule_decide("recall", "positive")
-        assert r.tone == "warm"
-
-    # ── ask_fact / meta / request ──
-
-    @pytest.mark.parametrize("intent", ["ask_fact", "meta", "request"])
-    def test_factual_intents(self, intent):
-        g = self.make_gate()
-        r = g._rule_decide(intent, "neutral")
-        assert r.tone == "direct"
-        assert r.response_mode == "direct_answer"
-
-    def test_ask_fact_formality(self):
-        g = self.make_gate()
-        r = g._rule_decide("ask_fact", "neutral")
-        assert r.formality == 0.4
-
-    def test_request_formality(self):
-        g = self.make_gate()
-        r = g._rule_decide("request", "neutral")
-        assert r.formality == 0.3
-
-    # ── intimate override ──
-
-    def test_intimate_overrides_intimacy(self):
-        """any intent + intimate emotion → intimacy ≥ 0.7"""
-        g = self.make_gate()
-        for intent in ["casual", "recall", "ask_fact"]:
-            r = g._rule_decide(intent, "intimate")
-            assert r.intimacy >= 0.7, f"intimacy for {intent}: {r.intimacy}"
-
-    # ── confidence / source ──
-
-    def test_returns_confidence(self):
-        g = self.make_gate()
-        r = g._rule_decide("casual", "neutral")
-        assert r.confidence == 0.8
-
-    def test_source_is_rule(self):
-        g = self.make_gate()
-        r = g._rule_decide("casual", "neutral")
-        assert r.source == "rule"
-
+# GateDecisionMaker 已删除（死代码），对应测试移除
 
 # ═══════════════════════════════════════════════════════════════════
 # weave_context — 故事线 + 分层 (548-677)
