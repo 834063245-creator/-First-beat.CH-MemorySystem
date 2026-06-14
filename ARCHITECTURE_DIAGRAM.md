@@ -1,7 +1,7 @@
 # 初痕全链路可视化架构图
 
 > Mermaid 图表集。GitHub 原生渲染，直接可看。
-> 最后更新：2026-06-09
+> 最后更新：2026-06-14
 
 ---
 
@@ -321,7 +321,7 @@ flowchart TB
         PATTERN[("pattern_cache.json<br/>模式发现产出")]
         BLIND[("blind_spots.json<br/>人格对称盲区")]
         PORTRAIT_FILE[("PORTRAIT.md<br/>12维认知画像")]
-        PERSONA[("personality_tags.json<br/>人格标签[退役中]")]
+        PERSONA[("personality_tags.json<br/>人格标签[已退役]")]
     end
 
     CHROMA --> INDEXES
@@ -394,7 +394,7 @@ flowchart TB
     subgraph BACKGROUND["background/ · 后台节律"]
         CONS_BG["consolidation.py<br/>巩固引擎·用户+AI双实例"]
         IMP_BG["impulse.py<br/>冲动系统"]
-        DIST_BG["distill.py<br/>蒸馏引擎·退役中"]
+        DIST_BG["distill.py<br/>蒸馏引擎·已退役/已删除"]
         LIFE_BG["lifecycle.py<br/>生命周期"]
     end
 
@@ -439,7 +439,7 @@ flowchart LR
         direction TB
         SP1["核心人格 + 工具规则"]
         SP2["stable画像 (8维)<br/>usr1/3/5/6 + ai1/3/5/6"]
-        SP3["人格标签 [退役中]"]
+        SP3["人格标签 [已退役]"]
         SP4["模式观察"]
         SP5["话题笔记"]
         SP6["引擎调参"]

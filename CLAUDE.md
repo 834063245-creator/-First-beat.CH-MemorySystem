@@ -9,7 +9,7 @@
 
 一个 **本地优先的 AI Agent 记忆引擎**。给大模型装上长期记忆——存对话、检索回忆、建画像、主动发起话题。
 
-- 161 个 .py 文件 · ~38,900 行源码 · ~14,000 行测试（64 文件）
+- 157 个 .py 文件 · ~38,900 行源码 · ~14,000 行测试（62 文件）
 - DeepSeek API (主 LLM) + Ollama 本地 (bge-m3 embedding / qwen2.5 实体抽取)
 - FastAPI 服务 · 单用户单实例 · Benchmark 模式可选
 
@@ -55,7 +55,7 @@ d:\First Beat CH Memory System\
 │
 ├── app/                            # ========== 主源码 ==========
 │   ├── api/                        # FastAPI 层：接收请求，返回响应
-│   │   ├── chat.py                 #   核心：/chat 端点是引擎闭环入口 (587行)
+│   │   ├── chat.py                 #   核心：/chat 端点是引擎闭环入口 (627行)
 │   │   ├── system.py               #   系统状态、prompt 管理、健康检查
 │   │   ├── memories.py             #   记忆 CRUD API
 │   │   ├── openai.py               #   OpenAI 兼容层
@@ -66,8 +66,8 @@ d:\First Beat CH Memory System\
 │   │   └── app.py                  #   FastAPI app 工厂
 │   │
 │   ├── core/                       # 引擎核心：决策、上下文、基础设施
-│   │   ├── context.py              #   ★ AppContext：服务容器，管理所有子系统和后台线程 (917行)
-│   │   ├── circuit.py              #   ★ ChatCircuit：单次对话的处理管线 (767行)
+│   │   ├── context.py              #   ★ AppContext：服务容器，管理所有子系统和后台线程 (945行)
+│   │   ├── circuit.py              #   ★ ChatCircuit：单次对话的处理管线 (748行)
 │   │   ├── state.py                #   CognitiveState：引擎决策数据结构，LLM 看到的唯一接口 (303行)
 │   │   ├── tools.py                #   LLM 工具定义（OpenAI 格式的 tool schemas）
 │   │   ├── conflict.py             #   记忆冲突解决：事实矛盾检测 → stale 标记
@@ -81,7 +81,7 @@ d:\First Beat CH Memory System\
 │   │   └── user_context.py         #   多用户 AppContext 管理器
 │   │
 │   ├── memory/                     # 记忆存储层：ChromaDB + SQLite + JSONL
-│   │   ├── chroma.py               #   ★ ChromaService：ChromaDB 向量存储，热力/脱敏/退役 (587行)
+│   │   ├── chroma.py               #   ★ ChromaService：ChromaDB 向量存储，热力/脱敏/退役 (711行)
 │   │   ├── history.py              #   ChatHistory：对话历史 JSONL，内存缓存最近 500 条 (270行)
 │   │   ├── working.py              #   工作记忆摘要：增量 LLM 摘要，替代注入全量历史 (165行)
 │   │   ├── cooccur.py              #   CoOccurrenceTracker：记忆对共现次数 SQLite (292行)
@@ -94,13 +94,13 @@ d:\First Beat CH Memory System\
 │   │   └── tag_index.py            #   标签嵌入索引：bge-m3 + 余弦最近邻查找 (140行)
 │   │
 │   ├── retrieval/                  # 检索管线：多路并行召回
-│   │   ├── pipeline.py             #   ★ 核心：run_chat_retrieval() 14步 + retrieve_all() 10路并行 (691行)
+│   │   ├── pipeline.py             #   ★ 核心：run_chat_retrieval() 14步 + retrieve_all() 10路并行 (703行)
 │   │   ├── bm25_fulltext.py        #   BM25 全文检索，内存索引 ChromaDB 文档 (110行)
 │   │   ├── scoring.py              #   统一评分函数 compute_score() (40行)
 │   │   └── reranker.py.bak         #   REMOVED: 嵌入余弦相似度重排序 (96行, UNUSED, 2026-06-14)
 │   │
 │   ├── llm/                        # LLM 适配层
-│   │   ├── deepseek.py             #   ★ LLMClient：主 LLM 调用，10段消息结构，前缀缓存优化 (1036行)
+│   │   ├── deepseek.py             #   ★ LLMClient：主 LLM 调用，10段消息结构，前缀缓存优化 (1051行)
 │   │   ├── embed.py                #   ★ 嵌入层：local_embed()，四级缓存+请求合并，bge-m3 (390行)
 │   │   └── local.py                #   本地 LLM 封装 (qwen2.5:7b)，用于摘要生成 (118行)
 │   │
@@ -145,10 +145,10 @@ d:\First Beat CH Memory System\
 │   └── models/
 │       └── schemas.py              #   Pydantic 请求/响应模型 (52行)
 │
-├── tests/                          # ========== 测试 (64文件, 13,978行) ==========
+├── tests/                          # ========== 测试 (62文件, 13,729行) ==========
 │   ├── conftest.py                 #   共享 fixture：isolated_env, seeded_env
 │   ├── test_*.py                   #   单元测试覆盖全模块
-│   └── (共64个测试文件，覆盖 api/core/memory/retrieval/llm/portrait/analysis/brain/tools)
+│   └── (共62个测试文件，覆盖 api/core/memory/retrieval/llm/portrait/analysis/brain/tools)
 │
 ├── E2E/                            # ========== 端到端哨兵测试 (5链路, 89节点) ==========
 │   ├── conftest.py                 #   E2E 共享 fixture

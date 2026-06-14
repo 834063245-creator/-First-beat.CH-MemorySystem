@@ -82,16 +82,20 @@ python verify_env.py
 
 ```
 data/
+├── PORTRAIT.md           # 用户/AI 认知画像
 ├── chroma/              # ChromaDB 向量库（记忆存储）
 ├── chat_history.jsonl   # 对话记录
 ├── working_memory.json  # 工作记忆摘要
 ├── impulse_state.json   # 冲动系统状态
 ├── dmn_state.json       # 巩固状态
 ├── topic_tree.json      # 话题树
-├── co_occurrence.json   # 共现矩阵
+├── co_occurrence.db     # 共现矩阵 (SQLite)
+├── entity_pairs.db      # 实体对关系 (SQLite)
+├── hyper_edges.db       # 超边索引 (SQLite)
 ├── pattern_cache.json   # 模式发现缓存（cache/ 目录）
-├── personality_chroma/  # 人格标签库
-├── behavior_chroma/     # 行为模式库
+├── store_failures.jsonl # 入库失败记录
+├── personality_chroma/  # [已退役] 人格标签库
+├── behavior_chroma/     # [已退役] 行为模式库
 └── ai_chroma/           # AI 表达记忆库
 ```
 

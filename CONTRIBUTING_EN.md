@@ -19,7 +19,7 @@ Read in order:
 
 | Priority | Task | Est. time | Requires |
 |:--------:|------|:---------:|---------|
-| 🔴 P0 | **Add GitHub Actions CI** — Create `.github/workflows/test.yml` to auto-run tests on push. Needs to cover `tests/` (56 files, 708 cases) and `E2E/` (5 files, 89 nodes). E2E depends on Ollama + bge-m3, may need pre-install on runner | 1 hour | GitHub Actions + Python |
+| 🔴 P0 | **Add GitHub Actions CI** — Create `.github/workflows/test.yml` to auto-run tests on push. Needs to cover `tests/` (62 files, 708 cases) and `E2E/` (6 files, 89 nodes). E2E depends on Ollama + bge-m3, may need pre-install on runner | 1 hour | GitHub Actions + Python |
 | 🟡 P1 | **Split ConsolidationEngine** — `app/background/consolidation.py` (1,076 lines) does too much. Suggest extracting `TopicNoteManager`, `ConflictDetector`, `ArchivalManager` | 2-4 hours | Python · refactoring |
 | 🟡 P1 | **O(n²) → incremental** — `_check_conflicts` and `_assess_archival` still use `list_all()` full scans. Needs pagination or incremental processing when memory > 5,000 | 2 hours | Python · algorithms |
 | 🟢 P2 | **Prometheus metrics** — `app/core/bottleneck.py` tracks full-pipeline latency. Expose as metrics | 1 hour | Prometheus · FastAPI |
@@ -71,8 +71,8 @@ python run.py
 
 ```bash
 docker compose up -d
-docker exec firstbeat-ollama ollama pull bge-m3
-docker exec firstbeat-ollama ollama pull qwen2.5:3b
+docker exec chuchen-ollama ollama pull bge-m3
+docker exec chuchen-ollama ollama pull qwen2.5:3b
 ```
 
 ---
@@ -101,21 +101,18 @@ app/
 │   ├── pipeline.py      ← 10-path parallel retrieval + weaving. Most complex file.
 │   ├── scoring.py       ← Ranking formula + v2.1 soft degradation.
 │   ├── bm25_fulltext.py ← BM25 full-text retrieval.
-│   └── reranker.py      ← Re-ranking module.
 ├── background/
 │   ├── consolidation.py ← Consolidation engine (⚠️ needs splitting — see tech debt)
 │   ├── impulse.py       ← Impulse system (5 sources + consumer + fatigue suppression)
-│   ├── distill.py       ← Distillation engine (zero-LLM profile extraction)
 │   └── lifecycle.py     ← Thread lifecycle (crash restart + rate limiting)
 ├── analysis/
 │   ├── emotion.py       ← Russell circumplex model
 │   ├── entity.py        ← Entity extraction & analysis
 │   ├── pattern_discovery.py ← Pattern discovery (6h, zero-LLM, 5 modes)
 │   ├── predictor.py     ← Behavior prediction (Markov chain)
-│   └── symmetry.py      ← Personality symmetry analysis
-├── personality/
-│   ├── behavior.py      ← Behavior pattern management
-│   └── store.py         ← Dual personality storage (user + AI independent evolution)
+│   ├── symmetry.py      ← Personality symmetry analysis
+│   ├── drift.py         ← Drift tracker (spend/frugal/drift)
+│   └── self_mirror.py   ← AI self-mirror
 ├── tools/
 │   ├── dispatch.py      ← Tool dispatch system (LLM tool call routing/registration/execution)
 │   ├── search.py        ← Search tool
@@ -128,8 +125,8 @@ app/
 └── api/
     └── chat.py          ← Chat endpoint + benchmark injection + admin
 
-tests/                   # Unit + component tests (56 files, 708 cases, 53% line coverage, 98% module coverage)
-E2E/                     # End-to-end full-chain regression (5 files, 89 nodes, 5 links)
+tests/                   # Unit + component tests (62 files, 708 cases, 53% line coverage, 98% module coverage)
+E2E/                     # End-to-end full-chain regression (6 files, 89 nodes, 5 links)
 scripts/                 # Audit suite + utility scripts
 ```
 

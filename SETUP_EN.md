@@ -82,16 +82,20 @@ On first run, the engine creates the following under `./data/`:
 
 ```
 data/
+├── PORTRAIT.md           # User/AI cognitive portrait
 ├── chroma/              # ChromaDB vector store (memory storage)
 ├── chat_history.jsonl   # Conversation records
 ├── working_memory.json  # Working memory summary
 ├── impulse_state.json   # Impulse system state
 ├── dmn_state.json       # Consolidation state
 ├── topic_tree.json      # Topic tree
-├── co_occurrence.json   # Co-occurrence matrix
+├── co_occurrence.db     # Co-occurrence matrix (SQLite)
+├── entity_pairs.db      # Entity pair relations (SQLite)
+├── hyper_edges.db       # Hyper-edge index (SQLite)
 ├── pattern_cache.json   # Pattern discovery cache (in cache/ dir)
-├── personality_chroma/  # Personality tag store
-├── behavior_chroma/     # Behavior pattern store
+├── store_failures.jsonl # Store failure records
+├── personality_chroma/  # [DEPRECATED] Personality tag store
+├── behavior_chroma/     # [DEPRECATED] Behavior pattern store
 └── ai_chroma/           # AI expression memory store
 ```
 

@@ -36,8 +36,8 @@
 | 后台线程 | **10 个** daemon（5 冲动源 + 消费者 + DMN 巩固 + AI 巩固 + 情绪淡化 + 存储队列） |
 | 记忆状态机 | **4 态**（hot → warm → cool → stale/archived），软降权，不硬屏蔽 |
 | LongMemEval | **92%**（纠正后，100 题子集） |
-| 测试 | **1,098** passed，0 failed，80% 行覆盖，76 测试文件（64 单元 + 6 E2E + 6 集成），E2E 5 链路 89 节点 |
-| 代码量 | ~38,600 行 Python，161 文件 |
+| 测试 | **1,098** passed，0 failed，80% 行覆盖，74 测试文件（62 单元 + 6 E2E + 6 集成），E2E 5 链路 89 节点 |
+| 代码量 | ~38,600 行 Python，157 文件 |
 | 总 commit | **607**（跨 6 仓库：jarvis → amazing → amazing3 → amazing4 → amazing5 → First Beat） |
 | 首次 commit | 2026-05-22（19 天从零到开源） |
 
@@ -284,14 +284,13 @@ app/
 ├── background/    # 后台节律：4h/24h 巩固 · 5 源冲动 · 蒸馏 · 镜像AI巩固 · 生命周期
 ├── analysis/      # Russell 情绪环 · 实体提取 · 模式发现 · 人格对称性 · 行为预测
 ├── portrait/      # 认知画像系统：12 维画像管理 · 实时/浅/深更新 · 渲染注入 · 提取器
-├── personality/   # 双人格系统（Phase 4 退役中，由画像系统替代）
 ├── llm/           # 本地 embedding (bge-m3) + LLM 对话生成 + 本地摘要（qwen2.5:3b）
 ├── api/           # REST 端点：聊天 · 记忆管理 · 画像 · 巩固 · 反馈
 ├── tools/         # 原子写入 · 工具分发 · 搜索 · 文件操作
 ├── config/        # 中央配置
 └── models/        # Pydantic schemas
 
-tests/             # 64+ 单元测试文件（行覆盖率 80%+）
+tests/             # 62 单元测试文件（行覆盖率 80%+）
 E2E/               # 端到端全链路回归（6 文件，5 链路）
 integration/       # 集成测试（6 文件）
 ```

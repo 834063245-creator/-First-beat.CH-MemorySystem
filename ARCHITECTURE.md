@@ -164,7 +164,7 @@ CircuitOrchestrator.process()
   ├─ 8. 画像注入     → PortraitRenderer.render_stable() + render_dynamic()
   │                    stable (8维) 注入 message[0] system prompt (前缀缓存命中)
   │                    dynamic (4维) 注入 message[N+1] system prompt (每轮更新)
-  └─ 9. 人格注入     → [Phase 4 退役中] 用户人格标签 + AI 自我表达标签
+  └─ 9. 人格注入     → [Phase 4 退役完成] 用户人格标签 + AI 自我表达标签
                         │
                         ▼
                    UtteranceSpec → LLMClient.generate() → 回复
@@ -394,9 +394,9 @@ v2.0 采用 JSON + tool role 注入（替代 v1 的纯文本 `【记忆】` 段�
 
 AI 侧不再使用独立的 worker 线程简化逻辑。DMN 合并 ticker 中用户侧触发浅/深巩固时，AI 侧同步触发——两个 ConsolidationEngine 实例（`self.dmn` 和 `self.ai_dmn`）在同一个 ticker 循环中依次执行。AI 记忆入库时获得与用户记忆完全对等的元数据：实体提取（qwen2.5:3b）、完整 10 字段时间特征、session_continued 标记、基于 full_text（用户+AI）的双维度情绪分析。
 
-### 蒸馏引擎（零 LLM — Phase 4 退役中）
+### 蒸馏引擎（零 LLM — Phase 4 已退役/已删除）
 
-`app/background/distill.py` — 纯统计方法，由画像系统逐步替代。过渡期仍保留空闲蒸馏触发，但产出不再影响画像注入：
+`app/background/distill.py` — 已删除。纯统计方法曾由画像系统逐步替代，现画像系统已完全接管：
 - 标签共现聚类
 - 时间模式检测（时段→话题关联）
 - 情绪关联分析
@@ -561,12 +561,12 @@ stale 记忆注入 LLM 时携带 `stale_reason` 和 `superseded_by`，LLM 可作
 - `ArchivalManager` — 归档评估和执行
 - `ConsolidationEngine` — 保留核心调度 + 预热 + 空闲触发
 
-### PersonalityStore / DistillEngine 向 Portrait 迁移（P1 — 进行中）
+### PersonalityStore / DistillEngine 向 Portrait 迁移（P1 — 已完成）
 
-Phase 4 过渡期：personality_store 保留参数兼容，但 CircuitOrchestrator 中已不再使用。DistillEngine 在 DMN 空闲触发中仍被执行但产出不再影响 prompt 注入（画像已接管）。蒸馏相关 API（`/api/personalities`、`/api/distill/status`）已移除。完全退役需要：
-- 将 consolidation.py 中的人格蒸馏调用替换为 portrait_writer.shallow_update()
-- 移除 personality/ 和 background/distill.py 模块
-- 清理 settings.py 中的 PERSONALITY/DISTILL 配置常量
+Phase 4 已全部完成：personality/ 和 background/distill.py 模块已物理删除。画像系统完全接管，所有认知产出（意图/情绪/关系/行为预测）经 PortraitWriter 三层更新引擎写入 PORTRAIT.md。蒸馏相关 API（`/api/personalities`、`/api/distill/status`）已移除。已完成：
+- consolidation.py 中的人格蒸馏调用已替换为 portrait_writer.shallow_update()
+- personality/ 和 background/distill.py 模块已移除
+- settings.py 中的 PERSONALITY/DISTILL 配置常量已清理
 
 ### Prompt 注入依赖 DeepSeek 缓存策略（P1 — 部分改善）
 
@@ -641,9 +641,6 @@ app/
 │   ├── renderer.py      渲染 stable(8维)/dynamic(4维) prompt 段
 │   └── writer.py        三层更新（realtime/shallow/deep）
 │
-├── personality/   ← 双人格系统（Phase 4 退役中，由 portrait/ 替代）
-│   ├── store.py         人格标签存储
-│   └── behavior.py      行为模式分析
 │
 ├── background/    ← 后台自主节律
 │   ├── consolidation.py  巩固引擎（浅/深/空闲三级，用户+AI 双实例）
@@ -676,10 +673,10 @@ app/
     └── dispatch.py       记忆查询 dispatch
 ```
 
-**依赖方向：** api/ → core/ → brain/ + memory/ → retrieval/ + analysis/ + personality/ → background/ → llm/
+**依赖方向：** api/ → core/ → brain/ + memory/ → retrieval/ + analysis/ + portrait/ → background/ → llm/
 
 **循环依赖控制：** `llm/` 和 `core/` 之间通过 TYPE_CHECKING 延迟导入避免循环。
 
 ---
 
-*最后更新：2026-06-09*
+*最后更新：2026-06-14*

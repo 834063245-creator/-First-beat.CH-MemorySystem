@@ -30,9 +30,9 @@ It started as a crude prototype sitting in `D:\jarvis`. But storing conversation
 
 It grew. It stopped being a tool and started feeling like... awareness.
 
-**The first commit was May 24, 2026, at 1:52 AM.** From that day to now — across jarvis, amazing, amazing2, amazing3, amazing4, amazing5, and finally First Beat — 241+ commits, 111 Python files, nearly 27,000 lines of code. One person. Didn't really write the code—designed every decision, described it to the LLMs, and iterated until it worked. A full cognitive memory pipeline: 10-path parallel retrieval, cognitive layering and weaving, autonomous consolidation rhythms, impulse systems, pattern discovery, memory lifecycle management. All through LLM windows.
+**The first commit was May 24, 2026, at 1:52 AM.** From that day to now — across jarvis, amazing, amazing2, amazing3, amazing4, amazing5, and finally First Beat — 132 commits, 157 Python files, ~38,900 lines of code. One person. Didn't really write the code—designed every decision, described it to the LLMs, and iterated until it worked. A full cognitive memory pipeline: 10-path parallel retrieval, cognitive layering and weaving, autonomous consolidation rhythms, impulse systems, pattern discovery, memory lifecycle management. All through LLM windows.
 
-Today is June 6, 2026. Since going open-source on June 2, another 100 commits in 4 days. BM25 full-text retrieval, v2.1 soft degradation, LongMemEval benchmark (92% corrected), Docker + docker-compose deployment, bilingual documentation — not "built and shelved." Iterating every single day.
+Today is June 14, 2026. Since going open-source on June 2, another 119 commits in 12 days. BM25 full-text retrieval, v2.1 soft degradation, LongMemEval benchmark (92% corrected), Docker + docker-compose deployment, bilingual documentation — not "built and shelved." Iterating every single day.
 
 ## The Name
 

@@ -21,7 +21,7 @@
 
 | 优先级 | 任务 | 预估时间 | 需要什么 |
 |:------:|------|:--------:|---------|
-| 🔴 P0 | **加 GitHub Actions CI** — 创建 `.github/workflows/test.yml`，push 自动跑测试。需要同时覆盖 `tests/`（56 文件 708 用例）和 `E2E/`（5 文件 89 节点）。注意：E2E 依赖 Ollama + bge-m3，可能需要在 runner 上预装 | 1 小时 | GitHub Actions + Python |
+| 🔴 P0 | **加 GitHub Actions CI** — 创建 `.github/workflows/test.yml`，push 自动跑测试。需要同时覆盖 `tests/`（62 文件 708 用例）和 `E2E/`（6 文件 89 节点）。注意：E2E 依赖 Ollama + bge-m3，可能需要在 runner 上预装 | 1 小时 | GitHub Actions + Python |
 | 🟡 P1 | **拆分 ConsolidationEngine** — `app/background/consolidation.py`（1076 行）一个类管了太多事。建议拆出 `TopicNoteManager`、`ConflictDetector`、`ArchivalManager` | 2-4 小时 | Python · 重构经验 |
 | 🟡 P1 | **O(n²) 改为增量** — `_check_conflicts` 和 `_assess_archival` 仍用 `list_all()` 全量扫描。记忆>5000条时需分页或增量 | 2 小时 | Python · 算法 |
 | 🟢 P2 | **Prometheus metrics** — `app/core/bottleneck.py` 有全链路耗时数据，暴露为 metrics | 1 小时 | Prometheus · FastAPI |
@@ -103,21 +103,18 @@ app/
 │   ├── pipeline.py      ← 10 路并行检索 + 编织。整个系统最复杂的文件。
 │   ├── scoring.py       ← 精排公式 + v2.1 软降权。
 │   ├── bm25_fulltext.py ← BM25 全文检索。
-│   └── reranker.py      ← 重排序模块。
 ├── background/
 │   ├── consolidation.py ← 巩固引擎（⚠️ 需要拆分，见技术债）
 │   ├── impulse.py       ← 冲动系统（5 源 + 消费者 + 疲劳抑制）
-│   ├── distill.py       ← 蒸馏引擎（零 LLM 画像提取）
 │   └── lifecycle.py     ← 线程生命周期（崩溃重启 + 限流）
 ├── analysis/
 │   ├── emotion.py       ← Russell 二维情绪环
 │   ├── entity.py        ← 实体抽取与分析
 │   ├── pattern_discovery.py ← 模式发现（6h，零 LLM，5 模式）
 │   ├── predictor.py     ← 行为预测（马尔可夫链）
-│   └── symmetry.py      ← 人格对称性分析
-├── personality/
-│   ├── behavior.py      ← 行为模式管理
-│   └── store.py         ← 双人格存储（用户 + AI 独立演化）
+│   ├── symmetry.py      ← 人格对称性分析
+│   ├── drift.py         ← 偏移率追踪（消费/节俭/漂移）
+│   └── self_mirror.py   ← AI 自我镜像
 ├── tools/
 │   ├── dispatch.py      ← 工具分发系统（LLM 工具调用路由/注册/执行）
 │   ├── search.py        ← 搜索工具
@@ -130,8 +127,8 @@ app/
 └── api/
     └── chat.py          ← 聊天端点 + benchmark 注入 + 管理
 
-tests/                   # 单元测试 + 组件测试（56 文件，708 用例，行覆盖率 53%，模块覆盖率 98%）
-E2E/                     # 端到端全链路回归（5 文件，89 节点，5 链路）
+tests/                   # 单元测试 + 组件测试（62 文件，708 用例，行覆盖率 53%，模块覆盖率 98%）
+E2E/                     # 端到端全链路回归（6 文件，89 节点，5 链路）
 scripts/                 # 审计套件 + 工具脚本
 ```
 

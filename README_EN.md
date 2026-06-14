@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-944%2B%20passed-green.svg)]()
+[![Tests](https://img.shields.io/badge/tests-1098%20passed%2C%200%20failed-green.svg)]()
 [![Coverage](https://img.shields.io/badge/line%20coverage-80%25-brightgreen.svg)]()
 [![E2E](https://img.shields.io/badge/E2E%2BInt-163%20nodes%20%E2%9C%93-brightgreen.svg)]()
 [中文文档](README.md)
@@ -17,7 +17,7 @@
 
 First Beat provides a self-contained memory infrastructure. The engine runs consolidation, impulse generation, distillation, and pattern discovery in the background — then speaks naturally through the LLM when the timing is right. What you build on top — a chat app, a desktop companion, an AI pet — is up to you. First Beat handles the memory and the voice.
 
-**v2.3 current**: 12-dim cognitive portrait (constant injection replaces per-query retrieval) + AI consolidation mirror + 10-path parallel retrieval + weave_context + v2.1 soft degradation + 72 test files all green. Iterating daily.
+**v2.4 current**: 12-dim cognitive portrait (constant injection replaces per-query retrieval) + AI consolidation mirror + 10-path parallel retrieval + weave_context + v2.1 soft degradation + 72 test files all green. Iterating daily.
 
 ---
 
@@ -317,14 +317,13 @@ app/
 ├── background/    # Autonomous: 4h/24h consolidation · 5-source impulse · distillation · mirrored AI consolidation · lifecycle
 ├── analysis/      # Russell circumplex · entity extraction · pattern discovery · personality symmetry · behavior prediction
 ├── portrait/      # Cognitive portrait system: 12-dim portrait mgmt · realtime/shallow/deep updates · renderer injection · extractors
-├── personality/   # Dual personality (Phase 4 retiring — replaced by portrait system)
 ├── llm/           # Local embedding (bge-m3) + LLM chat generation + local summarization (qwen2.5:3b)
 ├── api/           # REST endpoints: chat · memory management · portrait · consolidation · feedback
 ├── tools/         # Atomic writes · tool dispatch · search · file operations
 ├── config/        # Central config
 └── models/        # Pydantic schemas
 
-tests/             # 64+ unit test files (80%+ line coverage)
+tests/             # 62 unit test files (80%+ line coverage)
 E2E/               # End-to-end full-chain regression (6 files, 5 chains)
 integration/       # Integration tests (6 files)
 ```

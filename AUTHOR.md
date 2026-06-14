@@ -7,14 +7,14 @@
 | **首次 commit** | 2026-05-22（amazing），05-24（初痕前身 amazing3） |
 | **开源日期** | 2026-06-02 |
 | **跨仓库总 commit** | **607**（jarvis → amazing → amazing3 → amazing4 → amazing5 → First Beat） |
-| **当前仓库 commit** | 122 |
-| **代码量** | ~38,600 行 Python，161 文件 |
+| **当前仓库 commit** | 132 |
+| **代码量** | ~38,600 行 Python，157 文件 |
 | **测试** | 1,098 passed，63 skipped，0 failed |
-| **测试文件** | 76（64 单元 + 6 E2E + 6 集成） |
+| **测试文件** | 74（62 单元 + 6 E2E + 6 集成） |
 | **E2E** | 5 链路，89 节点 |
 | **许可证** | MIT |
 
-项目在活跃迭代中。v2.3 当前状态：12 维认知画像 + AI 巩固镜像 + 10 路并行检索 + 引擎编织 + v2.1 软降权。Phase 4（personality/distill 退役）已完成。
+项目在活跃迭代中。v2.4 当前状态：12 维认知画像 + AI 巩固镜像 + 10 路并行检索 + 引擎编织 + v2.1 软降权。Phase 4（personality/distill 退役）已完成。
 
 ---
 

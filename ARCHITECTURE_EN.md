@@ -166,7 +166,7 @@ CircuitOrchestrator.process()
   ├─ 8. Portrait injection  → PortraitRenderer.render_stable() + render_dynamic()
   │                            stable (8 dims) → message[0] system prompt (prefix cache hits)
   │                            dynamic (4 dims) → message[N+1] system prompt (per-turn update)
-  └─ 9. Personality         → [Phase 4 retiring] User tags + AI self-expression tags
+  └─ 9. Personality         → [Phase 4 retired] User tags + AI self-expression tags
                                │
                                ▼
                         UtteranceSpec → LLMClient.generate() → Reply
@@ -396,9 +396,9 @@ Behavior pattern (30min)──┘     ├─ LLM generates natural language
 
 The AI side no longer uses a standalone worker thread with simplified logic. In the DMN merged ticker, when the user side triggers shallow/deep consolidation, the AI side triggers synchronously — two ConsolidationEngine instances (`self.dmn` and `self.ai_dmn`) execute sequentially within the same ticker loop. AI memory ingestion receives full metadata parity with user memories: entity extraction (qwen2.5:3b), complete 10-field time features, session_continued flag, and dual-dimension emotion analysis based on full_text (user+AI).
 
-### Distillation Engine (Zero LLM — Phase 4 Retiring)
+### Distillation Engine (Zero LLM — Phase 4 Retired/Removed)
 
-`app/background/distill.py` — Pure statistical extraction, being gradually replaced by the portrait system. During the transition, idle distillation triggers are still executed, but outputs no longer affect portrait injection:
+`app/background/distill.py` — Deleted. Pure statistical extraction has been fully replaced by the portrait system:
 - Tag co-occurrence clustering
 - Time pattern detection (time-period → topic correlation)
 - Emotion correlation analysis
@@ -563,12 +563,12 @@ Full specification in `BENCHMARK_SPEC.md`.
 - `ArchivalManager` — archival assessment and execution
 - `ConsolidationEngine` — keep core scheduling + warmup + idle triggers
 
-### PersonalityStore / DistillEngine → Portrait Migration (P1 — In Progress)
+### PersonalityStore / DistillEngine → Portrait Migration (P1 — Completed)
 
-Phase 4 transition: personality_store retains parameter compatibility but is no longer used in CircuitOrchestrator. DistillEngine is still executed on DMN idle triggers but its outputs no longer affect prompt injection (portrait has taken over). Distillation-related APIs (`/api/personalities`, `/api/distill/status`) have been removed. Full retirement requires:
-- Replace personality distillation calls in consolidation.py with portrait_writer.shallow_update()
-- Remove personality/ and background/distill.py modules
-- Clean up PERSONALITY/DISTILL config constants in settings.py
+Phase 4 fully completed: personality/ and background/distill.py modules have been physically deleted. The portrait system has fully taken over — all cognitive outputs (intent/emotion/relationship/behavior prediction) flow through PortraitWriter's three-tier update engine into PORTRAIT.md. Distillation-related APIs (`/api/personalities`, `/api/distill/status`) have been removed. Done:
+- Personality distillation calls in consolidation.py replaced with portrait_writer.shallow_update()
+- personality/ and background/distill.py modules removed
+- PERSONALITY/DISTILL config constants in settings.py cleaned up
 
 ### Prompt Injection Tied to DeepSeek Caching (P1 — Partially Improved)
 
@@ -639,9 +639,6 @@ app/
 │   ├── renderer.py      Render stable (8 dims) / dynamic (4 dims) prompt sections
 │   └── writer.py        Three-tier updates (realtime/shallow/deep)
 │
-├── personality/   ← Dual personality system (Phase 4 retiring, replaced by portrait/)
-│   ├── store.py         Personality tag storage
-│   └── behavior.py      Behavior pattern analysis
 │
 ├── background/    ← Background autonomous rhythm
 │   ├── consolidation.py  Consolidation engine (shallow/deep/idle three-level, user+AI dual instances)
@@ -674,10 +671,10 @@ app/
     └── dispatch.py       Memory query dispatch
 ```
 
-**Dependency direction:** api/ → core/ → brain/ + memory/ → retrieval/ + analysis/ + personality/ → background/ → llm/
+**Dependency direction:** api/ → core/ → brain/ + memory/ → retrieval/ + analysis/ + portrait/ → background/ → llm/
 
 **Circular dependency control:** `llm/` and `core/` avoid circular imports via TYPE_CHECKING deferred imports.
 
 ---
 
-*Last updated: 2026-06-09*
+*Last updated: 2026-06-14*
