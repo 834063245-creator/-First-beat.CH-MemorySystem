@@ -1,0 +1,20 @@
+#!/bin/bash
+# 初痕 (First Beat) pre-push hook
+# 每次 push 前跑单元测试，失败则阻止推送
+
+set -e
+
+echo ""
+echo "═══════════════════════════════════════════"
+echo "  初痕 pre-push hook: 跑单元测试"
+echo "═══════════════════════════════════════════"
+echo ""
+
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$ROOT"
+
+python -m pytest tests/ -q --tb=short
+
+echo ""
+echo "  测试通过，放行推送"
+echo ""
