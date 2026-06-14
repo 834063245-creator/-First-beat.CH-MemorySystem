@@ -100,7 +100,7 @@ class PersonaSymmetry:
 
     @property
     def blind_spots(self) -> list[dict]:
-        return self._blind_spots
+        return list(self._blind_spots)
 
     def _distribution_gap(self, d1: dict, d2: dict) -> float:
         """计算两个标签关联分布的余弦距离。

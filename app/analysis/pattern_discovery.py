@@ -165,7 +165,10 @@ class PatternDiscovery:
                 text = entry.get("user_message", "")
                 if not text:
                     continue
-                v, a, _ = analyze_emotion_2d(text)
+                try:
+                    v, a, _ = analyze_emotion_2d(text)
+                except Exception:
+                    continue
                 if v == 0.0 and a == 0.0:
                     continue  # 中性跳过，不影响统计
                 tags = self._extract_tags(text)

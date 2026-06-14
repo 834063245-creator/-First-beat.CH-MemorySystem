@@ -12,9 +12,6 @@ from app.brain.semantic import extract_tags, extract_entities as _sem_extract_en
 
 logger = logging.getLogger(__name__)
 
-ENTITY_TYPES = ["PERSON", "LOCATION", "ORGANIZATION", "AMOUNT", "KEYWORD"]
-
-
 def extract_entities(text: str) -> list[dict]:
     """从文本中抽取命名实体和关键词。
 

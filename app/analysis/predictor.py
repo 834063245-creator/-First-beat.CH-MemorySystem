@@ -94,7 +94,7 @@ class BehaviorPredictor:
         返回::
             {"next_intents": ["recall", "casual", "ask_fact"],
              "shift_topics": ["话题A", "话题B"]}
-            或部分字段缺失。
+            部分字段可能缺失。cold start（无转移表）时返回空 dict {}。
         """
         table = self._table
         n_transitions = table.get("n_transitions", {})
@@ -110,9 +110,7 @@ class BehaviorPredictor:
             key = "|".join(context[-length:])
             if key in n_transitions:
                 nexts = n_transitions[key]
-                # 按频次降序取 top-3
-                sorted_nexts = sorted(nexts.items(), key=lambda x: -x[1])
-                # 从 sorted_nexts 依次尝试向后滚动预测，构建 1-3 步链条
+                # 向后滚动预测，构建 1-3 步链条
                 predicted = []
                 visited = {current_intent}
                 # 第一步

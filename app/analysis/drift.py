@@ -5,7 +5,7 @@ spend (愿投, +) ←→ frugal (省钱, λ) ←→ drift (放弃, -)
                                                ├─ 妥协 (中)
                                                └─ 烦躁 (浅)
 
-每条用户消息检测一次, EMA 合并连续同向信号。
+每条用户消息检测一次, 同向累积连续计数, 无信号时衰减回退 neutral。
 状态通过 JSONL 持久化, 重启后回读最近状态。
 """
 import json
@@ -56,13 +56,12 @@ _SIGNAL_GROUPS = [
 class DriftTracker:
     """偏移率追踪器 — 纯规则检测用户行为倾向偏移。
 
-    每次对话后调用 detect(), EMA 合并连续同向信号。
+    每次对话后调用 detect(), 同向累积连续计数, 无信号时衰减回退 neutral。
     状态通过 JSONL 持久化, 重启后回读最近状态。
     """
 
     def __init__(self, log_path: str):
         self._log_path = log_path
-        self._alpha = 0.7  # EMA 平滑系数
         self._current: dict = {
             "direction": "neutral", "offset": 0.0, "signal": "",
         }
@@ -77,7 +76,7 @@ class DriftTracker:
         Returns:
             {"direction": str, "offset": float, "signal": str}
             direction: "spend" | "frugal" | "drift_*" | "neutral"
-            offset: -100~+100 (负=drift方向, 正=spend方向)
+            offset: -60~+40 (负=drift方向, 正=spend方向, 受词表raw_offset约束)
             signal: 人类可读摘要
         """
         if not text:
@@ -94,33 +93,29 @@ class DriftTracker:
                 break
 
         if matched is None:
-            # 无信号: 连续计数衰减
+            # 无信号: 连续计数衰减 → 归零时回退 neutral
             self._consecutive = max(0, self._consecutive - 1)
+            if self._consecutive == 0 and self._current.get("direction") != "neutral":
+                self._current = {"direction": "neutral", "offset": 0.0, "signal": ""}
+                self._log(self._current)
             return dict(self._current)
 
         direction, raw_offset = matched
 
-        # EMA 合并
-        prev_offset = self._current.get("offset", 0.0)
+        # 同向累积, 异向重置 (raw_offset 即稳态值, 词表常量无需 EMA)
         if self._current.get("direction") == direction:
             self._consecutive += 1
-            merged = self._alpha * raw_offset + (1 - self._alpha) * prev_offset
         else:
             self._consecutive = 1
-            merged = float(raw_offset)
 
         result = {
             "direction": direction,
-            "offset": round(merged, 1),
-            "signal": f"{direction}({merged:+.0f}%)",
+            "offset": float(raw_offset),
+            "signal": f"{direction}({raw_offset:+.0f}%)",
         }
         self._current = result
         self._log(result)
         return result
-
-    def comprehensive_offset(self) -> dict:
-        """返回当前综合偏移状态, 供浅巩固/画像层读取。"""
-        return dict(self._current)
 
     @property
     def current_direction(self) -> str:
@@ -138,7 +133,7 @@ class DriftTracker:
         """生成注入 prompt 的偏移片段。
 
         Returns:
-            "偏移: frugal(+25%) 连续3轮节省倾向" 或 ""
+            "偏移: frugal(+20%) 连续3轮节省倾向" 或 ""
         """
         d = self._current
         direction = d.get("direction", "neutral")
@@ -169,18 +164,26 @@ class DriftTracker:
             with open(self._log_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps({
                     "ts": datetime.now().isoformat(),
+                    "consecutive": self._consecutive,
                     **result,
                 }, ensure_ascii=False) + "\n")
         except Exception as exc:
-            logger.debug("偏移日志写入失败: %s", exc)
+            logger.warning("偏移日志写入失败: %s", exc)
 
     def _restore(self):
-        """从 JSONL 恢复最后一次偏移状态。"""
+        """从 JSONL 恢复最后一次偏移状态（只读末尾 4KB, 二进制 seek 避免文本模式 UB）。"""
         try:
             if not os.path.exists(self._log_path):
                 return
-            with open(self._log_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
+            with open(self._log_path, "rb") as f:
+                f.seek(0, 2)
+                file_size = f.tell()
+                if file_size == 0:
+                    return
+                read_size = min(4096, file_size)
+                f.seek(max(0, file_size - read_size))
+                tail = f.read().decode("utf-8")
+            lines = [l for l in tail.split("\n") if l.strip()]
             if not lines:
                 return
             last = json.loads(lines[-1])
@@ -189,6 +192,7 @@ class DriftTracker:
                 "offset": last.get("offset", 0.0),
                 "signal": last.get("signal", ""),
             }
+            self._consecutive = last.get("consecutive", 0)
             logger.debug("偏移状态恢复: %s", self._current.get("signal"))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("偏移状态恢复失败, 使用默认 neutral: %s", exc)
