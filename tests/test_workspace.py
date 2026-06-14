@@ -13,8 +13,8 @@ class TestResolvePath:
         assert os.path.isabs(resolved)
 
     def test_absolute_passthrough(self):
-        # Windows 下只有带盘符的路径才是绝对路径
-        abs_path = "C:\\tmp\\foo.txt"
+        # 用当前平台的绝对路径，跨平台 CI 兼容
+        abs_path = os.path.abspath(os.path.join(os.sep, "tmp", "foo.txt"))
         resolved = _resolve_path(abs_path)
         assert resolved == abs_path
 
