@@ -66,6 +66,10 @@ EVEROS_INSIGHTS.md
 # Hologram artifacts
 .hologram/
 hologram_graph.json
+hologram_before.json
+hologram_graph.db
+hologram_graph.hologram
+hologram_graph_files.json
 
 # Agent guidance (local only, not part of the project)
 CLAUDE.md
