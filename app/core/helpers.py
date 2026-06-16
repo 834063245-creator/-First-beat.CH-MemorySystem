@@ -90,6 +90,7 @@ def build_debug_info(memories: list, personalities: list, timeline_recent: list,
 # ── JSONL 文件缓存 ────────────────────────────────────────────
 
 _jsonl_cache: dict[str, tuple[float, object]] = {}
+_JSONL_CACHE_MAX = 64  # 最多缓存 64 个不同 JSONL 文件
 _JSONL_CACHE_TTL = 30
 _jsonl_cache_lock = threading.Lock()
 
@@ -111,6 +112,8 @@ def _load_jsonl_cached(path: str, parser: callable) -> object:
     # 缓存未命中或过期，重新读取（锁外读取，锁内写入）
     value = parser()
     with _jsonl_cache_lock:
+        if len(_jsonl_cache) >= _JSONL_CACHE_MAX:
+            _jsonl_cache.pop(next(iter(_jsonl_cache)))
         _jsonl_cache[key] = (time.time(), mtime, value)
     return value
 

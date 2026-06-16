@@ -794,7 +794,9 @@ class QdrantService:
         source: str = "user",
     ) -> str:
         """写入一轮对话到 Qdrant。"""
-        memory_id = str(uuid.uuid4())
+        # 确定性 ID：基于对话内容哈希，避免队列积压恢复时重复入库
+        _id_seed = f"{user_message}||{ai_message}||{timestamp if timestamp else ''}"
+        memory_id = str(uuid.uuid5(uuid.NAMESPACE_OID, _id_seed))
         timestamp = datetime.now().timestamp()
         document = f"用户：{user_message}\nAI：{ai_message}"
 
@@ -835,9 +837,10 @@ class QdrantService:
             )],
         )
         logger.info("记忆写入完成 id=%s source=%s summary=%s", memory_id[:8], source, summary[:60])
-        # Phase 4: 维护本地索引
-        if self._local_index is not None:
-            self._local_index.add(memory_id, payload)
+        # Phase 4: 维护本地索引 (持锁，防止并发 query 看到不一致的索引)
+        with self._lock:
+            if self._local_index is not None:
+                self._local_index.add(memory_id, payload)
         if self._earliest_ts is None or timestamp < self._earliest_ts:
             self._earliest_ts = timestamp
         if self._latest_ts is None or timestamp > self._latest_ts:
@@ -977,9 +980,13 @@ class QdrantService:
             if self._local_index is not None:
                 self._local_index.add(memory_id, payload)
 
-        self._desensitization_counter += 1
-        if self._desensitization_counter >= self.DESENSITIZATION_CHECK_INTERVAL:
-            self._desensitization_counter = 0
+        should_desensitize = False
+        with self._lock:
+            self._desensitization_counter += 1
+            if self._desensitization_counter >= self.DESENSITIZATION_CHECK_INTERVAL:
+                self._desensitization_counter = 0
+                should_desensitize = True
+        if should_desensitize:
             self._apply_emotional_desensitization()
 
     def batch_increment_hit_count(self, ids_and_deltas: list[tuple[str, int]]):
@@ -1029,9 +1036,13 @@ class QdrantService:
                     if payload is not None:
                         self._local_index.add(mid, payload)
 
-        self._desensitization_counter += len(ids_and_deltas)
-        if self._desensitization_counter >= self.DESENSITIZATION_CHECK_INTERVAL:
-            self._desensitization_counter = 0
+        should_desensitize = False
+        with self._lock:
+            self._desensitization_counter += len(ids_and_deltas)
+            if self._desensitization_counter >= self.DESENSITIZATION_CHECK_INTERVAL:
+                self._desensitization_counter = 0
+                should_desensitize = True
+        if should_desensitize:
             self._apply_emotional_desensitization()
 
     # ------------------------------------------------------------------

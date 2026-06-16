@@ -153,8 +153,8 @@ class TestChatNonStream:
     def test_empty_message_returns_prompt(self, mock_circuit, mock_retrieval, mock_embed, client):
         cli, _ = client
         resp = cli.post("/chat", json={"message": ""})
-        assert resp.status_code == 400
-        assert "说点什么" in resp.json()["error"]
+        assert resp.status_code == 200
+        assert "说点什么" in resp.json()["response"]
 
     @patch("app.api.chat.local_embed_async", new_callable=AsyncMock)
     @patch("app.api.chat.run_chat_retrieval")
@@ -172,8 +172,8 @@ class TestChatNonStream:
         mock_circuit_cls.return_value.process.return_value = fake_spec
         ctx.llm_client.generate = AsyncMock(side_effect=RuntimeError("LLM down"))
         resp = cli.post("/chat", json={"message": "测试"})
-        assert resp.status_code == 503
-        assert "暂时不可用" in resp.json()["error"]
+        assert resp.status_code == 200
+        assert "暂时不可用" in resp.json()["response"]
 
     @patch("app.api.chat.local_embed_async", new_callable=AsyncMock)
     @patch("app.api.chat.run_chat_retrieval")

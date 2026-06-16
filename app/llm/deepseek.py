@@ -870,10 +870,13 @@ class LLMClient:
                 })
 
         _mems = cognitive_state.memories
-        # MemoryDirective → dict 归一（支持两种类型混用）
-        if _mems and not isinstance(_mems[0], dict):
-            _mems = [
-                {
+        # MemoryDirective → dict 归一（逐元素检查，防御混合列表）
+        normalized = []
+        for m in (_mems or []):
+            if isinstance(m, dict):
+                normalized.append(m)
+            else:
+                normalized.append({
                     "id": m.memory_id,
                     "summary": m.summary,
                     "document": getattr(m, 'document', ''),
@@ -887,9 +890,8 @@ class LLMClient:
                     "score": getattr(m, 'certainty', 0) or 0,
                     "emotional_intensity": getattr(m, 'emotional_intensity', 0) or 0,
                     "emotion_valence_bin": getattr(m, 'emotion_valence_bin', '') or '',
-                }
-                for m in _mems
-            ]
+                })
+        _mems = normalized
         for mem in _mems:
             meta = mem.get("metadata") or {}
             ts = meta.get("timestamp", 0)
@@ -984,9 +986,7 @@ _tool_id_lock = threading.Lock()
 
 
 def parse_dsml_tool_calls(text: str) -> list:
-    """将 DeepSeek 原生 DSML 工具调用解析为 OpenAI 结构。"""
-    if "deepseek" not in LLM_MODEL.lower():
-        return []
+    """将 DSML 工具调用解析为 OpenAI 结构（无条件尝试，非 DSML 模型不会匹配正则）。"""
     calls = []
 
     # 格式 1: <|DSML|tool_calls> ... </|DSML|tool_calls>
@@ -1029,9 +1029,7 @@ def parse_dsml_tool_calls(text: str) -> list:
 
 
 def strip_dsml(text: str) -> str:
-    """移除 DSML 标记，保留纯文本内容。含流式碎片处理。"""
-    if "deepseek" not in LLM_MODEL.lower():
-        return text
+    """移除 DSML 标记，保留纯文本内容。含流式碎片处理。非 DSML 模型的正则不匹配，无害。"""
     text = _DSML_RE.sub("", text)
     text = _ALT_TOOL_RE.sub("", text)
     # 完整标签
@@ -1046,7 +1044,3 @@ def strip_dsml(text: str) -> str:
     text = re.sub(r'</\|DSML[^>]*', "", text)      # 未闭合的 </|DSML...
     text = re.sub(r'<｜[^▸]*', "", text)           # 替代格式碎片
     return text.strip()
-
-
-# 向后兼容别名
-DeepSeekLLM = LLMClient

@@ -224,6 +224,24 @@ async def chat_stream(req: ChatRequest, user_ctx = Depends(get_user_context)):
                                                 reasoning_content=reasoning or "", is_stream=True)
                     continue
                 break
+            else:
+                # 两轮均为工具调用，第三轮兜底（不给工具，强迫 LLM 产出文本）
+                logger.info("流式两轮均为工具调用，第三轮兜底（无工具）")
+                async for tag, token in user_ctx.llm_client.generate_stream(
+                    user_message,
+                    cognitive_state=utterance_spec,
+                    timeline_recent=timeline_recent,
+                    session_context=session_context,
+                    extra_messages=extra_msgs,
+                ):
+                    if tag == "content":
+                        full_text += token
+                        clean = strip_dsml(token)
+                        if clean:
+                            safe = clean.replace('\n', '\\n')
+                            yield "data: [CONTENT]" + safe + chr(10) + chr(10)
+                    elif tag == "tool_calls":
+                        logger.warning("流式第三轮兜底仍产出工具调用，放弃文本产出")
 
             # 发送溯源 trace 数据
             trace_payload = _build_trace(memories)
@@ -258,20 +276,20 @@ async def chat_stream(req: ChatRequest, user_ctx = Depends(get_user_context)):
                     try:
                         await loop.run_in_executor(user_ctx.storage_executor, user_ctx.chat_history.append, user_message, full_text, timestamp)
                     except Exception:
-                        pass
+                        logger.error("对话历史追加失败 (streaming)", exc_info=True)
 
                 async def _safe_enqueue():
                     try:
                         await loop.run_in_executor(user_ctx.storage_executor, user_ctx._enqueue_store_task, user_message, full_text, timestamp)
                     except Exception:
-                        pass
+                        logger.error("入库任务入队失败 (streaming)", exc_info=True)
 
                 async def _safe_incremental():
                     try:
                         from app.memory.working import incremental_update
                         await loop.run_in_executor(user_ctx.storage_executor, lambda: incremental_update(user_ctx.chat_history.records, wm_path=f"{user_ctx.data_dir}/working_memory.json"))
                     except Exception:
-                        pass
+                        logger.error("工作记忆更新失败 (streaming)", exc_info=True)
 
                 await asyncio.gather(_safe_append(), _safe_enqueue(), _safe_incremental())
     return StreamingResponse(event_stream(), media_type="text/event-stream")
@@ -283,7 +301,7 @@ async def chat_stream(req: ChatRequest, user_ctx = Depends(get_user_context)):
 async def chat(req: ChatRequest, user_ctx = Depends(get_user_context)):
     user_message = (req.message or "").strip()
     if not user_message:
-        return JSONResponse(status_code=400, content={"error": "请说点什么吧，我听着呢 😊"})
+        return ChatResponse(response="请说点什么吧，我听着呢 😊")
 
     logger.info("收到消息: %s", user_message[:80])
 
@@ -338,10 +356,10 @@ async def chat(req: ChatRequest, user_ctx = Depends(get_user_context)):
                                         reasoning_content=result.get("reasoning_content", ""),
                                         is_stream=False)
         else:
+            # 两轮工具调用后兜底：不再给 memories 位置参数（cognitive_state 已包含一切）
             result = await user_ctx.llm_client.generate(
-                user_message, memories,
+                user_message,
                 extra_messages=extra_messages,
-                personalities=personalities,
                 timeline_recent=timeline_recent,
                 cognitive_state=utterance_spec,
                 session_context=session_context,
@@ -351,7 +369,7 @@ async def chat(req: ChatRequest, user_ctx = Depends(get_user_context)):
         logger.error("LLM 调用失败: %s %s", type(exc).__name__, exc)
         import traceback
         logger.error("LLM 调用详情:\n%s", traceback.format_exc())
-        return JSONResponse(status_code=503, content={"error": "抱歉，AI 服务暂时不可用，请稍后再试。"})
+        return ChatResponse(response="抱歉，AI 服务暂时不可用，请稍后再试。")
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if req.test_mode:
@@ -368,13 +386,13 @@ async def chat(req: ChatRequest, user_ctx = Depends(get_user_context)):
             try:
                 await loop.run_in_executor(user_ctx.storage_executor, user_ctx.chat_history.append, user_message, ai_response, timestamp)
             except Exception:
-                pass
+                logger.error("对话历史追加失败 (non-streaming)", exc_info=True)
 
         async def _safe_enqueue():
             try:
                 await loop.run_in_executor(user_ctx.storage_executor, user_ctx._enqueue_store_task, user_message, ai_response, timestamp)
             except Exception:
-                pass
+                logger.error("入库任务入队失败 (non-streaming)", exc_info=True)
 
         async def _safe_incremental():
             try:
@@ -382,7 +400,7 @@ async def chat(req: ChatRequest, user_ctx = Depends(get_user_context)):
                 await loop.run_in_executor(user_ctx.storage_executor, lambda: incremental_update(
                     user_ctx.chat_history.records, wm_path=f"{user_ctx.data_dir}/working_memory.json"))
             except Exception:
-                pass
+                logger.error("工作记忆更新失败 (non-streaming)", exc_info=True)
 
         await asyncio.gather(_safe_append(), _safe_enqueue(), _safe_incremental())
 

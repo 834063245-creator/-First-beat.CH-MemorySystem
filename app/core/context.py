@@ -280,6 +280,7 @@ class AppContext:
                                         logger.warning("队列积压: %d 条待处理 for %s", len(tasks), self.data_dir)
 
                     if tasks:
+                        _consecutive_failures = 0
                         for i, task in enumerate(tasks):
                             logger.info("队列任务 [%d/%d]: 入库 %s...", i + 1, len(tasks), task.get("timestamp", "?")[:16])
                             try:
@@ -287,8 +288,14 @@ class AppContext:
                                     task["user_message"], task["ai_message"], task["timestamp"]
                                 )
                                 logger.info("队列任务 [%d/%d]: 完成", i + 1, len(tasks))
+                                _consecutive_failures = 0
                             except Exception as e:
                                 logger.error("队列任务 [%d/%d] 失败: %s", i + 1, len(tasks), e)
+                                _consecutive_failures += 1
+                                if _consecutive_failures >= 3:
+                                    _backoff = min(60, 10 * _consecutive_failures)
+                                    logger.error("队列连续失败 %d 次，退避 %.0fs", _consecutive_failures, _backoff)
+                                    time.sleep(_backoff)
                         try:
                             if tmp and os.path.exists(tmp):
                                 os.remove(tmp)
@@ -668,12 +675,26 @@ class AppContext:
                                 sim_meta = similar["metadatas"][0][si]
                                 if dist < 0.08 and not sim_meta.get("stale", False):
                                     old_tags = set(sim_meta.get("tags", "").split(",")) if sim_meta.get("tags") else set()
-                                    if set(tags) & old_tags:
+                                    has_tag_overlap = bool(set(tags) & old_tags)
+                                    # 补充：实体重叠也作为冲突信号（语义距离近但标签不同的场景）
+                                    has_entity_overlap = False
+                                    if not has_tag_overlap:
+                                        old_entities_raw = sim_meta.get("entities", [])
+                                        if isinstance(old_entities_raw, str):
+                                            try:
+                                                old_entities_raw = json.loads(old_entities_raw)
+                                            except (json.JSONDecodeError, TypeError):
+                                                old_entities_raw = []
+                                        old_entity_names = {e.get("text", "") for e in (old_entities_raw or []) if isinstance(e, dict)}
+                                        new_entity_names = {e.get("text", "") for e in (entities or []) if isinstance(e, dict)}
+                                        has_entity_overlap = bool(old_entity_names & new_entity_names)
+                                    if has_tag_overlap or has_entity_overlap:
                                         self.chroma_service._collection.update(
                                             ids=[sim_id],
                                             metadatas=[{"stale": True, "superseded_by": memory_id}],
                                         )
-                                        logger.info("冲突检测: %s 标记过时, 被 %s 取代", sim_id[:8], memory_id[:8])
+                                        logger.info("冲突检测: %s 标记过时, 被 %s 取代 (标签匹配=%s 实体匹配=%s)",
+                                                   sim_id[:8], memory_id[:8], has_tag_overlap, has_entity_overlap)
                 except Exception as exc:
                     logger.debug("冲突检测跳过: %s", exc)
 

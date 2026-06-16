@@ -265,7 +265,7 @@ class CircuitOrchestrator:
                 mirror_prediction = self._mirror_neuron.predict(
                     prefrontal.intent, prefrontal.topics)
             except Exception as exc:
-                logger.debug("行为预测跳过: %s", exc)
+                logger.warning("行为预测跳过: %s", exc)
 
         _log_step('mirror_predict')
         # ── 引擎编织：从候选集中织出上下文（替代 TOP_K 截断）──
@@ -370,7 +370,7 @@ class CircuitOrchestrator:
             if self._dmn is not None and prefrontal.topics:
                 topic_notes = self._dmn.get_topic_notes(prefrontal.topics)
         except Exception as exc:
-            logger.debug("话题笔记检索跳过: %s", exc)
+            logger.warning("话题笔记检索跳过: %s", exc)
 
         # M3 fix: fact 级记忆 + reference 级记忆都给 LLM
         fact_memories = [d for d in temp.primary]
@@ -390,7 +390,7 @@ class CircuitOrchestrator:
                         emotional_tone="neutral",
                     ))
         except Exception as exc:
-            logger.debug("冲动收集跳过: %s", exc)
+            logger.warning("冲动收集跳过: %s", exc)
 
         # ④ 响应门控
         gate = basal_ganglia_gate(
@@ -409,7 +409,7 @@ class CircuitOrchestrator:
                 elif drift.current_direction == "frugal" and drift.consecutive >= 3:
                     gate.tone = "soft"  # 用户连续省钱倾向, 收敛推销语气
         except Exception:
-            pass
+            logger.warning("偏移率检测跳过", exc_info=True)
 
         # ── Part B: 自我镜像 ─────────────────────────────────
         self_mirror_text = ""
@@ -439,7 +439,7 @@ class CircuitOrchestrator:
                     limit=3,
                 )
         except Exception:
-            pass
+            logger.warning("自我镜像构建跳过", exc_info=True)
 
         _log_step('response_gate')
         # ── 关系维度更新（基于当前轮对话信号） ────────────────────────
@@ -607,12 +607,15 @@ class CircuitOrchestrator:
             entity_set = set(entities)
             m["_entities"] = raw_entities  # 回写解析后的列表，供后续 narrative 使用
 
-            # 贪婪匹配：找实体重叠 ≥ 2 的最佳已有分组
+            # 贪婪匹配：找实体重叠 ≥ 2 的最佳已有分组（平局优先选更大 bucket）
             best_bucket = None
             best_overlap = 0
             for bucket in buckets:
                 overlap = len(entity_set & bucket["entities"])
-                if overlap > best_overlap:
+                if overlap > best_overlap or (
+                    overlap == best_overlap and best_bucket is not None
+                    and len(bucket["entities"]) > len(best_bucket["entities"])
+                ):
                     best_overlap = overlap
                     best_bucket = bucket
 
@@ -639,12 +642,16 @@ class CircuitOrchestrator:
             # 拼 narrative — 取 bucket 中出现频率最高的 5 个实体作为代表
             entity_freq = _dd(int)
             for bm in bucket["memories"]:
+                # 每记忆去重，避免同名实体在 _entities 和 _tags 中重复计数
+                mem_entities = set()
                 for e in (bm.get("_entities", []) or []):
                     if isinstance(e, str) and len(e) >= 2:
-                        entity_freq[e] += 1
+                        mem_entities.add(e)
                 for e in (bm.get("_tags", []) or []):
                     if isinstance(e, str) and len(e) >= 2:
-                        entity_freq[e] += 1
+                        mem_entities.add(e)
+                for e in mem_entities:
+                    entity_freq[e] += 1
             top_entities = sorted(entity_freq.items(), key=lambda x: -x[1])[:5]
             entity_str = "/".join(e for e, _ in top_entities)
 

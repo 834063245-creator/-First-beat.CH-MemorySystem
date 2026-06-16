@@ -93,7 +93,8 @@ def _drain_coalesce():
 def _on_timer_drain():
     """定时器回调：窗口到期，执行排空。"""
     global _coalesce_timer
-    _coalesce_timer = None
+    with _coalesce_lock:
+        _coalesce_timer = None
     _drain_coalesce()
 
 
@@ -148,7 +149,11 @@ def _ngram_sig(text: str) -> dict[str, float]:
         return {}
     with _ngram_cache_lock:
         if text in _ngram_cache:
-            return _ngram_cache[text]
+            sig = _ngram_cache[text]
+            # LRU: 命中后移到末尾
+            del _ngram_cache[text]
+            _ngram_cache[text] = sig
+            return sig
     sig: dict[str, float] = {}
     t = text.lower()
     for i in range(len(t) - 1):

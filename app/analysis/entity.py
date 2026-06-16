@@ -29,7 +29,7 @@ def extract_entities(text: str) -> list[dict]:
         ollama_entities = _sem_extract_entities(text)
         entities.extend(ollama_entities)
     except Exception:
-        pass
+        logger.warning("Ollama 实体抽取失败，实体匹配路径将降级为空")
 
     # 2. 金额/数字+单位
     for m in re.finditer(r'(\d+[\.\d]*)\s*(万|亿|元|块|美元|欧元|日|天|小时|分钟|岁)', text):
