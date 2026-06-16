@@ -667,7 +667,7 @@ def query_explore(mode: str = "timeline", _collection=None, **kwargs) -> str:
         mid = kwargs.get("memory_id", ""); tk = kwargs.get("top_k", 5)
         # Phase 3: CoOccurrenceStore 替代 CoOccurrenceTracker
         from app.config.settings import STORAGE_BACKEND as _sb_dispatch
-        from app.memory.qdrant import CoOccurrenceStore
+        from app.memory.qdrant_cooccur import CoOccurrenceStore
         if _sb_dispatch == "qdrant":
             from app.memory.qdrant import QdrantService
             if isinstance(_collection, QdrantService):

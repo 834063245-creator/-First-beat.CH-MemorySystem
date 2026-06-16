@@ -97,7 +97,7 @@ class TestCoOccurrenceTracker:
     @pytest.fixture
     def tracker(self):
         from qdrant_client import QdrantClient
-        from app.memory.qdrant import CoOccurrenceStore
+        from app.memory.qdrant_cooccur import CoOccurrenceStore
         import uuid
         coll_name = f"test_cooc_{uuid.uuid4().hex[:8]}"
         client = QdrantClient(location=":memory:")

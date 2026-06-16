@@ -41,7 +41,8 @@ if _STORAGE_BACKEND == "qdrant":
     from app.memory.qdrant import QdrantService
 from app.llm.deepseek import LLMClient
 # Phase 3: CoOccurrenceStore/HyperEdgeStore 替代 SQLite (cooccur/entity_pair/hyperedge)
-from app.memory.qdrant import CoOccurrenceStore, HyperEdgeStore
+from app.memory.qdrant_cooccur import CoOccurrenceStore
+from app.memory.qdrant_hyperedge import HyperEdgeStore
 from app.memory.history import ChatHistory
 from app.memory.inverted import InvertedIndex
 from app.memory.affinity import TopicAffinity
