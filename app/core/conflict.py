@@ -40,7 +40,7 @@ def check_resolution(
         user_message: 用户当前消息
         pending_conflicts: DMN 的 pending_conflicts 列表
         chroma_service: ChromaService 实例（用于标记 stale）
-        co_tracker: CoOccurrenceTracker 实例（清理孤儿关联）
+        co_tracker: CoOccurrenceStore 实例（清理孤儿关联）
 
     返回:
         被消解的冲突信息 dict（含 tag/old_id/old_summary），或 None

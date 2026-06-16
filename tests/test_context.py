@@ -29,8 +29,8 @@ def _make_mocks():
     for target, factory in [
         ('app.core.context.ChromaService', _make_chroma_mock),
         ('app.core.context.LLMClient', MagicMock),
-        ('app.core.context.CoOccurrenceTracker', MagicMock),
-        ('app.core.context.EntityPairTracker', MagicMock),
+        ('app.core.context.CoOccurrenceStore', MagicMock),
+        ('app.core.context.HyperEdgeStore', MagicMock),
         ('app.core.context.InvertedIndex', lambda: MagicMock(_tag_index={})),
         ('app.core.context.TopicAffinity', MagicMock),
         ('app.core.context.TemporalPatternIndex', MagicMock),

@@ -40,9 +40,8 @@ from app.memory.chroma import ChromaService
 if _STORAGE_BACKEND == "qdrant":
     from app.memory.qdrant import QdrantService
 from app.llm.deepseek import LLMClient
-from app.memory.cooccur import CoOccurrenceTracker
-from app.memory.entity_pair import EntityPairTracker
-from app.memory.hyperedge import HyperEdgeIndex
+# Phase 3: CoOccurrenceStore/HyperEdgeStore 替代 SQLite (cooccur/entity_pair/hyperedge)
+from app.memory.qdrant import CoOccurrenceStore, HyperEdgeStore
 from app.memory.history import ChatHistory
 from app.memory.inverted import InvertedIndex
 from app.memory.affinity import TopicAffinity
@@ -110,10 +109,35 @@ class AppContext:
         self.retrieval_executor = ThreadPoolExecutor(max_workers=3)
         import atexit
         atexit.register(self._cleanup_executors)
-        self.co_tracker = CoOccurrenceTracker(file_path=f"{data_dir}/co_occurrence.db")
-        self.ai_co_tracker = CoOccurrenceTracker(file_path=f"{data_dir}/ai_co_occurrence.db")
-        self.entity_pair_tracker = EntityPairTracker(file_path=f"{data_dir}/entity_pairs.db")
-        self.hyperedge_index = HyperEdgeIndex(file_path=f"{data_dir}/hyper_edges.db")
+        # Phase 3: CoOccurrenceStore/HyperEdgeStore 替代 SQLite 表
+        if _STORAGE_BACKEND == "qdrant":
+            _qs_client = self.chroma_service.client
+            _embed_getter = lambda mid: self.chroma_service._get_embedding_cached(mid)
+            from app.llm.embed import local_embed_batch
+            self.co_tracker = CoOccurrenceStore(
+                _qs_client, "co_occurrence", embed_getter=_embed_getter,
+            )
+            self.ai_co_tracker = CoOccurrenceStore(
+                _qs_client, "ai_co_occurrence", embed_getter=_embed_getter,
+            )
+            self.hyperedge_index = HyperEdgeStore(
+                _qs_client, "hyper_edges", embed_batch_fn=local_embed_batch,
+            )
+        else:
+            # ChromaDB 回退：新建本地 Qdrant 客户端给新 stores
+            from qdrant_client import QdrantClient
+            _qs_client = QdrantClient(location=":memory:")
+            self.co_tracker = CoOccurrenceStore(
+                _qs_client, "co_occurrence",
+            )
+            self.ai_co_tracker = CoOccurrenceStore(
+                _qs_client, "ai_co_occurrence",
+            )
+            self.hyperedge_index = HyperEdgeStore(
+                _qs_client, "hyper_edges",
+            )
+        # entity_pair_tracker 升级为 entity_co_counts payload 字段
+        self.entity_pair_tracker = None
         self.chat_history = ChatHistory(path=f"{data_dir}/chat_history.jsonl", max_memory=CHAT_HISTORY_MAX_MEMORY)
         self.inverted_index = InvertedIndex()
         try:
@@ -613,9 +637,9 @@ class AppContext:
                 )
                 if memory_id and len(entity_texts) >= 2:
                     try:
-                        for i in range(len(entity_texts)):
-                            for j in range(i + 1, len(entity_texts)):
-                                self.entity_pair_tracker.record(entity_texts[i], entity_texts[j], memory_id)
+                        # Phase 3: entity_co_counts 替代 EntityPairTracker
+                        # 入库时预计算 entity_co_counts，存入 payload
+                        self.chroma_service.update_entity_co_counts(memory_id, entities)
                     except Exception:
                         pass
                     try:
@@ -829,7 +853,6 @@ class AppContext:
         try:
             self.co_tracker._invalidate_cache()
             self.co_tracker._load()
-            self.entity_pair_tracker._invalidate_cache()
             _ = self.chroma_service.count()
             self.chroma_service._build_embedding_cache()
             self.ai_chroma_service._build_embedding_cache()
@@ -943,10 +966,11 @@ class AppContext:
                 pass
         except Exception:
             pass
-        # 关闭所有 SQLite 连接（WAL 文件清理 + 避免资源泄漏）
+        # Phase 3: SQLite 连接已迁 Qdrant，不再需要 close_all
+        # 关闭 Qdrant 客户端
         try:
-            from app.core.db import close_all
-            close_all()
+            self.chroma_service.close()
+            self.ai_chroma_service.close()
         except Exception:
             pass
 

@@ -112,17 +112,78 @@ def isolated_inverted_index():
 
 @pytest.fixture
 def isolated_entity_pair_tracker(temp_data_dir):
-    """隔离的 EntityPairTracker 实例。"""
-    from app.memory.entity_pair import EntityPairTracker
-    path = os.path.join(temp_data_dir, "entity_pairs.db")
-    tracker = EntityPairTracker(file_path=path)
+    """隔离的实体对跟踪器（Phase 3 兼容 shim）。
+
+    Phase 3 已将 EntityPairTracker 功能迁至 Qdrant payload entity_co_counts。
+    此 fixture 提供最小化兼容实现，供 E2E 测试使用。
+    Phase 5 将移除独立的 entity_pair E2E 测试。
+    """
+    from types import SimpleNamespace
+
+    # 简单内存存储模拟旧 EntityPairTracker API
+    _pairs: dict[str, dict] = {}  # entity → {partner: {count, memory_ids}}
+    _memory_pairs: dict[str, list] = {}  # memory_id → [(entity_a, entity_b)]
+
+    class _CompatTracker:
+        EXPAND_TOP_K = 5
+        MAX_MEMORIES = 30
+
+        def record(self, entity_a, entity_b, memory_id):
+            if not entity_a or not entity_b or entity_a == entity_b:
+                return
+            for a, b in [(entity_a, entity_b), (entity_b, entity_a)]:
+                if a not in _pairs:
+                    _pairs[a] = {}
+                if b not in _pairs[a]:
+                    _pairs[a][b] = {"count": 0, "memory_ids": []}
+                _pairs[a][b]["count"] += 1
+                if memory_id not in _pairs[a][b]["memory_ids"]:
+                    _pairs[a][b]["memory_ids"].append(memory_id)
+            if memory_id not in _memory_pairs:
+                _memory_pairs[memory_id] = []
+            _memory_pairs[memory_id].append((entity_a, entity_b))
+
+        def expand(self, entity_names):
+            result = {}
+            for ename in entity_names:
+                if ename in _pairs:
+                    related = _pairs[ename]
+                    result[ename] = {k: v["count"] for k, v in related.items()}
+            return result
+
+        def get_memory_ids(self, entity_names):
+            scored = {}
+            for ename in entity_names:
+                if ename in _pairs:
+                    for partner, info in _pairs[ename].items():
+                        for mid in info.get("memory_ids", []):
+                            scored[mid] = scored.get(mid, 0) + info["count"]
+            sorted_ids = sorted(scored.items(), key=lambda x: -x[1])
+            return [mid for mid, _ in sorted_ids[:self.MAX_MEMORIES]]
+
+        def remove_memory(self, memory_id):
+            if memory_id in _memory_pairs:
+                for a, b in _memory_pairs.pop(memory_id):
+                    if a in _pairs and b in _pairs[a]:
+                        _pairs[a][b]["count"] = max(0, _pairs[a][b]["count"] - 1)
+                        if memory_id in _pairs[a][b]["memory_ids"]:
+                            _pairs[a][b]["memory_ids"].remove(memory_id)
+
+        def stats(self):
+            total_pairs = sum(
+                len(partners) for partners in _pairs.values()
+            )
+            return {"total_entities": len(_pairs), "total_pairs": total_pairs}
+
+        def _load(self):
+            data = {}
+            for a, partners in _pairs.items():
+                data[a] = {b: {"count": v["count"], "memory_ids": v["memory_ids"]}
+                          for b, v in partners.items()}
+            return data
+
+    tracker = _CompatTracker()
     yield tracker
-    try:
-        os.remove(path)
-        os.remove(path + "-wal")
-        os.remove(path + "-shm")
-    except Exception:
-        pass
 
 
 # ═══════════════════════════════════════════════════════════════

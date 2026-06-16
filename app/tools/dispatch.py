@@ -665,8 +665,20 @@ def query_explore(mode: str = "timeline", _collection=None, **kwargs) -> str:
 
     elif mode == "co_occurrence":
         mid = kwargs.get("memory_id", ""); tk = kwargs.get("top_k", 5)
-        from app.memory.cooccur import CoOccurrenceTracker
-        co = CoOccurrenceTracker(); related = co.get_co_with(mid)
+        # Phase 3: CoOccurrenceStore 替代 CoOccurrenceTracker
+        from app.config.settings import STORAGE_BACKEND as _sb_dispatch
+        from app.memory.qdrant import CoOccurrenceStore
+        if _sb_dispatch == "qdrant":
+            from app.memory.qdrant import QdrantService
+            if isinstance(_collection, QdrantService):
+                _client = _collection.client
+            else:
+                _client = _collection._svc.client
+        else:
+            # ChromaDB 回退：新建本地 Qdrant 客户端
+            from qdrant_client import QdrantClient
+            _client = QdrantClient(location=":memory:")
+        co = CoOccurrenceStore(_client, "co_occurrence"); related = co.get_co_with(mid)
         if not related: return "未找到共现关系"
         pids = [r["id"] for r in related[:tk]]
         r2 = coll.get(ids=pids, include=["metadatas"])

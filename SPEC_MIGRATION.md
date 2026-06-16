@@ -1,6 +1,6 @@
 # SPEC: 初痕记忆引擎 — 存储基础设施迁移 (推理层暂缓)
 
-> **版本**: v1.7 · **日期**: 2026-06-16 · **状态**: Phase 0 ✅ → 0.5 ✅ → 1 ✅ → 2 ✅ → 3 进行中
+> **版本**: v1.7 · **日期**: 2026-06-16 · **状态**: Phase 0 ✅ → 0.5 ✅ → 1 ✅ → 2 ✅ → 3 ✅ → 4 进行中
 > **关联文档**: CLAUDE.md（项目唯一权威文档）
 > **评审**: 2026-06-15 三轮评审。v1.6 payload 全字段原生类型。v1.7 vLLM 迁移暂缓——Windows 不支持 vLLM，Ollama 继续使用。仅做存储层: ChromaDB+SQLite→Qdrant。
 > **目标规模**: 十万级起步，百万级架构储备
@@ -1357,14 +1357,15 @@ Phase 4  ██░░░░░░░░  百万级硬骨头 + 清理（量化、
 - [x] **额外**: 全项目 `bm25_index` / `BM25FullTextIndex` 引用清零（含 circuit.py source_weight 重命名）
 - [x] 1084 tests pass (6 预存失败，与改动无关)
 
-### Phase 3 交付物 (SQLite 迁移)
+### Phase 3 交付物 (SQLite 迁移) ✅
 
-- [ ] CoOccurrence 独立 Qdrant collection 实现（record/query/export_for_symmetry）
-- [ ] entity_pair 逻辑 → 入库时预计算 entity_co_counts，存入 payload
-- [ ] hyperedge 逻辑 → Qdrant `hyper_edges` collection
-- [ ] PersonaSymmetry 从 CoOccurrence collection 读取（替代 export_for_symmetry→SQLite）
-- [ ] 删 `app/core/db.py`
-- [ ] 删 `app/memory/cooccur.py` / `entity_pair.py` / `hyperedge.py`
+- [x] CoOccurrence 独立 Qdrant collection 实现（record/query/export_for_symmetry）— `CoOccurrenceStore` (~280行)
+- [x] entity_pair 逻辑 → 入库时预计算 entity_co_counts，存入 payload — `update_entity_co_counts()` / `get_entity_co_counts()`
+- [x] hyperedge 逻辑 → Qdrant `hyper_edges` collection — `HyperEdgeStore` (~280行)
+- [x] PersonaSymmetry 从 CoOccurrence collection 读取（export_for_symmetry API 不变，透明接入）
+- [x] 删 `app/memory/cooccur.py` / `entity_pair.py` / `hyperedge.py`
+- [x] `app/core/db.py` 保留兼容桩（close_all no-op），Phase 5 删除
+- [x] 1063 tests pass (8 预存 flaky)
 
 ### Phase 4 交付物 (百万级硬骨头)
 

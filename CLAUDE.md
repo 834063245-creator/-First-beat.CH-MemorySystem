@@ -1,7 +1,7 @@
 # 初痕 (First Beat) CH Memory System
 
 > **这是项目的唯一权威文档。** 其他所有 .md 都以此文档为准。Agent 启动时自动加载。
-> 修改代码后必须同步更新本文档。最后修订 2026-06-16 (Phase 2 完成)。
+> 修改代码后必须同步更新本文档。最后修订 2026-06-16 (Phase 3 完成)。
 
 ---
 
@@ -9,7 +9,7 @@
 
 一个 **本地优先的 AI Agent 记忆引擎**。给大模型装上长期记忆——存对话、检索回忆、建画像、主动发起话题。
 
-- 156 个 .py 文件 · ~38,800 行源码 · ~13,600 行测试（61 文件）
+- 156 个 .py 文件 · ~40,000 行源码 · ~13,400 行测试（60 文件）
 - DeepSeek API (主 LLM) + Ollama 本地 (bge-m3 embedding / qwen2.5 实体抽取)
 - FastAPI 服务 · 单用户单实例 · Benchmark 模式可选
 
@@ -67,12 +67,12 @@ d:\First Beat CH Memory System\
 │   │   └── app.py                  #   FastAPI app 工厂
 │   │
 │   ├── core/                       # 引擎核心：决策、上下文、基础设施
-│   │   ├── context.py              #   ★ AppContext：服务容器，管理所有子系统和后台线程 (945行)
+│   │   ├── context.py              #   ★ AppContext：服务容器，管理所有子系统和后台线程 (965行)
 │   │   ├── circuit.py              #   ★ ChatCircuit：单次对话的处理管线 (748行)
 │   │   ├── state.py                #   CognitiveState：引擎决策数据结构，LLM 看到的唯一接口 (303行)
 │   │   ├── tools.py                #   LLM 工具定义（OpenAI 格式的 tool schemas）
 │   │   ├── conflict.py             #   记忆冲突解决：事实矛盾检测 → stale 标记
-│   │   ├── db.py                   #   SQLite 统一入口 get_db()，WAL+外键+线程安全
+│   │   ├── db.py                   #   DEPRECATED: Phase 3 退役桩，仅 close_all() no-op (Phase 5 删)
 │   │   ├── helpers.py              #   工具函数：计时、trace、JSONL 缓存
 │   │   ├── heartbeat.py            #   用户心跳追踪（共享给后台线程和 API）
 │   │   ├── bottleneck.py           #   端到端延迟监控
@@ -81,14 +81,11 @@ d:\First Beat CH Memory System\
 │   │   ├── metadata.py.bak         #   REMOVED: DEPRECATED 旧的元数据提取 (2026-06-14)
 │   │   └── user_context.py         #   多用户 AppContext 管理器
 │   │
-│   ├── memory/                     # 记忆存储层：ChromaDB + SQLite + JSONL
-│   │   ├── chroma.py               #   ★ ChromaService：ChromaDB 向量存储，热力/脱敏/退役 (711行)
-│   │   ├── qdrant.py               #   ★ QdrantService：Qdrant 向量存储，API 兼容 ChromaService (550行)
+│   ├── memory/                     # 记忆存储层：Qdrant + JSONL（ChromaDB 回退保留）
+│   │   ├── chroma.py               #   ChromaService：ChromaDB 向量存储（仅回退路径）(711行)
+│   │   ├── qdrant.py               #   ★ QdrantService + CoOccurrenceStore + HyperEdgeStore (~1450行)
 │   │   ├── history.py              #   ChatHistory：对话历史 JSONL，内存缓存最近 500 条 (270行)
 │   │   ├── working.py              #   工作记忆摘要：增量 LLM 摘要，替代注入全量历史 (165行)
-│   │   ├── cooccur.py              #   CoOccurrenceTracker：记忆对共现次数 SQLite (292行)
-│   │   ├── entity_pair.py          #   EntityPairTracker：实体对共现 SQLite，双向存储 (236行)
-│   │   ├── hyperedge.py            #   HyperEdgeIndex：超边索引，保留多实体共现上下文 (461行)
 │   │   ├── inverted.py             #   词→记忆ID 倒排索引，线程安全增量更新 (157行)
 │   │   ├── temporal.py             #   TemporalPatternIndex：话题时间规律发现 (171行)
 │   │   ├── tree.py                 #   话题树：从标签亲和图自动聚类 (179行)
@@ -376,7 +373,7 @@ api/ → core/ → memory/ → retrieval/ + analysis/ + portrait/ → background
                  ↑
 brain/ ──────────┘  (语义基础设施, 仅依赖 llm/embed, 允许被任意层 import)
 tools/ ──────────┘  (工具基础设施, 允许被任意层 import)
-core/db.py, helpers.py, bottleneck.py, heartbeat.py ──┘  (基础设施, 允许被任意层 import)
+helpers.py, bottleneck.py, heartbeat.py ──┘  (基础设施, 允许被任意层 import)
 ```
 
 ### 核心设计决策
@@ -392,16 +389,17 @@ core/db.py, helpers.py, bottleneck.py, heartbeat.py ──┘  (基础设施, �
 ### 存储规范
 
 ```
-向量    → ChromaDB (PersistentClient)    → app/memory/chroma.py
-结构化  → SQLite via get_db()            → app/core/db.py
-流式    → JSONL 追加写入                 → open(path, "a")
-缓存    → JSON (仅模块内部, 不共享)       → 各自的 _cache.json
+向量+元数据 → Qdrant (本地/远程)          → app/memory/qdrant.py
+向量回退    → ChromaDB (PersistentClient)  → app/memory/chroma.py (仅 STORAGE_BACKEND=chromadb)
+流式/追加   → JSONL 追加写入               → open(path, "a")
+缓存        → JSON (仅模块内部, 不共享)     → 各自的 _cache.json
 ```
 
-- **新代码用 `get_db("data/xxx.db")`，禁止直接 `sqlite3.connect()`**
-- **跨模块共享的结构化数据必须进 SQLite，不允许 JSON 文件**
-- **追加写入的数据（对话历史、错误报告）继续用 JSONL，不需要迁移**
-- **模块私有的缓存 JSON 可以保留，不要改成 SQLite**
+- **主存储为 Qdrant**：向量 + payload (元数据、entity_co_counts)
+- **CoOccurrence / HyperEdge 为独立 Qdrant collection**（`CoOccurrenceStore` / `HyperEdgeStore`）
+- **Phase 3 已删 SQLite 存储**：cooccur.py、entity_pair.py、hyperedge.py 已移除
+- **追加写入的数据（对话历史、错误报告）继续用 JSONL**
+- **模块私有的缓存 JSON 可以保留**
 
 ---
 
@@ -487,13 +485,13 @@ E2E/test_background.py       — "后台在干什么？"
 ## 6. 编码规范
 
 ### 必须
-- 新 SQLite 连接用 `from app.core.db import get_db; conn = get_db("data/xxx.db")`
-- 测试后调用 `from app.core.db import close_all; close_all()`
+- 新存储逻辑走 Qdrant（`app/memory/qdrant.py`）—— CoOccurrenceStore / HyperEdgeStore / QdrantService
+- 测试后调用 `from app.core.db import close_all; close_all()`（兼容桩，Phase 5 移除）
 - 异常捕获至少用 `except Exception:`，禁止裸 `except:`
 - 遵循依赖方向，不引入反向 import
 
 ### 禁止
-- `sqlite3.connect()` 直连
+- `sqlite3.connect()` 直连（Phase 3 后 SQLite 已退役）
 - 跨模块共享的 JSON 文件做结构化存储
 - pickle
 - 在 embedding 缓存逻辑外加锁
@@ -548,11 +546,20 @@ cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 
 ### 进行中 (2026-06-16)
 
-- 🔄 **Phase 3: SQLite 元数据迁 Qdrant** — cooccur/hyperedge 独立 collection、entity_pair 入库预计算
-  - 规格：`SPEC_MIGRATION.md` v1.7
-  - 删除清单：`chroma.py`、`cooccur.py`、`entity_pair.py`、`hyperedge.py`、`db.py`、`data/chroma/`、3 个 SQLite .db
-  - **不改**：`embed.py`、`local.py`、`semantic.py`（Ollama 继续使用）
-- ✅ **Phase 2 杀全量模式完成**：`_translate_filter()` (8种运算符)、`_QdrantCollectionCompat` ChromeDB→Qdrant API 适配器、删 `bm25_fulltext.py` (Qdrant MatchText 替代)、pipeline.py 全路径 API 翻译、context.py _collection 适配、dispatch.py 兼容。1084 tests pass (6 预存失败)。
+- ⏳ **Phase 4: 百万级硬骨头** — 量化、payload 索引、embedding 缓存 LRU、100万压力测试
+- ⏳ **Phase 5: 清理** — 删 chromadb 依赖、删 ChromaDB 数据、全项目 grep 清残留、E2E 全链路更新
+
+### 最近完成
+
+- ✅ **Phase 3 SQLite 迁移完成**：CoOccurrenceStore / HyperEdgeStore 替代 cooccur.py / entity_pair.py / hyperedge.py
+  - `app/memory/qdrant.py` 新增 `CoOccurrenceStore` (~280行)、`HyperEdgeStore` (~280行)
+  - cooccur.py、entity_pair.py、hyperedge.py 已删除
+  - `entity_co_counts` 入库时预计算存入 Qdrant payload（替代 EntityPairTracker）
+  - context.py 初始化全部切换到新 stores（ChromaDB 回退路径自动创建本地 Qdrant 客户端）
+  - PersonaSymmetry 通过 `export_for_symmetry()` 透明接入
+  - db.py 保留兼容桩 (`close_all` no-op)，Phase 5 删除
+  - 1065 tests pass (6 预存 flaky，与改动无关)
+- ✅ **Phase 2 杀全量模式完成**：`_translate_filter()` (8种运算符)、`_QdrantCollectionCompat` ChromeDB→Qdrant API 适配器、删 `bm25_fulltext.py` (Qdrant MatchText 替代)、pipeline.py 全路径 API 翻译、context.py _collection 适配、dispatch.py 兼容。1084 tests pass。
 - ✅ **Phase 1 QdrantService 完成**：`app/memory/qdrant.py` (550行→~980行)、context.py STORAGE_BACKEND 切换、dispatch.py Qdrant 兼容、portrait/writer.py PersonaSymmetry bugfix。
 - ✅ **Phase 0.5 原型验证完成**：V2 HNSW 召回率 1.0、V3 中文标签匹配 8/8、V4 子串匹配行为已文档化、V5 CoOccurrence 本地模式通过、V6 embedding 签名兼容。V1 需 Ollama+vLLM 服务（当前不可达）
 - ✅ **Phase 0 infra 搭建完成**：docker-compose + settings.py 切换开关 + verify_infra.py + migrate_to_qdrant.py

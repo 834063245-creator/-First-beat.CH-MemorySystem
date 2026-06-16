@@ -92,19 +92,24 @@ class TestInvertedIndex:
 # ============================================================
 
 class TestCoOccurrenceTracker:
-    """验证 CoOccurrenceTracker 的基本功能。"""
+    """验证 CoOccurrenceStore 的基本功能（Phase 3: Qdrant 替代 SQLite）。"""
 
     @pytest.fixture
     def tracker(self):
-        from app.memory.cooccur import CoOccurrenceTracker
-        tmpf = tempfile.mktemp(suffix=".db")
-        ct = CoOccurrenceTracker(file_path=tmpf)
+        from qdrant_client import QdrantClient
+        from app.memory.qdrant import CoOccurrenceStore
+        import uuid
+        coll_name = f"test_cooc_{uuid.uuid4().hex[:8]}"
+        client = QdrantClient(location=":memory:")
+        ct = CoOccurrenceStore(client, coll_name)
         yield ct
         try:
-            os.unlink(tmpf)
-            os.unlink(tmpf + "-wal")
-            os.unlink(tmpf + "-shm")
-        except OSError:
+            client.delete_collection(coll_name)
+        except Exception:
+            pass
+        try:
+            client.close()
+        except Exception:
             pass
 
     def test_record_and_query(self, tracker):
