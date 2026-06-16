@@ -1,6 +1,6 @@
 # SPEC: 初痕记忆引擎 — 存储基础设施迁移 (推理层暂缓)
 
-> **版本**: v1.7 · **日期**: 2026-06-16 · **状态**: Phase 0 ✅ → 0.5 ✅ → 1 ✅ → 2 进行中
+> **版本**: v1.7 · **日期**: 2026-06-16 · **状态**: Phase 0 ✅ → 0.5 ✅ → 1 ✅ → 2 ✅ → 3 进行中
 > **关联文档**: CLAUDE.md（项目唯一权威文档）
 > **评审**: 2026-06-15 三轮评审。v1.6 payload 全字段原生类型。v1.7 vLLM 迁移暂缓——Windows 不支持 vLLM，Ollama 继续使用。仅做存储层: ChromaDB+SQLite→Qdrant。
 > **目标规模**: 十万级起步，百万级架构储备
@@ -1288,7 +1288,7 @@ Phase 0  ██░░░░░░░░  infra: docker-compose 加 Qdrant + 切�
 Phase 0.5 █░░░░░░░░  原型验证: 5/6项通过 (V1 vLLM跳过)                     ✅ 1天
 Phase 1  ███░░░░░░░  QdrantService + 全项目改名 (ChromaService→Qdrant)     3天
                     (不含 vLLM——暂缓。Ollama embedding 保持不变)
-Phase 2  ██░░░░░░░░  杀全量模式（list_all→scroll，filter 翻译层）          2天
+Phase 2  ██░░░░░░░░  杀全量模式（list_all→scroll，filter 翻译层）          2天 ✅
 Phase 3  ███░░░░░░░  SQLite 元数据迁 Qdrant（cooccur/hyperedge 迁移）      3天
 Phase 4  ██░░░░░░░░  百万级硬骨头 + 清理（量化、分区、删旧代码、改测试）      2天
         ──────────────────────────────────────────────────────────
@@ -1345,13 +1345,17 @@ Phase 4  ██░░░░░░░░  百万级硬骨头 + 清理（量化、
 - [x] 🔧 **BUGFIX**: 修正 `portrait/writer.py:590` PersonaSymmetry 调用——`export_for_symmetry()` + `from_dicts=True`
 - [x] `pytest tests/` — 1095 passed（6 个预存污染失败，与改动无关）
 
-### Phase 2 交付物 (杀全量模式)
+### Phase 2 交付物 (杀全量模式) ✅
 
-- [ ] `qdrant.py` 中所有 `list_all()` → `scroll()` + filter
-- [ ] `_translate_filter()` 实现并测试全部 8 种运算符覆盖
-- [ ] `pipeline.py` 中所有 `_collection.get()` → Qdrant `retrieve` / `search`
-- [ ] **删除** `bm25_fulltext.py`（Qdrant MatchText 替代）
-- [ ] inverted_index 数据源切换（context.py 中 `build()`/`build_tags()` 的数据从 ChromaDB `get()` → Qdrant `scroll()`）
+- [x] `qdrant.py` 中所有 `list_all()` → `scroll()` + filter
+- [x] `_translate_filter()` 实现并测试全部 8 种运算符覆盖（含 `_build_condition()` helper）
+- [x] `pipeline.py` 中所有 `_collection.get()` → Qdrant `retrieve` / `search`（通过 `_QdrantCollectionCompat` 适配器）
+- [x] **删除** `bm25_fulltext.py`（Qdrant MatchText 替代 — `_path_fulltext()` 新路径）
+- [x] inverted_index 数据源切换（context.py 中 `build_tags()` 已用 `list_all()`→`scroll()`；`build()` 增量构建不变）
+- [x] **额外**: `_QdrantCollectionCompat` 适配器 — 零侵入翻译层，`query()`/`get()`/`update()`/`count()` 全部兼容
+- [x] **额外**: QdrantService 新增 `.get()`/`.query()` delegate 方法（dispatch.py 兼容）
+- [x] **额外**: 全项目 `bm25_index` / `BM25FullTextIndex` 引用清零（含 circuit.py source_weight 重命名）
+- [x] 1084 tests pass (6 预存失败，与改动无关)
 
 ### Phase 3 交付物 (SQLite 迁移)
 

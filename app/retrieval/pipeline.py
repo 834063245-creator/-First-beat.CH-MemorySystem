@@ -353,7 +353,7 @@ def retrieve_all(
     """全量检索，9 路独立并行 + 1 路依赖合并 + 1 路 AI 表达检索。
 
     ThreadPoolExecutor 并发:
-      - 9 条独立路径并行跑（语义/关键词/标签/实体/时间/话题/注意力/BM25/AI表达）
+      - 9 条独立路径并行跑（语义/关键词/标签/实体/时间/话题/注意力/全文/AI表达）
       - 共现扩展依赖其他路的 seen_ids，合并后单独跑
 
     Returns: list of dicts, each with:
@@ -596,25 +596,28 @@ def retrieve_all(
         except Exception as exc:
             logger.debug("retrieve_all 注意力漂移失败: %s", exc)
 
-    def _path_bm25_fulltext():
-        """⑨ BM25 全文检索。"""
-        if not (hasattr(ctx_obj, 'bm25_index') and ctx_obj.bm25_index):
-            return
+    def _path_fulltext():
+        """⑨ 全文检索 — Qdrant MatchText on document (替代 BM25)。"""
         try:
-            bm25_ids = ctx_obj.bm25_index.search(user_message, top_k=100 if _BM else 20)
-            if not bm25_ids:
-                return
-            dr = ctx_obj.chroma_service._collection.get(
-                ids=bm25_ids, include=["documents", "metadatas"])
+            # 使用 Qdrant MatchText 做全文搜索（需 text index on document 字段）
+            from qdrant_client import models as qm
+            pts, _ = ctx_obj.chroma_service._client.scroll(
+                collection_name=ctx_obj.chroma_service._collection_name,
+                scroll_filter=qm.Filter(must=[
+                    qm.FieldCondition(key="document", match=qm.MatchText(text=user_message)),
+                ]),
+                limit=100 if _BM else 20,
+                with_payload=True,
+            )
             local = []
-            for i, mid in enumerate(dr.get("ids", [])):
-                meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
-                doc = dr["documents"][i] if dr.get("documents") else ""
-                local.append(_make_mem(mid, meta, doc, 0.35, "bm25_fulltext"))
+            for pt in pts:
+                payload = pt.payload or {}
+                doc = payload.get("document", "")
+                local.append(_make_mem(pt.id, dict(payload), doc, 0.35, "fulltext"))
             if local:
                 _merge(local)
         except Exception as exc:
-            logger.debug("retrieve_all BM25 全文检索失败: %s", exc)
+            logger.debug("retrieve_all 全文检索失败: %s", exc)
 
     def _path_ai_memory():
         """⑩ AI 表达记忆检索 — 语义相似的 AI 历史表达。"""
@@ -638,10 +641,10 @@ def retrieve_all(
         except Exception as exc:
             logger.debug("retrieve_all AI表达检索失败: %s", exc)
 
-    # ── 第一阶段：9 路并行（+ BM25 全文 + AI 表达）──
+    # ── 第一阶段：9 路并行（+ 全文 + AI 表达）──
     paths = [_path_semantic, _path_keyword, _path_tag,
              _path_entity, _path_temporal, _path_topic, _path_attention,
-             _path_bm25_fulltext, _path_ai_memory]
+             _path_fulltext, _path_ai_memory]
     _ex = executor if isinstance(executor, ThreadPoolExecutor) else None
     if _ex is None:
         _ex = ThreadPoolExecutor(max_workers=min(len(paths), 8))

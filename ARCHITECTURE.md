@@ -10,7 +10,7 @@
 2. [系统全景](#系统全景)
 3. [认知状态层 — 引擎与 LLM 的边界](#认知状态层)
 4. [认知画像系统 — PORTRAIT.md 统一汇聚](#认知画像系统)
-5. [检索管线 — 10 路并行 + 编织](#检索管线)
+5. [检索管线 — 9 路并行 + 编织](#检索管线)
 6. [后台自主节律](#后台自主节律)
 7. [记忆生命周期](#记忆生命周期)
 8. [AI 自我表达记忆](#ai-自我表达记忆)
@@ -83,7 +83,7 @@
 **为什么：**
 - Benchmark 测的是"搜出原文喂给 LLM"，系统的认知层（摘要、情绪、实体、编织、衰减）在这种场景下是噪音
 - 通过 feature flag 做适配，而不是靠改代码或特调 prompt
-- 保留检索管线的完整参与（10 路并行 + BM25 全文 + 全量兜底），只 bypass 认知过滤层
+- 保留检索管线的完整参与（9 路并行 + 全文 MatchText + 全量兜底），只 bypass 认知过滤层
 
 ---
 
@@ -95,7 +95,7 @@
 用户消息                              5 冲动源  ──→ PriorityQueue
   │                                   情绪趋势/时间节律/
   ├─ 意图/情绪分类（bge-m3 原型）      随机漫游/好奇心/行为模式
-  ├─ 10 路并行检索                     │
+  ├─ 9 路并行检索                      │
   ├─ 两级精排                         冲动消费者（空闲>2min）
   ├─ 引擎编织（weave_context）           │
   │   ├─ 故事线检测                   LLM 生成 → [内心独白]
@@ -156,7 +156,7 @@ LLM 收到的 prompt 里没有文字标签——置信度是连续值 `relevance
 CircuitOrchestrator.process()
   ├─ 1. 意图分析     → UserMessageAnalysis (intent + emotion + urgency)
   ├─ 2. 情绪分析     → 补充 emotion_intensity (感叹号/emoji/程度副词)
-  ├─ 3. 检索         → 10 路并行 + 编织 + 认知分层
+  ├─ 3. 检索         → 9 路并行 + 编织 + 认知分层
   ├─ 4. 门控决策     → GatingDecision (tone + formality + response_mode)
   ├─ 5. 冲动注入     → 检查 PriorityQueue，注入 ImpulseDirective
   ├─ 6. 行为预测     → mirror_prediction（Markov 预测下一步意图/话题）
@@ -250,7 +250,7 @@ app/portrait/
 
 位于 `app/retrieval/pipeline.py`。延迟目标 < 500ms（含 embedding）。
 
-### 10 路并行检索
+### 9 路并行检索
 
 | 路径 | 方法 | 特点 |
 |------|------|------|
@@ -263,7 +263,7 @@ app/portrait/
 | ⑦ 时间触发 | TemporalPatternIndex | 当前时段的历史模式 |
 | ⑧ 话题树 | 话题树分支扩展 | 同一话题簇的其他记忆 |
 | ⑨ 注意力漂移 | 最近 3 轮加权 embedding | 模拟注意力惯性 |
-| ⑩ BM25 全文 | 全文 BM25Okapi 索引 | 对 ChromaDB 全部 document 建索引 |
+| ⑧ 全文检索 | Qdrant MatchText | 对 document 字段建 text index 全文搜索 |
 
 路径 ⑩（v2.2）解决关键词倒排索引建在摘要上的漏检问题。路径⑨（v2.0）模拟人的注意力惯性——连续聊同一话题时，相关记忆被自动加权。
 
@@ -288,7 +288,7 @@ Benchmark 模式配额翻倍（放宽检索限制）。
 3. v2.1 软降权公式：`recency_weight = 1.0 - (days_ago / 90) × (1.0 - 0.15)`，下限 0.15
    - archived 记忆上限 0.6
    - stale 记忆上限 0.3
-4. 来源优先级：semantic > bm25_fulltext > entity > keyword > tag > time > co_occurrence > attention
+4. 来源优先级：semantic > fulltext > entity > keyword > tag > time > co_occurrence > attention
 5. **Benchmark 全量兜底：** 当 BENCHMARK_MODE=true 且 ChromaDB 记忆 ≤ 200 条时，直接全量返回，零检索遗漏
 6. **Phase 4: 人格标签检索已退役** — 画像常驻注入替代了每次对话的 `rerank_tags(top_k=3)` 语义召回。画像不走检索，每轮无条件注入 prompt。
 
@@ -299,7 +299,7 @@ v2.0 引入：替代固定的 TOP_K 截断，全程零 LLM 调用，延迟目标
 **四层决策机制：**
 
 ```
-候选记忆（10 路检索结果）
+候选记忆（9 路检索结果）
     │
     ├─ 预处理：去 stale + 解析元数据
     │
@@ -470,7 +470,7 @@ stale 记忆注入 LLM 时携带 `stale_reason` 和 `superseded_by`，LLM 可作
 独立的 ChromaDB 集合（`ai_memories`），存储 AI 的回复风格和表达习惯。v2.3 获得与用户记忆完全对等的元数据支持。
 
 - **写入**：每次对话后分析 AI 回复，提取表达方式标签。AI 记忆入库获得完整元数据：实体提取（qwen2.5:3b）、10 字段时间特征、session_continued 标记、基于 full_text（用户+AI）的双维度情绪分析——与用户侧完全对等
-- **检索**：R10 路径 — 当前语境下匹配历史表达风格
+- **检索**：AI 表达路径 — 当前语境下匹配历史表达风格
 - **巩固**：AI 拥有独立 ConsolidationEngine 实例（ai_dmn），在 DMN 合并 ticker 中与用户侧共享 on_idle/浅巩固/深巩固触发。AI 情绪淡化保留独立每小时定时器
 - **注入**：AI 画像标签（ai1~ai6 维度）统一存储在 PORTRAIT.md 中，由 PortraitRenderer 渲染后注入 system prompt——替代了旧的 `personality_notes_ai` 取前 5 条模式
 
@@ -537,7 +537,7 @@ stale 记忆注入 LLM 时携带 `stale_reason` 和 `superseded_by`，LLM 可作
 |----|------|------|
 | Embedding | bge-m3 via Ollama | 1024 维，中文友好，本地运行零 API 成本 |
 | 向量存储 | ChromaDB | 本地持久化，HNSW 索引，无需外部服务 |
-| 全文检索 | BM25Okapi（内存） | benchmark 适配 < 10K 条，生产可扩展磁盘索引 |
+| 全文检索 | Qdrant MatchText（向量库内置） | 对 document 字段建 text index，替代 BM25 内存索引 |
 | 中文分词 | 字符 2-gram + bge-m3 KeyBERT | 不依赖 jieba，准确率相当 |
 | 语义核 | bge-m3 原型匹配 | 意图/情绪分类不用训练分类器，惰性 cache |
 | 情绪模型 | Russell 二维环（valence × arousal） | 比一维正负分类更细腻 |
@@ -623,9 +623,8 @@ app/
 │   └── tag_index.py     标签嵌入索引
 │
 ├── retrieval/     ← 检索管线
-│   ├── pipeline.py      10 路检索 + 门控 + 编织 + benchmark 全量兜底
+│   ├── pipeline.py      9 路检索 + 门控 + 编织 + benchmark 全量兜底
 │   ├── scoring.py       两级精排（cosine + hit_count + recency_weight）
-│   └── bm25_fulltext.py BM25 全文索引（内存）
 │
 ├── analysis/      ← 分析层（零 LLM）
 │   ├── emotion.py       Russell 二维情绪环

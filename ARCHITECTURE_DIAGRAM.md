@@ -13,7 +13,7 @@ flowchart TB
         direction TB
         USER["👤 用户消息"]
         EMBED["bge-m3 Embedding<br/>1024维 · 本地 · 零成本"]
-        RETRIEVE["🔍 10路并行检索 · 零人格检索"]
+        RETRIEVE["🔍 9路并行检索 · 零人格检索"]
         WEAVE["🧵 引擎编织 weave_context<br/>故事线 · 分层 · Token预算"]
         CIRCUIT["⚡ CircuitOrchestrator<br/>意图/情绪/门控/冲动/关系/画像"]
         LLM_GEN["🤖 LLM 生成回复<br/>stable画像(前缀缓存) + dynamic画像"]
@@ -64,7 +64,7 @@ flowchart TB
 flowchart LR
     A["👤 用户消息"] --> B["① Embedding<br/>bge-m3 → 1024维向量<br/>Ollama本地 · ~50ms"]
     B --> C["② 意图/情绪分类<br/>bge-m3原型匹配<br/>intent + emotion + urgency"]
-    C --> D["③ 10路并行检索<br/>ThreadPoolExecutor(7)<br/>各路独立召回"]
+    C --> D["③ 9路并行检索<br/>ThreadPoolExecutor(7)<br/>各路独立召回"]
     D --> E["④ 去重 + 两级精排<br/>cosine + hit_count<br/>+ v2.1 recency_weight"]
     E --> F{"⑤ weave_context<br/>引擎编织 · 零LLM · <150ms"}
     
@@ -97,7 +97,7 @@ flowchart LR
 
 ---
 
-## 三、10路并行检索
+## 三、9路并行检索
 
 ```mermaid
 flowchart TB
@@ -107,7 +107,7 @@ flowchart TB
         direction LR
         P1["① 语义hot<br/>ChromaDB heat=hot<br/>高活跃优先"]
         P2["② 语义cool<br/>ChromaDB warm/cool<br/>低活跃兜底 sim≥0.3"]
-        P3["③ BM25全文<br/>BM25Okapi<br/>全部document全文索引"]
+        P3["③ 全文检索<br/>Qdrant MatchText<br/>document字段全文索引"]
         P4["④ 关键词<br/>倒排索引(摘要)<br/>AND→OR退化"]
         P5["⑤ 标签<br/>标签倒排<br/>精确匹配≥1标签"]
         P6["⑥ 实体<br/>实体名精确匹配<br/>PERSON/LOC/ORG"]
@@ -161,7 +161,7 @@ flowchart TB
     subgraph WEAVE["四层决策引擎"]
         L1["层一：故事线编织<br/>━━━━━━━━━━━━━<br/>按实体/标签聚类<br/>计算时间跨度 ≥1天<br/>提取情绪趋势<br/>延续/翻转/持续积极/持续消极"]
         L1 --> L2["层二：认知分层<br/>━━━━━━━━━━━━━<br/>fact: 故事线内 + sem_dist<0.30<br/>reference: relevance中等<br/>background: 上下文相关<br/>suppressed: 引擎过滤"]
-        L2 --> L3["层三：来源排序<br/>━━━━━━━━━━━━━<br/>semantic_hot(1.0)<br/>> bm25(0.90)<br/>> entity(0.85)<br/>> keyword(0.75)<br/>> tag(0.70)<br/>> time(0.65)<br/>> cooccur(0.60)<br/>> attention(0.55)"]
+        L2 --> L3["层三：来源排序<br/>━━━━━━━━━━━━━<br/>semantic_hot(1.0)<br/>> fulltext(0.75)<br/>> entity(0.85)<br/>> keyword(0.75)<br/>> tag(0.70)<br/>> time(0.65)<br/>> cooccur(0.60)<br/>> attention(0.55)"]
         L3 --> L4["层四：Token预算<br/>━━━━━━━━━━━━━<br/>MAX_TOKENS=20000软限制<br/>按叙事摘要截断<br/>非硬截断 · 完整透传"]
     end
 
@@ -378,9 +378,9 @@ flowchart TB
     end
 
     subgraph RETRIEVAL["retrieval/ · 检索管线"]
-        PIPE["pipeline.py<br/>10路检索+编织<br/>Portrait light boost"]
+        PIPE["pipeline.py<br/>9路检索+编织<br/>Portrait light boost"]
         SCORE["scoring.py<br/>精排+软降权"]
-        BM25["bm25_fulltext.py"]
+        FT["Qdrant MatchText<br/>(替代 BM25)"]
     end
 
     subgraph ANALYSIS["analysis/ · 分析层"]

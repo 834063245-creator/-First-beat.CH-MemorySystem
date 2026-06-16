@@ -98,9 +98,8 @@ app/
 │   ├── entity_pair.py   ← Entity pair relationship graph.
 │   └── affinity.py      ← Topic affinity computation.
 ├── retrieval/
-│   ├── pipeline.py      ← 10-path parallel retrieval + weaving. Most complex file.
+│   ├── pipeline.py      ← 9-path parallel retrieval + weaving. Most complex file.
 │   ├── scoring.py       ← Ranking formula + v2.1 soft degradation.
-│   ├── bm25_fulltext.py ← BM25 full-text retrieval.
 ├── background/
 │   ├── consolidation.py ← Consolidation engine (⚠️ needs splitting — see tech debt)
 │   ├── impulse.py       ← Impulse system (5 sources + consumer + fatigue suppression)

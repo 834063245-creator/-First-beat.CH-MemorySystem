@@ -10,7 +10,7 @@
 2. [System Overview](#system-overview)
 3. [Cognitive State Layer — The Engine/LLM Boundary](#cognitive-state-layer)
 4. [Portrait System — PORTRAIT.md Unified Hub](#portrait-system)
-5. [Retrieval Pipeline — 10-Path Parallel + Weaving](#retrieval-pipeline)
+5. [Retrieval Pipeline — 9-Path Parallel + Weaving](#retrieval-pipeline)
 6. [Background Autonomous Rhythm](#background-autonomous-rhythm)
 7. [Memory Lifecycle](#memory-lifecycle)
 8. [AI Self-Expression Memory](#ai-self-expression-memory)
@@ -83,7 +83,7 @@ Triggered by `BENCHMARK_MODE=true` environment variable. Doesn't affect normal c
 **Why:**
 - Benchmarks test "retrieve raw text and feed it to the LLM." The system's cognitive layers (summarization, emotion, entity extraction, weaving, decay) are noise in that scenario
 - Adaptation via feature flag rather than code changes or prompt tweaks
-- Preserves full retrieval pipeline participation (10 parallel paths + BM25 fulltext + exhaustive fallback), only bypasses the cognitive filtering layer
+- Preserves full retrieval pipeline participation (9 parallel paths + MatchText fulltext + exhaustive fallback), only bypasses the cognitive filtering layer
 
 ---
 
@@ -95,7 +95,7 @@ Request-Response Pipeline (per chat)    Background Rhythm (fully autonomous)
 User message                            5 Impulse Sources → PriorityQueue
   │                                      Emotion trend / Time rhythm /
   ├─ Intent/Emotion (bge-m3 prototype)   Random roam / Curiosity / Behavior
-  ├─ 10-path parallel retrieval          │
+  ├─ 9-path parallel retrieval           │
   ├─ Two-stage ranking                   Impulse Consumer (idle > 2 min)
   ├─ Weave context                         │
   │   ├─ Storyline detection             LLM generates → [inner voice]
@@ -158,7 +158,7 @@ The LLM's prompt contains no text labels — confidence is a continuous `relevan
 CircuitOrchestrator.process()
   ├─ 1. Intent analysis     → UserMessageAnalysis (intent + emotion + urgency)
   ├─ 2. Emotion analysis    → emotion_intensity supplement (exclamation/emoji/adverbs)
-  ├─ 3. Retrieval           → 10-path parallel + weaving + cognitive layering
+  ├─ 3. Retrieval           → 9-path parallel + weaving + cognitive layering
   ├─ 4. Gate decision       → GatingDecision (tone + formality + response_mode)
   ├─ 5. Impulse injection   → Check PriorityQueue, inject ImpulseDirective
   ├─ 6. Behavior prediction → mirror_prediction (Markov next intent/topic)
@@ -252,13 +252,13 @@ app/portrait/
 
 Located in `app/retrieval/pipeline.py`. Latency target < 500ms (including embedding).
 
-### 10 Parallel Retrieval Paths
+### 9 Parallel Retrieval Paths
 
 | Path | Method | Characteristics |
 |------|--------|----------------|
 | ① Semantic hot | ChromaDB (heat=hot) | High-activity memories first |
 | ② Semantic cool | ChromaDB (warm/cool) | Low-activity fallback, sim≥0.3 |
-| ③ BM25 fulltext | BM25Okapi | Full document index, exact keyword match |
+| ③ fulltext | Qdrant MatchText | Full document index, text search on document field |
 | ④ Keyword | Inverted index (summaries) | AND → OR degradation |
 | ⑤ Tag | Tag inverted index | Exact match ≥1 tag |
 | ⑥ Entity | Entity name exact match | PERSON/LOCATION/ORG etc. |
@@ -290,7 +290,7 @@ Benchmark mode quotas are 2-5× wider.
 3. v2.1 soft degradation formula: `recency_weight = 1.0 - (days_ago / 90) × (1.0 - 0.15)`, floor 0.15
    - archived memories: cap 0.6
    - stale memories: cap 0.3
-4. Source priority: semantic > bm25_fulltext > entity > keyword > tag > time > cooccurrence > attention
+4. Source priority: semantic > fulltext > entity > keyword > tag > time > cooccurrence > attention
 5. **Benchmark exhaustive fallback:** when BENCHMARK_MODE=true and ChromaDB memories ≤ 200, return all, zero retrieval loss
 6. **Phase 4: Personality tag retrieval retired** — portrait constant injection replaces per-query `rerank_tags(top_k=3)` semantic recall. Portrait bypasses retrieval; it is unconditionally injected into every prompt.
 
@@ -301,7 +301,7 @@ v2.0 introduced: replaces fixed TOP_K truncation. Zero LLM calls. Latency target
 **Four-layer decision mechanism:**
 
 ```
-Candidate memories (10-path retrieval results)
+Candidate memories (9-path retrieval results)
     │
     ├─ Preprocessing: remove stale + parse metadata
     │
@@ -472,7 +472,7 @@ Triggers every 50 `increment_hit_count` calls. High-intensity memories untouched
 A separate ChromaDB collection (`ai_memories`) stores the AI's response style and expressive patterns. v2.3 achieves full metadata parity with user memories.
 
 - **Write**: After each conversation, analyze the AI's reply and extract expression-style tags. AI memory ingestion now receives complete metadata: entity extraction (qwen2.5:3b), 10-field time features, session_continued flag, and dual-dimension emotion analysis from full_text (user+AI) — fully equivalent to the user side
-- **Retrieve**: Path R10 — match historical expression styles to the current context
+- **Retrieve**: AI expression path — match historical expression styles to the current context
 - **Consolidate**: AI has an independent ConsolidationEngine instance (ai_dmn) that shares on_idle/shallow/deep consolidation triggers with the user side in the DMN merged ticker. AI emotion dampening retains its own hourly timer
 - **Inject**: AI portrait dimensions (ai1~ai6) are stored alongside user dimensions (usr1~usr6) in PORTRAIT.md, rendered by PortraitRenderer and injected into the system prompt — replacing the old `personality_notes_ai` top-5-by-created_at pattern
 
@@ -539,7 +539,7 @@ Full specification in `BENCHMARK_SPEC.md`.
 |-------|--------|-----------|
 | Embedding | bge-m3 via Ollama | 1024-dim, Chinese-friendly, local runtime, zero API cost |
 | Vector store | ChromaDB | Local persistence, HNSW index, no external service |
-| Full-text search | BM25Okapi (in-memory) | Benchmark-appropriate for <10K records; production-ready with disk index |
+| Full-text search | Qdrant MatchText (built-in vector DB) | Text index on document field; replaces BM25 in-memory index |
 | Chinese tokenization | Character 2-gram + bge-m3 KeyBERT | No jieba dependency, comparable accuracy |
 | Semantic core | bge-m3 prototype matching | Intent/emotion classification without trained classifiers, lazy cache |
 | Emotion model | Russell circumplex (valence × arousal) | More nuanced than one-dimensional positive/negative |
@@ -621,9 +621,8 @@ app/
 │   └── tag_index.py     Tag embedding index
 │
 ├── retrieval/     ← Retrieval pipeline
-│   ├── pipeline.py      10-path retrieval + gating + weaving + benchmark exhaustive fallback
+│   ├── pipeline.py      9-path retrieval + gating + weaving + benchmark exhaustive fallback
 │   ├── scoring.py       Two-stage ranking (cosine + hit_count + recency_weight)
-│   └── bm25_fulltext.py BM25 full-text index (in-memory)
 │
 ├── analysis/      ← Analysis layer (zero LLM)
 │   ├── emotion.py       Russell circumplex model

@@ -614,9 +614,7 @@ async def admin_reset(user_ctx = Depends(get_user_context)):
         user_ctx.co_tracker.clear()
         # 清空 AI 共现矩阵
         user_ctx.ai_co_tracker.clear()
-        # 重建 BM25 索引（如果启用）
-        if user_ctx.bm25_index is not None:
-            user_ctx.bm25_index.clear()
+        # Phase 2: BM25 已删除 — Qdrant MatchText 替代
         logger.info("admin/reset: 已清空所有记忆和聊天历史 for %s", user_ctx.data_dir)
         return {"status": "ok", "message": "ChromaDB + chat history cleared"}
     except Exception as exc:

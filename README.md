@@ -1,6 +1,6 @@
 # 初痕 · First Beat — 自循环记忆体
 
-> 10 路并行检索 · 12 维认知画像 · 5 源泊松冲动 · 3 层存储架构 · 引擎自主节律 · 填 Key 就跑
+> 9 路并行检索 · 12 维认知画像 · 5 源泊松冲动 · 3 层存储架构 · 引擎自主节律 · 填 Key 就跑
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
@@ -17,7 +17,7 @@
 
 **别人给 LLM 加记忆插件；初痕让 LLM 当自己的语言皮层。**
 
-初痕不是 SDK、不是 API 服务、不是 Agent 框架的插件。它是一个**自闭环的记忆基础设施**——10 路并行语义检索、12 维认知画像常驻注入、5 源泊松冲动在后台自主运行、3 层存储（向量 + 结构化 + 流式日志）覆盖从原文到关系的完整记忆谱系。引擎自己决策、自己巩固、自己发现模式——LLM 只是它的嘴。
+初痕不是 SDK、不是 API 服务、不是 Agent 框架的插件。它是一个**自闭环的记忆基础设施**——9 路并行语义检索、12 维认知画像常驻注入、5 源泊松冲动在后台自主运行、3 层存储（向量 + 结构化 + 流式日志）覆盖从原文到关系的完整记忆谱系。引擎自己决策、自己巩固、自己发现模式——LLM 只是它的嘴。
 
 **初痕做什么：** 填一个 LLM API Key，`python run.py`，你就有了一个会记住你、会主动开口、会在你离线时自己消化和沉淀的认知系统。在上面搭聊天应用、桌宠、陪伴型 Agent——那是你的事。初痕只管记忆和说话。
 
@@ -29,7 +29,7 @@
 
 | 指标 | 数值 |
 |------|------|
-| 检索路径 | **10 路**并行（语义 hot/cool · BM25 全文 · 关键词 · 标签 · 实体 · 共现 · 时间 · 话题树 · 注意力漂移） |
+| 检索路径 | **9 路**并行（语义 hot/cool · 全文 MatchText · 关键词 · 标签 · 实体 · 共现 · 时间 · 话题树 · 注意力漂移） |
 | 检索延迟 | **<500ms**（含 bge-m3 embedding，不含 LLM 生成） |
 | 认知画像 | **12 维**（8 stable 常驻前缀缓存 + 4 dynamic 每轮更新） |
 | 存储层 | **3 层**（ChromaDB 向量 + SQLite 结构化 + JSONL 流式日志） |
@@ -95,8 +95,8 @@
                          ┌─── 请求-响应管线 ───┐
                          │                      │
   用户消息                 │                      │         SSE 流式输出
-  ───────→ Embedding ──→ 10路并行检索 ──→ 引擎编织 ──→ CircuitOrchestrator
-            (bge-m3)    (语义/BM25/标签/ (weave_context)   │
+  ───────→ Embedding ──→ 9路并行检索 ──→ 引擎编织 ──→ CircuitOrchestrator
+            (bge-m3)    (语义/全文/标签/ (weave_context)   │
                          实体/注意/时间/   4层决策机制      │
                          话题树/共现)                      ├─ 意图分析（bge-m3 原型匹配）
                                                          ├─ 情绪分析（Russell 二维环）
@@ -144,7 +144,7 @@
 
 **① Embedding。** 用户消息到达后，首先通过 bge-m3（Ollama 本地推理）转为 1024 维向量。这一步完全本地，不消耗任何外部 API。
 
-**② 检索。** 向量同时触发 10 条检索路径——语义 hot、语义 cool、BM25 关键词、标签倒排、实体匹配、注意力漂移、时间触发、话题树分支、共现扩展。在 ThreadPoolExecutor 中并发执行（max_workers=7），各路独立召回候选记忆。候选记忆进入**引擎编织（weave_context）**——v2.0 引入的四层决策机制，替代固定的 TOP_K 截断：故事线编织（按实体/标签聚类，识别跨时间叙事和情绪趋势）→ 认知分层（fact / reference / background / suppressed）→ Token 预算分配（20000 token 软限制）→ 来源优先级排序。全程零 LLM 调用，延迟 < 150ms。v2.1 新增软降权体系：90 天线性衰减 + archived 上限 0.6 + stale 上限 0.3，不再硬屏蔽任何记忆。
+**② 检索。** 向量同时触发 9 条检索路径——语义 hot、语义 cool、全文 MatchText、标签倒排、实体匹配、注意力漂移、时间触发、话题树分支、共现扩展。在 ThreadPoolExecutor 中并发执行（max_workers=7），各路独立召回候选记忆。候选记忆进入**引擎编织（weave_context）**——v2.0 引入的四层决策机制，替代固定的 TOP_K 截断：故事线编织（按实体/标签聚类，识别跨时间叙事和情绪趋势）→ 认知分层（fact / reference / background / suppressed）→ Token 预算分配（20000 token 软限制）→ 来源优先级排序。全程零 LLM 调用，延迟 < 150ms。v2.1 新增软降权体系：90 天线性衰减 + archived 上限 0.6 + stale 上限 0.3，不再硬屏蔽任何记忆。
 
 **③ 回路编排（CircuitOrchestrator）。** 这是引擎的认知核心。它拿到检索结果后，依次执行：
 - 意图分析：bge-m3 将用户消息与预定义的意图原型做语义匹配，判断是 casual / question / emotional_sharing / request / command
@@ -280,7 +280,7 @@ app/
 │   ├── keywords.py        # 关键词常量
 │   └── metrics.py         # 训练指标持久化
 ├── memory/        # ChromaDB（用户+AI 双集合）+ 工作记忆摘要 + 倒排/共现/实体对/时间索引
-├── retrieval/     # 10 路并行检索 + 引擎编织（weave_context）四层决策 + v2.1 软降权
+├── retrieval/     # 9 路并行检索 + 引擎编织（weave_context）四层决策 + v2.1 软降权
 ├── background/    # 后台节律：4h/24h 巩固 · 5 源冲动 · 蒸馏 · 镜像AI巩固 · 生命周期
 ├── analysis/      # Russell 情绪环 · 实体提取 · 模式发现 · 人格对称性 · 行为预测
 ├── portrait/      # 认知画像系统：12 维画像管理 · 实时/浅/深更新 · 渲染注入 · 提取器
@@ -320,7 +320,7 @@ integration/       # 集成测试（6 文件）
 - 画像合成: 主 LLM（引擎提取特征 → LLM 写入/合并条目）
 - 否定检测: 白名单 + 距离规则（无模型）
 - 紧急度: 10 行规则（无模型）
-- BM25 分词: 字符 2-gram + rank-bm25
+- 全文检索: Qdrant MatchText (替代 BM25)
 - 主 LLM: DeepSeek API（deepseek-v4-flash, 1M 上下文，可替换为任意 OpenAI 兼容供应商）
 - 部署: Windows / macOS / Linux, Docker 可选
 

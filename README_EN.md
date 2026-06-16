@@ -17,7 +17,7 @@
 
 First Beat provides a self-contained memory infrastructure. The engine runs consolidation, impulse generation, distillation, and pattern discovery in the background — then speaks naturally through the LLM when the timing is right. What you build on top — a chat app, a desktop companion, an AI pet — is up to you. First Beat handles the memory and the voice.
 
-**v2.4 current**: 12-dim cognitive portrait (constant injection replaces per-query retrieval) + AI consolidation mirror + 10-path parallel retrieval + weave_context + v2.1 soft degradation + 72 test files all green. Iterating daily.
+**v2.4 current**: 12-dim cognitive portrait (constant injection replaces per-query retrieval) + AI consolidation mirror + 9-path parallel retrieval + weave_context + v2.1 soft degradation + 72 test files all green. Iterating daily.
 
 ---
 
@@ -124,9 +124,9 @@ First Beat has two layers. The request-response pipeline handles each conversati
                        ┌─── Request-Response Pipeline ───┐
                        │                                  │
   User message         │                                  │       SSE streaming output
-  ───────→ Embedding ──→ 10-path parallel ──→ weave_context ──→ CircuitOrchestrator
+  ───────→ Embedding ──→ 9-path parallel ──→ weave_context ──→ CircuitOrchestrator
             (bge-m3)    retrieval            (4-layer         │
-                        (semantic/BM25/tag/   decision engine) │
+                        (semantic/fulltext/   decision engine) │
                          entity/attention/                     ├─ Intent (bge-m3 prototype match)
                          time/topic-tree/
                          co-occurrence)
@@ -313,7 +313,7 @@ app/
 │   ├── keywords.py        # Keyword constants
 │   └── metrics.py         # Training metrics persistence
 ├── memory/        # ChromaDB (user + AI dual collections) + working memory digest + inverted/co-occurrence/entity-pair/temporal indices
-├── retrieval/     # 10-path parallel recall + weave_context 4-layer decision engine + v2.1 soft degradation
+├── retrieval/     # 9-path parallel recall + weave_context 4-layer decision engine + v2.1 soft degradation
 ├── background/    # Autonomous: 4h/24h consolidation · 5-source impulse · distillation · mirrored AI consolidation · lifecycle
 ├── analysis/      # Russell circumplex · entity extraction · pattern discovery · personality symmetry · behavior prediction
 ├── portrait/      # Cognitive portrait system: 12-dim portrait mgmt · realtime/shallow/deep updates · renderer injection · extractors

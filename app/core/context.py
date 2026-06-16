@@ -132,12 +132,7 @@ class AppContext:
         self.portrait_renderer = PortraitRenderer(self.portrait)
         self.portrait_writer = PortraitWriter(self.portrait)
 
-        # BM25 全文索引（benchmark 模式下启用）
-        if BENCHMARK_MODE:
-            from app.retrieval.bm25_fulltext import BM25FullTextIndex
-            self.bm25_index = BM25FullTextIndex(self.chroma_service)
-        else:
-            self.bm25_index = None
+        # Phase 2: BM25 全文索引已删除 — Qdrant MatchText 原生替代
 
         self.topic_affinity = TopicAffinity(data_dir=data_dir)
         self.temporal_pattern_index = TemporalPatternIndex(data_dir=data_dir)
@@ -530,8 +525,7 @@ class AppContext:
                 # 同时更新标签倒排索引（benchmark 路径之前漏了这一步）
                 tags_str = ",".join(tags) if tags else ""
                 self.inverted_index.add_tags(memory_id, tags_str)
-                if hasattr(self, 'bm25_index') and self.bm25_index is not None:
-                    self.bm25_index._doc_count = -1
+                # Phase 2: BM25 已删除，Qdrant MatchText 替代
                 return
             except Exception as exc:
                 logger.error("benchmark 入库失败: %s", exc)

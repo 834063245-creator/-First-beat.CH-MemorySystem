@@ -1,7 +1,7 @@
 # 初痕 (First Beat) CH Memory System
 
 > **这是项目的唯一权威文档。** 其他所有 .md 都以此文档为准。Agent 启动时自动加载。
-> 修改代码后必须同步更新本文档。最后修订 2026-06-16。
+> 修改代码后必须同步更新本文档。最后修订 2026-06-16 (Phase 2 完成)。
 
 ---
 
@@ -9,7 +9,7 @@
 
 一个 **本地优先的 AI Agent 记忆引擎**。给大模型装上长期记忆——存对话、检索回忆、建画像、主动发起话题。
 
-- 157 个 .py 文件 · ~38,900 行源码 · ~14,000 行测试（62 文件）
+- 156 个 .py 文件 · ~38,800 行源码 · ~13,600 行测试（61 文件）
 - DeepSeek API (主 LLM) + Ollama 本地 (bge-m3 embedding / qwen2.5 实体抽取)
 - FastAPI 服务 · 单用户单实例 · Benchmark 模式可选
 
@@ -96,8 +96,7 @@ d:\First Beat CH Memory System\
 │   │   └── tag_index.py            #   标签嵌入索引：bge-m3 + 余弦最近邻查找 (140行)
 │   │
 │   ├── retrieval/                  # 检索管线：多路并行召回
-│   │   ├── pipeline.py             #   ★ 核心：run_chat_retrieval() 14步 + retrieve_all() 10路并行 (703行)
-│   │   ├── bm25_fulltext.py        #   BM25 全文检索，内存索引 ChromaDB 文档 (110行)
+│   │   ├── pipeline.py             #   ★ 核心：run_chat_retrieval() 14步 + retrieve_all() 9路并行 (703行)
 │   │   ├── scoring.py              #   统一评分函数 compute_score() (40行)
 │   │   └── reranker.py.bak         #   REMOVED: 嵌入余弦相似度重排序 (96行, UNUSED, 2026-06-14)
 │   │
@@ -241,17 +240,17 @@ d:\First Beat CH Memory System\
 ├─ 4. 检索 [app/retrieval/pipeline.py]
 │   ├─ run_chat_retrieval()
 │   │   ├─ 加载 DMN 预热缓存
-│   │   ├─ retrieve_all() ─── 10路并行检索 ─────┐
-│   │   │   ├─ path1: semantic (ChromaDB 向量)    │
+│   │   ├─ retrieve_all() ─── 9路并行检索 ──────┐
+│   │   │   ├─ path1: semantic (Qdrant 向量)      │
 │   │   │   ├─ path2: keyword (倒排索引)          │
 │   │   │   ├─ path3: tag (标签匹配)              │
 │   │   │   ├─ path4: entity (实体匹配)           │
 │   │   │   ├─ path5: temporal (时间模式)         │  ThreadPoolExecutor
 │   │   │   ├─ path6: topic (话题树扩展)          │  (max_workers=8)
 │   │   │   ├─ path7: attention (注意力漂移)       │
-│   │   │   ├─ path8: bm25_fulltext (关键词)      │
+│   │   │   ├─ path8: fulltext (MatchText 全文)   │
 │   │   │   ├─ path9: ai_memory (AI 自我记忆)     │
-│   │   │   └─ path10: co_occurrence (共现扩展) ──┘ ← 依赖前9路seen_ids
+│   │   │   └─ + co_occurrence (共现扩展) ────────┘ ← 依赖前9路seen_ids
 │   │   ├─ 注意力邻近度评分 (weighted-average embedding drift)
 │   │   ├─ 近期性权重 (90天线性衰减)
 │   │   └─ 纠错反馈 boost/downgrade
@@ -467,7 +466,7 @@ message[last]: user         ← 当前消息
 
 ### 红线 5：Embedding 和实体抽取
 
-- `local_embed()` 依赖 Ollama `bge-m3`，10 路检索全部依赖它
+- `local_embed()` 依赖 Ollama `bge-m3`，9 路检索全部依赖它
 - 实体抽取依赖 Ollama `qwen2.5:3b`，改模型→实体对/超边质量下降
 - embedding 缓存 (`_embed_cache`) 有锁保护，外面不要加锁→死锁
 
@@ -549,18 +548,18 @@ cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 
 ### 进行中 (2026-06-16)
 
-- 🔄 **Phase 2: 杀全量模式** — `list_all()`→`scroll()`、`_translate_filter()`、pipeline.py 检索 API 翻译、删 bm25_fulltext.py、inverted_index 数据源切换
+- 🔄 **Phase 3: SQLite 元数据迁 Qdrant** — cooccur/hyperedge 独立 collection、entity_pair 入库预计算
   - 规格：`SPEC_MIGRATION.md` v1.7
-  - 核心原则：**检索管线 9 路结构完全不变**，仅底层 API 翻译 + 删 bm25。inverted_index 保留
-  - 删除清单：`chroma.py`、`cooccur.py`、`entity_pair.py`、`hyperedge.py`、`bm25_fulltext.py`、`db.py`、`data/chroma/`、3 个 SQLite .db
+  - 删除清单：`chroma.py`、`cooccur.py`、`entity_pair.py`、`hyperedge.py`、`db.py`、`data/chroma/`、3 个 SQLite .db
   - **不改**：`embed.py`、`local.py`、`semantic.py`（Ollama 继续使用）
-- ✅ **Phase 1 QdrantService 完成**：`app/memory/qdrant.py` (550行)、context.py STORAGE_BACKEND 切换、dispatch.py Qdrant 兼容、portrait/writer.py PersonaSymmetry bugfix。1095 tests pass。
+- ✅ **Phase 2 杀全量模式完成**：`_translate_filter()` (8种运算符)、`_QdrantCollectionCompat` ChromeDB→Qdrant API 适配器、删 `bm25_fulltext.py` (Qdrant MatchText 替代)、pipeline.py 全路径 API 翻译、context.py _collection 适配、dispatch.py 兼容。1084 tests pass (6 预存失败)。
+- ✅ **Phase 1 QdrantService 完成**：`app/memory/qdrant.py` (550行→~980行)、context.py STORAGE_BACKEND 切换、dispatch.py Qdrant 兼容、portrait/writer.py PersonaSymmetry bugfix。
 - ✅ **Phase 0.5 原型验证完成**：V2 HNSW 召回率 1.0、V3 中文标签匹配 8/8、V4 子串匹配行为已文档化、V5 CoOccurrence 本地模式通过、V6 embedding 签名兼容。V1 需 Ollama+vLLM 服务（当前不可达）
 - ✅ **Phase 0 infra 搭建完成**：docker-compose + settings.py 切换开关 + verify_infra.py + migrate_to_qdrant.py
 
 ### 计划中
 
-- ⏳ **asyncio 化**：Qdrant 迁移完成后独立执行。目标——`pipeline.py` 的 `ThreadPoolExecutor` 10 路并发 → `asyncio.gather()`、`embed.py` 同步 HTTP → `httpx.AsyncClient`、`context.py` 后台线程 → asyncio Task。**不在迁移 spec 范围内**，两个工作解耦。vLLM HTTP 层的 `embed.py`/`local.py` 改写优先用 `httpx.AsyncClient`（新代码不引入同步 HTTP 债务），外部暂时 `asyncio.to_thread()` 包一层
+- ⏳ **asyncio 化**：Qdrant 迁移完成后独立执行。目标——`pipeline.py` 的 `ThreadPoolExecutor` 9 路并发 → `asyncio.gather()`、`embed.py` 同步 HTTP → `httpx.AsyncClient`、`context.py` 后台线程 → asyncio Task。**不在迁移 spec 范围内**，两个工作解耦。vLLM HTTP 层的 `embed.py`/`local.py` 改写优先用 `httpx.AsyncClient`（新代码不引入同步 HTTP 债务），外部暂时 `asyncio.to_thread()` 包一层
 
 ### 最近完成 (2026-06-14)
 

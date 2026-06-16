@@ -100,9 +100,8 @@ app/
 │   ├── entity_pair.py   ← 实体对关系图谱。
 │   └── affinity.py      ← 话题亲和度计算。
 ├── retrieval/
-│   ├── pipeline.py      ← 10 路并行检索 + 编织。整个系统最复杂的文件。
+│   ├── pipeline.py      ← 9 路并行检索 + 编织。整个系统最复杂的文件。
 │   ├── scoring.py       ← 精排公式 + v2.1 软降权。
-│   ├── bm25_fulltext.py ← BM25 全文检索。
 ├── background/
 │   ├── consolidation.py ← 巩固引擎（⚠️ 需要拆分，见技术债）
 │   ├── impulse.py       ← 冲动系统（5 源 + 消费者 + 疲劳抑制）

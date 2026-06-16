@@ -316,7 +316,7 @@ class CircuitOrchestrator:
                     "semantic": 1.0, "dmn_preheat": 0.85, "entity_match": 0.8,
                     "kw_match": 0.65, "tag_match": 0.6, "keyword_expand": 0.55,
                     "text_match": 0.6, "time_rhythm": 0.4, "co_occurrence": 0.35,
-                    "bm25_fulltext": 0.75,
+                    "fulltext": 0.75,
                 }.get(source, 0.5)
                 certainty = 0.5 * semantic_conf + 0.25 * hit_conf + 0.25 * source_weight
                 certainty = max(0.0, min(1.0, certainty))
@@ -704,7 +704,7 @@ class CircuitOrchestrator:
                             "tag_match": 0.7, "co_occurrence": 0.6,
                             "time_triggered": 0.5, "attention_drift": 0.8,
                             "topic_expand": 0.55,
-                            "bm25_fulltext": 0.75,
+                            "fulltext": 0.75,
                             "ai_expression": 0.7}
             boost = source_boost.get(source, 0.8)
             threshold = MIN_FACT_DIST * boost

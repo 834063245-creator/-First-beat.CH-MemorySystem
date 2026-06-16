@@ -1,6 +1,6 @@
 """记忆层 — Qdrant 存储/检索 + 上下文包裹管理 (替代 chroma.py).
 
-Phase 1: QdrantService 保持与 ChromaService 完全相同的公开 API。
+Phase 2: 杀全量模式 — ChromaDB→Qdrant API 翻译层 + _translate_filter + MatchText。
 """
 import json
 import logging
@@ -42,6 +42,239 @@ def _build_items_from_points(points: list) -> list[dict]:
             "metadata": dict(payload),
         })
     return items
+
+
+# ===================================================================
+# ChromaDB where → Qdrant Filter 翻译层 (Phase 2)
+# ===================================================================
+
+def _build_condition(key: str, value) -> models.FieldCondition | models.Filter:
+    """构建单个字段条件。
+
+    注意: $and / $or 由上层 _translate_filter 处理，不进入本函数。
+    """
+    if not isinstance(value, dict):
+        # 简单等值: {"heat": "hot"}
+        return models.FieldCondition(key=key, match=models.MatchValue(value=value))
+
+    for op, val in value.items():
+        if op == "$gte":
+            return models.FieldCondition(key=key, range=models.Range(gte=val))
+        elif op == "$lte":
+            return models.FieldCondition(key=key, range=models.Range(lte=val))
+        elif op == "$gt":
+            return models.FieldCondition(key=key, range=models.Range(gt=val))
+        elif op == "$lt":
+            return models.FieldCondition(key=key, range=models.Range(lt=val))
+        elif op == "$eq":
+            return models.FieldCondition(key=key, match=models.MatchValue(value=val))
+        elif op == "$ne":
+            return models.Filter(must_not=[
+                models.FieldCondition(key=key, match=models.MatchValue(value=val))
+            ])
+        elif op == "$in":
+            return models.FieldCondition(key=key, match=models.MatchAny(any=val))
+        elif op == "$contains":
+            # ChromaDB $contains → Qdrant MatchText (需 text index on field)
+            return models.FieldCondition(key=key, match=models.MatchText(text=str(val)))
+
+    raise ValueError(f"Unsupported operator in: {value}")
+
+
+def _translate_filter(chroma_where: dict) -> models.Filter:
+    """ChromaDB where dict → Qdrant Filter.
+
+    支持的运算符: $gte, $lte, $gt, $lt, $eq, $ne, $in, $contains, $and, $or
+    """
+    if not chroma_where:
+        return models.Filter()
+
+    conditions = []
+    for key, value in chroma_where.items():
+        if key == "$and":
+            # $and: [{"key": {"$gte": v}}, {"key": {"$lte": v}}]
+            sub_conditions = []
+            for sub_clause in value:
+                if not isinstance(sub_clause, dict):
+                    continue
+                for sk, sv in sub_clause.items():
+                    sub_conditions.append(_build_condition(sk, sv))
+            if sub_conditions:
+                conditions.append(models.Filter(must=sub_conditions))
+        elif key == "$or":
+            # $or: [{"key1": {"$eq": v1}}, {"key2": {"$eq": v2}}]
+            sub_conditions = []
+            for sub_clause in value:
+                if not isinstance(sub_clause, dict):
+                    continue
+                for sk, sv in sub_clause.items():
+                    sub_conditions.append(_build_condition(sk, sv))
+            if sub_conditions:
+                conditions.append(models.Filter(should=sub_conditions))
+        else:
+            conditions.append(_build_condition(key, value))
+
+    if not conditions:
+        return models.Filter()
+    if len(conditions) == 1 and isinstance(conditions[0], models.Filter):
+        return conditions[0]
+    # 多个条件 → must 包裹 (AND 语义)
+    return models.Filter(must=[
+        c if isinstance(c, models.Filter) else models.Filter(must=[c])
+        for c in conditions
+    ])
+
+
+# ===================================================================
+# Qdrant → ChromaDB Collection API 兼容适配器 (Phase 2)
+# ===================================================================
+
+class _QdrantCollectionCompat:
+    """使 QdrantService._collection 表现如 chromadb Collection。
+
+    所有 ChromaDB collection API (query/get/update/count) 翻译为 Qdrant API。
+    pipeline.py / context.py / dispatch.py 通过此适配器无需改动即可使用 Qdrant。
+    """
+
+    def __init__(self, service: 'QdrantService'):
+        self._svc = service
+
+    def query(self, query_embeddings, n_results, where=None, include=None):
+        """ChromaDB col.query() → Qdrant search()。
+
+        返回格式（兼容 ChromaDB）:
+          {"ids": [[id1,id2,...]], "documents": [["doc1","doc2",...]],
+           "metadatas": [[{...},{...},...]], "distances": [[0.1,0.2,...]]}
+        """
+        qf = _translate_filter(where) if where else None
+        include_docs = include is None or "documents" in include
+        include_meta = include is None or "metadatas" in include
+
+        ids_list, docs_list, metas_list, dists_list = [], [], [], []
+        for q_emb in query_embeddings:
+            try:
+                results = self._svc._client.search(
+                    collection_name=self._svc._collection_name,
+                    query_vector=q_emb,
+                    query_filter=qf,
+                    limit=n_results,
+                    with_payload=include_meta,
+                    with_vectors=False,
+                )
+            except Exception as exc:
+                logger.warning("Qdrant search 失败: %s", exc)
+                results = []
+
+            batch_ids, batch_docs, batch_metas, batch_dists = [], [], [], []
+            for pt in results:
+                batch_ids.append(pt.id)
+                payload = pt.payload or {}
+                batch_docs.append(payload.get("document", "") if include_docs else "")
+                batch_metas.append(dict(payload) if include_meta else {})
+                # Qdrant search returns score (cosine similarity), ChromaDB returns distance (1 - similarity)
+                batch_dists.append(1.0 - pt.score)
+
+            ids_list.append(batch_ids)
+            docs_list.append(batch_docs)
+            metas_list.append(batch_metas)
+            dists_list.append(batch_dists)
+
+        return {
+            "ids": ids_list,
+            "documents": docs_list,
+            "metadatas": metas_list,
+            "distances": dists_list,
+        }
+
+    def get(self, ids=None, where=None, include=None, limit=None):
+        """ChromaDB col.get() → Qdrant retrieve()/scroll()。
+
+        返回格式（兼容 ChromaDB）:
+          {"ids": [...], "documents": [...], "metadatas": [...]}
+        """
+        include_docs = include is None or "documents" in include
+        include_meta = include is None or "metadatas" in include
+
+        if ids:
+            # 按 ID 精确检索
+            id_list = ids if isinstance(ids, list) else list(ids)
+            try:
+                pts = self._svc._client.retrieve(
+                    collection_name=self._svc._collection_name,
+                    ids=id_list,
+                    with_payload=include_meta,
+                    with_vectors=False,
+                )
+            except Exception as exc:
+                logger.warning("Qdrant retrieve 失败: %s", exc)
+                pts = []
+
+            result_ids, result_docs, result_metas = [], [], []
+            # 保持输入 ID 顺序
+            id_to_pt = {pt.id: pt for pt in pts}
+            for mid in id_list:
+                pt = id_to_pt.get(mid)
+                if pt is None:
+                    continue
+                result_ids.append(mid)
+                payload = pt.payload or {}
+                result_docs.append(payload.get("document", "") if include_docs else "")
+                result_metas.append(dict(payload) if include_meta else {})
+            return {"ids": result_ids, "documents": result_docs, "metadatas": result_metas}
+
+        else:
+            # 按 filter 检索
+            qf = _translate_filter(where) if where else None
+            _limit = limit or 50000
+            try:
+                pts, _ = self._svc._client.scroll(
+                    collection_name=self._svc._collection_name,
+                    scroll_filter=qf,
+                    with_payload=True,
+                    limit=_limit,
+                )
+            except Exception as exc:
+                logger.warning("Qdrant scroll 失败: %s", exc)
+                pts = []
+
+            result_ids, result_docs, result_metas = [], [], []
+            for pt in pts:
+                result_ids.append(pt.id)
+                payload = pt.payload or {}
+                result_docs.append(payload.get("document", "") if include_docs else "")
+                result_metas.append(dict(payload) if include_meta else {})
+            return {"ids": result_ids, "documents": result_docs, "metadatas": result_metas}
+
+    def update(self, ids, metadatas=None, embeddings=None):
+        """ChromaDB col.update() → Qdrant set_payload()/update_vectors()。"""
+        if not ids:
+            return
+        id_list = ids if isinstance(ids, list) else [ids]
+        with self._svc._lock:
+            if metadatas:
+                for i, mid in enumerate(id_list):
+                    if i < len(metadatas) and metadatas[i]:
+                        try:
+                            self._svc._client.set_payload(
+                                collection_name=self._svc._collection_name,
+                                payload=dict(metadatas[i]),
+                                points=[mid],
+                            )
+                        except Exception as exc:
+                            logger.warning("Qdrant set_payload 失败 id=%s: %s", mid[:8], exc)
+            if embeddings:
+                for i, mid in enumerate(id_list):
+                    if i < len(embeddings) and embeddings[i]:
+                        try:
+                            self._svc._client.update_vectors(
+                                collection_name=self._svc._collection_name,
+                                points=[models.PointVectors(id=mid, vector=embeddings[i])],
+                            )
+                        except Exception as exc:
+                            logger.warning("Qdrant update_vectors 失败 id=%s: %s", mid[:8], exc)
+
+    def count(self):
+        return self._svc._client.count(collection_name=self._svc._collection_name).count
 
 
 class QdrantService:
@@ -103,6 +336,8 @@ class QdrantService:
             logger.info("创建 Qdrant collection: %s", coll_name)
 
         self._collection_name = coll_name
+        # Phase 2: ChromaDB → Qdrant API 兼容适配器
+        self._collection = _QdrantCollectionCompat(self)
 
     # ------------------------------------------------------------------
     # 记忆写入
@@ -724,25 +959,27 @@ class QdrantService:
         """获取缓存的 embedding。"""
         return self._emb_cache.get(memory_id)
 
+    # ------------------------------------------------------------------
+    # ChromaDB Collection API 兼容 (Phase 2: delegate to _collection adapter)
+    # ------------------------------------------------------------------
+
+    def get(self, ids=None, where=None, include=None, limit=None):
+        """ChromaDB col.get() 兼容 — delegate to _collection adapter。"""
+        return self._collection.get(ids=ids, where=where, include=include, limit=limit)
+
+    def query(self, query_embeddings, n_results, where=None, include=None):
+        """ChromaDB col.query() 兼容 — delegate to _collection adapter。"""
+        return self._collection.query(
+            query_embeddings=query_embeddings, n_results=n_results,
+            where=where, include=include,
+        )
+
     def close(self):
         """释放 Qdrant 客户端资源。"""
         with self._lock:
             self._client.close() if hasattr(self._client, 'close') else None
         with self._emb_cache_lock:
             self._emb_cache = {}
-
-    # Phase 1: 向后兼容 — context.py 某些路径直接访问 ._collection
-    # 当 STORAGE_BACKEND=qdrant 时这些路径会在 Phase 2 重构
-    @property
-    def _collection(self):
-        """Phase 2 会删除此属性。context.py 直接访问 ChromaDB collection 的代码
-        将在 Phase 2 重构为使用 QdrantService 公共方法。"""
-        raise NotImplementedError(
-            "QdrantService._collection 不可用。"
-            "改为使用 QdrantService 公共方法 (retrieve/search/scroll)。"
-            "如果这阻断了关键路径，临时切回 STORAGE_BACKEND=chromadb。"
-        )
-
 
 def _is_default_local_url() -> bool:
     """判断 QDRANT_URL 是否是默认本地地址（未显式配置远程服务器）。"""
