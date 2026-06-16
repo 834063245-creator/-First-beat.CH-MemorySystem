@@ -587,7 +587,9 @@ class PortraitWriter:
         try:
             from app.analysis.symmetry import PersonaSymmetry
             if hasattr(ctx, "co_tracker") and hasattr(ctx, "ai_co_tracker"):
-                symmetry = PersonaSymmetry(ctx.co_tracker, ctx.ai_co_tracker)
+                user_data = ctx.co_tracker.export_for_symmetry()
+                ai_data = ctx.ai_co_tracker.export_for_symmetry()
+                symmetry = PersonaSymmetry(user_data, ai_data, from_dicts=True)
                 blind_spots = symmetry.analyze()
                 if blind_spots:
                     evidence_summary.append(f"认知盲区: {len(blind_spots)} 处")

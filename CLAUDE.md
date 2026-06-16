@@ -548,12 +548,12 @@ cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 
 ### 进行中 (2026-06-16)
 
-- 🔄 **Phase 1: QdrantService 核心层** — 实现 `app/memory/qdrant.py` + 全项目 ChromaService→QdrantService 改名 (16文件)。**vLLM 暂缓**（Windows 不支持），Ollama embedding 保持不变。
+- 🔄 **Phase 2: 杀全量模式** — `list_all()`→`scroll()`、`_translate_filter()`、pipeline.py 检索 API 翻译、删 bm25_fulltext.py、inverted_index 数据源切换
   - 规格：`SPEC_MIGRATION.md` v1.7
   - 核心原则：**检索管线 9 路结构完全不变**，仅底层 API 翻译 + 删 bm25。inverted_index 保留
   - 删除清单：`chroma.py`、`cooccur.py`、`entity_pair.py`、`hyperedge.py`、`bm25_fulltext.py`、`db.py`、`data/chroma/`、3 个 SQLite .db
-  - **不删**：`inverted.py`（157 行纯 Python，保留，改数据源为 Qdrant scroll）
   - **不改**：`embed.py`、`local.py`、`semantic.py`（Ollama 继续使用）
+- ✅ **Phase 1 QdrantService 完成**：`app/memory/qdrant.py` (550行)、context.py STORAGE_BACKEND 切换、dispatch.py Qdrant 兼容、portrait/writer.py PersonaSymmetry bugfix。1095 tests pass。
 - ✅ **Phase 0.5 原型验证完成**：V2 HNSW 召回率 1.0、V3 中文标签匹配 8/8、V4 子串匹配行为已文档化、V5 CoOccurrence 本地模式通过、V6 embedding 签名兼容。V1 需 Ollama+vLLM 服务（当前不可达）
 - ✅ **Phase 0 infra 搭建完成**：docker-compose + settings.py 切换开关 + verify_infra.py + migrate_to_qdrant.py
 

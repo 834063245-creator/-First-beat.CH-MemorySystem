@@ -548,7 +548,14 @@ _query_explore_clients: dict[str, object] = {}  # path → PersistentClient
 _QUERY_EXPLORE_MAX_CLIENTS = 10  # LRU 上限，防止无限增长
 
 def _get_chroma_collection(path: str, name: str = "memories"):
-    """缓存 ChromaDB PersistentClient，避免每次查询新建。LRU 淘汰。"""
+    """返回 ChromaDB collection 或 QdrantService（取决于 STORAGE_BACKEND）。
+
+    Phase 1: 保留 ChromaDB 路径。Qdrant 路径在 Phase 2 重构 dispatch.py 时启用。
+    """
+    from app.config.settings import STORAGE_BACKEND as _sb
+    if _sb == "qdrant":
+        from app.memory.qdrant import QdrantService
+        return QdrantService(persist_dir=path, collection_name=name)
     import chromadb
     if path not in _query_explore_clients:
         with _query_explore_init_lock:

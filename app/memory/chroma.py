@@ -709,3 +709,10 @@ class ChromaService:
         with self._emb_cache_lock:
             self._emb_cache = {}
 
+    # Phase 1: 向后兼容 — 允许 context.py 直接访问底层 collection
+    # 当 STORAGE_BACKEND=qdrant 时，QdrantService 的等效访问会抛 NotImplementedError
+    @property
+    def _raw_db(self):
+        """返回底层 ChromaDB collection（仅向后兼容，新代码不要用）。"""
+        return self._collection
+

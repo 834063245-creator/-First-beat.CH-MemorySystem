@@ -35,7 +35,10 @@ from app.config.settings import (                  # noqa: E402
     DRIFT_DECISION_LOG,
     STOP_WORDS as _STOP_WORDS,
 )
+from app.config.settings import STORAGE_BACKEND as _STORAGE_BACKEND
 from app.memory.chroma import ChromaService
+if _STORAGE_BACKEND == "qdrant":
+    from app.memory.qdrant import QdrantService
 from app.llm.deepseek import LLMClient
 from app.memory.cooccur import CoOccurrenceTracker
 from app.memory.entity_pair import EntityPairTracker
@@ -82,13 +85,26 @@ class AppContext:
 
     def __init__(self, data_dir: str):
         self.data_dir = data_dir
-        self.chroma_service = ChromaService(
-            persist_dir=f"{data_dir}/chroma",
-        )
-        self.ai_chroma_service = ChromaService(
-            persist_dir=f"{data_dir}/ai_chroma",
-            collection_name=AI_COLLECTION,
-        )
+        # Phase 1: STORAGE_BACKEND 切换（chromadb 默认, qdrant 可选）
+        if _STORAGE_BACKEND == "qdrant":
+            self.chroma_service = QdrantService(
+                persist_dir=f"{data_dir}/qdrant",
+                collection_name=EMBED_MODELS[DEFAULT_EMBED_MODEL]["collection"],
+            )
+            self.ai_chroma_service = QdrantService(
+                persist_dir=f"{data_dir}/ai_qdrant",
+                collection_name=AI_COLLECTION,
+            )
+        else:
+            self.chroma_service = ChromaService(
+                persist_dir=f"{data_dir}/chroma",
+            )
+            self.ai_chroma_service = ChromaService(
+                persist_dir=f"{data_dir}/ai_chroma",
+                collection_name=AI_COLLECTION,
+            )
+        self.memory_service = self.chroma_service  # 统一别名
+        self.ai_memory_service = self.ai_chroma_service
         self.llm_client = LLMClient()
         self.storage_executor = ThreadPoolExecutor(max_workers=5)
         self.retrieval_executor = ThreadPoolExecutor(max_workers=3)
