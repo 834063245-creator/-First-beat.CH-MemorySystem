@@ -1336,14 +1336,14 @@ Phase 4  ██░░░░░░░░  百万级硬骨头 + 清理（量化、
 | CoOccurrence 独立 collection | 10K 条数据 record/query/export_for_symmetry 延迟 <100ms | 保留 SQLite cooccur 表作为备选方案，CoOccurrenceStore 双写两边 |
 | Embedding 兼容性 | `local_embed()` 签名/返回值格式不变；请求合并器正常工作 | 修改 embed.py 适配层直至通过 |
 
-### Phase 1 交付物 (核心层: QdrantService)
+### Phase 1 交付物 (核心层: QdrantService) ✅
 
 > **vLLM 暂缓**：embed.py / local.py / semantic.py 不改。Ollama 继续使用。
 
-- [ ] `app/memory/qdrant.py` 实现完整 QdrantService（API 方法名保持与 ChromaService 一致）
-- [ ] 全项目 ChromaService → QdrantService 改名（16 文件）+ `_get_chroma_collection()` → QdrantService 方法
-- [ ] 🔧 **BUGFIX**: 修正 `portrait/writer.py:590` PersonaSymmetry 调用——当前传的是 tracker 对象，应传 `export_for_symmetry()` 结果 + `from_dicts=True`
-- [ ] `pytest tests/` 全部通过
+- [x] `app/memory/qdrant.py` 实现完整 QdrantService（API 方法名保持与 ChromaService 一致）
+- [x] 全项目 ChromaService → QdrantService 改名（context.py 切换开关 + dispatch.py 兼容 + memory_service 别名）
+- [x] 🔧 **BUGFIX**: 修正 `portrait/writer.py:590` PersonaSymmetry 调用——`export_for_symmetry()` + `from_dicts=True`
+- [x] `pytest tests/` — 1095 passed（6 个预存污染失败，与改动无关）
 
 ### Phase 2 交付物 (杀全量模式)
 

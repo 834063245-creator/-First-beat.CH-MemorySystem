@@ -83,6 +83,7 @@ d:\First Beat CH Memory System\
 │   │
 │   ├── memory/                     # 记忆存储层：ChromaDB + SQLite + JSONL
 │   │   ├── chroma.py               #   ★ ChromaService：ChromaDB 向量存储，热力/脱敏/退役 (711行)
+│   │   ├── qdrant.py               #   ★ QdrantService：Qdrant 向量存储，API 兼容 ChromaService (550行)
 │   │   ├── history.py              #   ChatHistory：对话历史 JSONL，内存缓存最近 500 条 (270行)
 │   │   ├── working.py              #   工作记忆摘要：增量 LLM 摘要，替代注入全量历史 (165行)
 │   │   ├── cooccur.py              #   CoOccurrenceTracker：记忆对共现次数 SQLite (292行)
