@@ -1643,9 +1643,10 @@ TEST_BACKEND=qdrant  python -m pytest tests/ -q   # 新后端通过
 > 2026-06-16 Phase 0.5 完成。
 
 ### V1: vLLM vs Ollama 向量余弦相似度
-- **状态**: ⚠️ 跳过 — Ollama/vLLM 服务不可达
-- **环境**: 无 GPU，Docker 未安装
-- **重测**: 启动 `docker compose up -d ollama vllm-embed` 后运行 `scripts/phase0_5_verify.py`
+- **状态**: ⚠️ 跳过 — vLLM 不可达，Ollama 正常
+- **Ollama**: ✅ 运行中 (GTX 1060 6GB)，bge-m3 F16 + qwen2.5:3b Q4_K_M
+- **vLLM**: ❌ Docker 未安装，无法启动
+- **重测**: 安装 Docker 后 `docker compose up -d vllm-embed` + `scripts/phase0_5_verify.py`
 
 ### V2: Qdrant HNSW 召回率 vs ChromaDB
 - **状态**: ✅ 通过
@@ -1671,8 +1672,7 @@ TEST_BACKEND=qdrant  python -m pytest tests/ -q   # 新后端通过
 
 ### V6: Embedding 兼容性
 - **状态**: ✅ 通过
-- **结果**: `local_embed()` 返回 `None`（Ollama 不可达时的合法返回值），签名/格式正确
-- **注**: embedding 服务启动后需重测实际向量维度
+- **结果**: `local_embed()` 返回 1024 维向量（Ollama bge-m3），耗时 ~0.6s（预热后）；`local_embed_batch()` 正确返回 3×1024 维。签名/格式/维度全部正确。
 
 ### 结论
 
