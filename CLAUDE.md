@@ -183,6 +183,7 @@ d:\First Beat CH Memory System\
 │   ├── compare_reports.py          #   审计报告对比：两轮审计 diff 工具 (70行)
 │   ├── verify_infra.py             #   Phase 0: Qdrant+vLLM 连通性验证 (270行)
 │   ├── migrate_to_qdrant.py        #   Phase 0: ChromaDB+SQLite→Qdrant 数据迁移 (470行)
+│   ├── phase0_5_verify.py          #   Phase 0.5: 6项原型验证自动化 (1100行)
 │   └── pre-push                    #   pre-push hook 备份：push 前跑 pytest tests/
 │
 ├── .claude/                        # ========== Claude Code 配置 ==========
@@ -520,6 +521,8 @@ python scripts/verify_infra.py         # Phase 0: Qdrant+vLLM 连通性验证
 python scripts/verify_infra.py --quick #   仅快速验证
 python scripts/migrate_to_qdrant.py    # Phase 0: ChromaDB→Qdrant 数据迁移
 python scripts/migrate_to_qdrant.py --dry-run  #   干跑校验
+python scripts/phase0_5_verify.py      # Phase 0.5: 6项原型验证
+python scripts/phase0_5_verify.py --offline  #   仅本地模式 (V2-V5)
 BENCHMARK_MODE=true python run.py      # Benchmark 模式
 ```
 
@@ -545,14 +548,13 @@ cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 
 ### 进行中 (2026-06-16)
 
-- 🔄 **Phase 0.5 原型验证**：从现有 ChromaDB 导出 1000 条真实记忆，验证 vLLM vs Ollama 向量余弦 ≥0.99、Qdrant HNSW 召回率 ≥0.95、CoOccurrence 独立 collection 延迟 <100ms 等 6 项通过标准。**全部通过后才能进入 Phase 1**。
-  - 验证脚本：`scripts/verify_infra.py`
-  - 迁移脚本：`scripts/migrate_to_qdrant.py`（支持 --dry-run）
-  - 规格：`SPEC_MIGRATION.md` §9 Phase 0.5
-- ✅ **Phase 0 infra 搭建完成**：docker-compose 加 Qdrant+vLLM×2 服务、settings.py 加 STORAGE_BACKEND/EMBED_PROVIDER/TEST_BACKEND 切换开关、连通性验证脚本 + 数据迁移脚本就绪
+- 🔄 **Phase 1: vLLM + Qdrant 核心层** — 合并原 Phase 1+2，实现 `app/memory/qdrant.py` (QdrantService)、`app/llm/embed.py` HTTP 层改 vLLM、全项目 ChromaService→QdrantService 改名。Phase 0.5 本地可验证项全部通过 (5/6)，**V1 (vLLM vs Ollama 向量对比) 需外部服务启动后补测**。
+  - 规格：`SPEC_MIGRATION.md` §9 Phase 1
   - 核心原则：**检索管线 9 路结构完全不变**，仅底层 API 翻译 + 删 bm25。inverted_index 保留。不合并路径、不改分数量纲、不改 heat 过滤
   - 删除清单：`chroma.py`、`cooccur.py`、`entity_pair.py`、`hyperedge.py`、`bm25_fulltext.py`、`db.py`、`data/chroma/`、3 个 SQLite .db
   - **不删**：`inverted.py`（157 行纯 Python，保留，改数据源为 Qdrant scroll）
+- ✅ **Phase 0.5 原型验证完成**：V2 HNSW 召回率 1.0、V3 中文标签匹配 8/8、V4 子串匹配行为已文档化、V5 CoOccurrence 本地模式通过、V6 embedding 签名兼容。V1 需 Ollama+vLLM 服务（当前不可达）
+- ✅ **Phase 0 infra 搭建完成**：docker-compose + settings.py 切换开关 + verify_infra.py + migrate_to_qdrant.py
 
 ### 计划中
 

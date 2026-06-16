@@ -154,10 +154,16 @@ def convert_metadata_to_payload(meta: dict) -> dict:
 
     关键类型转换:
       - entities: JSON string → native list[dict]
+      - source_type (amazing5旧名) → source
       - 预计算时间特征 (year/month/day/week/day_of_week/quarter/season/year_month)
       - 其他字段保持原类型
     """
     payload = {}
+
+    # ── 字段别名映射 (旧名 → 新名) ──
+    _field_aliases = {
+        "source_type": "source",
+    }
 
     # ── 直接复制的字段 ──
     direct_fields = [
@@ -172,6 +178,13 @@ def convert_metadata_to_payload(meta: dict) -> dict:
     for f in direct_fields:
         if f in meta:
             payload[f] = meta[f]
+
+    # ── 别名解析 ──
+    for old_name, new_name in _field_aliases.items():
+        if old_name in meta and new_name not in payload:
+            payload[new_name] = meta[old_name]
+        elif old_name in meta:
+            pass  # 直接字段已赋值，优先
 
     # ── entities: JSON string → native list[dict] ──
     if "entities" in meta:
