@@ -548,11 +548,12 @@ cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 
 ### 进行中 (2026-06-16)
 
-- 🔄 **Phase 1: vLLM + Qdrant 核心层** — 合并原 Phase 1+2，实现 `app/memory/qdrant.py` (QdrantService)、`app/llm/embed.py` HTTP 层改 vLLM、全项目 ChromaService→QdrantService 改名。Phase 0.5 本地可验证项全部通过 (5/6)，**V1 (vLLM vs Ollama 向量对比) 需外部服务启动后补测**。
-  - 规格：`SPEC_MIGRATION.md` §9 Phase 1
-  - 核心原则：**检索管线 9 路结构完全不变**，仅底层 API 翻译 + 删 bm25。inverted_index 保留。不合并路径、不改分数量纲、不改 heat 过滤
+- 🔄 **Phase 1: QdrantService 核心层** — 实现 `app/memory/qdrant.py` + 全项目 ChromaService→QdrantService 改名 (16文件)。**vLLM 暂缓**（Windows 不支持），Ollama embedding 保持不变。
+  - 规格：`SPEC_MIGRATION.md` v1.7
+  - 核心原则：**检索管线 9 路结构完全不变**，仅底层 API 翻译 + 删 bm25。inverted_index 保留
   - 删除清单：`chroma.py`、`cooccur.py`、`entity_pair.py`、`hyperedge.py`、`bm25_fulltext.py`、`db.py`、`data/chroma/`、3 个 SQLite .db
   - **不删**：`inverted.py`（157 行纯 Python，保留，改数据源为 Qdrant scroll）
+  - **不改**：`embed.py`、`local.py`、`semantic.py`（Ollama 继续使用）
 - ✅ **Phase 0.5 原型验证完成**：V2 HNSW 召回率 1.0、V3 中文标签匹配 8/8、V4 子串匹配行为已文档化、V5 CoOccurrence 本地模式通过、V6 embedding 签名兼容。V1 需 Ollama+vLLM 服务（当前不可达）
 - ✅ **Phase 0 infra 搭建完成**：docker-compose + settings.py 切换开关 + verify_infra.py + migrate_to_qdrant.py
 

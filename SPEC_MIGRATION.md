@@ -1,8 +1,8 @@
-# SPEC: 初痕记忆引擎 — 存储与推理基础设施迁移
+# SPEC: 初痕记忆引擎 — 存储基础设施迁移 (推理层暂缓)
 
-> **版本**: v1.6 · **日期**: 2026-06-16 · **状态**: Phase 0 ✅ → Phase 0.5 进行中
+> **版本**: v1.7 · **日期**: 2026-06-16 · **状态**: Phase 0 ✅ → Phase 0.5 ✅ → Phase 1 进行中
 > **关联文档**: CLAUDE.md（项目唯一权威文档）
-> **评审**: 2026-06-15 三轮评审。v1.4 补全 HyperEdge/检索管线/迁移脚本。v1.5 回退路径合并。v1.6 payload 全字段原生类型——entities/entity_co_counts/memory_ids 从 JSON 字符串改为 Qdrant 原生 list[dict]/dict/list[str]，删除所有 json.dumps/loads，MatchText→MatchValue where applicable。
+> **评审**: 2026-06-15 三轮评审。v1.6 payload 全字段原生类型。v1.7 vLLM 迁移暂缓——Windows 不支持 vLLM，Ollama 继续使用。仅做存储层: ChromaDB+SQLite→Qdrant。
 > **目标规模**: 十万级起步，百万级架构储备
 
 ---
@@ -42,10 +42,11 @@
 现状:  ChromaDB + SQLite×3 + JSONL  + Ollama(bge-m3/qwen2.5)
        └── 全量加载模式遍布各模块
 
-目标:  Qdrant(payload 存元数据)  + JSONL(异步日志)  + vLLM(bge-m3/qwen2.5)
+目标:  Qdrant(payload 存元数据)  + JSONL(异步日志)  + Ollama(bge-m3/qwen2.5)
        └── 服务端过滤 + 分页 + 量化 + 分区
-       └── embedding 接口不变，HTTP 层换
+       └── embedding/Ollama 不变，仅存储层换
        └── 删 SQLite 同步逻辑，元数据进 Qdrant payload
+       └── vLLM 暂缓 (Windows 不支持)，条件成熟后单独做
 ```
 
 ---
@@ -137,9 +138,9 @@
 | `app/memory/tag_index.py` (140行) | 不变（需重建缓存） | 切换 vLLM 后标签 embedding 缓存失效，需重建 `data/tag_index.json` |
 | `app/memory/history.py` (270行) | 不变（JSONL） | 无改动 |
 | `app/memory/working.py` (165行) | 不变（JSON） | 无改动 |
-| `app/llm/embed.py` (390行) | 仅改 HTTP 层 | 改 2 个私有函数 |
-| `app/llm/local.py` (118行) | 仅改 HTTP 层 | 改 2 个方法 |
-| `app/brain/semantic.py` (477行) | 仅改 HTTP 层 | 改 1 处调用 |
+| `app/llm/embed.py` (390行) | **不改** (vLLM 暂缓) | — |
+| `app/llm/local.py` (118行) | **不改** (vLLM 暂缓) | — |
+| `app/brain/semantic.py` (477行) | **不改** (vLLM 暂缓) | — |
 | `app/retrieval/pipeline.py` (703行) | Qdrant 查询 | 改所有 `_collection.xxx` 调用 |
 | `app/retrieval/bm25_fulltext.py` (110行) | — | **删除**，Qdrant 全文替代 |
 | `app/retrieval/scoring.py` (40行) | 不变 | 无改动 |
@@ -534,6 +535,10 @@ def _build_condition(key: str, value) -> models.Condition:
 ---
 
 ## 6. API 映射：Ollama → vLLM
+
+> **⚠️ 暂缓 (2026-06-16)**: vLLM 不支持 Windows。开发机为 Windows + GTX 1060，
+> Ollama 原生运行正常。vLLM 迁移条件成熟后（Linux 部署/Docker 就绪）单独执行。
+> 以下内容保留供未来参考。
 
 ### 6.1 Embedding
 
@@ -1279,21 +1284,17 @@ self.inverted_index.build(summaries)
 ## 9. Phase 分步执行计划
 
 ```
-Phase 0  ██░░░░░░░░  infra: docker-compose 加 Qdrant + vLLM×2            1天
-Phase 0.5 █░░░░░░░░  原型验证: 1000条真实数据端到端，验证关键假设            1天
-Phase 1  ███░░░░░░░  vLLM + Qdrant 核心层（embed HTTP + QdrantService）   4天
-                    (合并原 Phase 1+2，避免混合向量库风险 — 评审 §5)
+Phase 0  ██░░░░░░░░  infra: docker-compose 加 Qdrant + 切换开关            ✅ 1天
+Phase 0.5 █░░░░░░░░  原型验证: 5/6项通过 (V1 vLLM跳过)                     ✅ 1天
+Phase 1  ███░░░░░░░  QdrantService + 全项目改名 (ChromaService→Qdrant)     3天
+                    (不含 vLLM——暂缓。Ollama embedding 保持不变)
 Phase 2  ██░░░░░░░░  杀全量模式（list_all→scroll，filter 翻译层）          2天
 Phase 3  ███░░░░░░░  SQLite 元数据迁 Qdrant（cooccur/hyperedge 迁移）      3天
-Phase 4  ███░░░░░░░  百万级硬骨头（量化、分区、embedding 缓存上限）          3天
-Phase 5  ██░░░░░░░░  清理（删旧代码、改测试、更新文档）                     2天
+Phase 4  ██░░░░░░░░  百万级硬骨头 + 清理（量化、分区、删旧代码、改测试）      2天
         ──────────────────────────────────────────────────────────
-        合计                                                                 16天
-
-每个 Phase 结束:
-  ✅ pytest tests/ 全部通过
-  ✅ E2E 主链路通过
-  ✅ 系统可启动运行
+        合计 (存储层)                                                       11天
+        ──────────────────────────────────────────────────────────
+        暂缓: vLLM 迁移 (Linux/Docker 就绪后单独执行)                        ~3天
 ```
 
 ### Phase 0 交付物 (infra)
@@ -1335,17 +1336,13 @@ Phase 5  ██░░░░░░░░  清理（删旧代码、改测试、更
 | CoOccurrence 独立 collection | 10K 条数据 record/query/export_for_symmetry 延迟 <100ms | 保留 SQLite cooccur 表作为备选方案，CoOccurrenceStore 双写两边 |
 | Embedding 兼容性 | `local_embed()` 签名/返回值格式不变；请求合并器正常工作 | 修改 embed.py 适配层直至通过 |
 
-### Phase 1 交付物 (核心层: vLLM + Qdrant)
+### Phase 1 交付物 (核心层: QdrantService)
 
-> **合并原 Phase 1+2**：避免 vLLM embedding 写入 ChromaDB 造成混合向量库（评审 §5）。
+> **vLLM 暂缓**：embed.py / local.py / semantic.py 不改。Ollama 继续使用。
 
-- [ ] `app/llm/embed.py` HTTP 层改完（`_embed_via_ollama` → `_embed_via_vllm`）
-- [ ] `app/llm/local.py` HTTP 层改完（`generate` / `summarize` → vLLM chat API）
-- [ ] `app/brain/semantic.py` HTTP 层改完（实体抽取 → vLLM chat API）
 - [ ] `app/memory/qdrant.py` 实现完整 QdrantService（API 方法名保持与 ChromaService 一致）
 - [ ] 全项目 ChromaService → QdrantService 改名（16 文件）+ `_get_chroma_collection()` → QdrantService 方法
 - [ ] 🔧 **BUGFIX**: 修正 `portrait/writer.py:590` PersonaSymmetry 调用——当前传的是 tracker 对象，应传 `export_for_symmetry()` 结果 + `from_dicts=True`
-- [ ] 🧹 **缓存重建**: 删除 `data/tag_index.json`，切换 vLLM 后用 bge-m3 新向量重建标签嵌入索引
 - [ ] `pytest tests/` 全部通过
 
 ### Phase 2 交付物 (杀全量模式)
