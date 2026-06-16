@@ -66,8 +66,6 @@ def consolidation_env(isolated_env):
     from app.background.consolidation import ConsolidationEngine
     dmn = ConsolidationEngine(
         chroma_service=ctx.chroma_service,
-        personality_store=ctx.personality_store,
-        behavior_store=ctx.behavior_store,
         chat_history=ctx.chat_history,
         co_tracker=ctx.co_tracker,
         state_path=os.path.join(ctx.data_dir, "dmn_state.json"),

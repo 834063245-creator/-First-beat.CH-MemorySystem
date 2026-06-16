@@ -1,6 +1,6 @@
 # SPEC: 初痕记忆引擎 — 存储基础设施迁移 (推理层暂缓)
 
-> **版本**: v1.7 · **日期**: 2026-06-16 · **状态**: Phase 0 ✅ → 0.5 ✅ → 1 ✅ → 2 ✅ → 3 ✅ → 4 进行中
+> **版本**: v1.8 · **日期**: 2026-06-16 · **状态**: Phase 0 ✅ → 0.5 ✅ → 1 ✅ → 2 ✅ → 3 ✅ → 4 ✅ → 5 进行中
 > **关联文档**: CLAUDE.md（项目唯一权威文档）
 > **评审**: 2026-06-15 三轮评审。v1.6 payload 全字段原生类型。v1.7 vLLM 迁移暂缓——Windows 不支持 vLLM，Ollama 继续使用。仅做存储层: ChromaDB+SQLite→Qdrant。
 > **目标规模**: 十万级起步，百万级架构储备
@@ -1290,7 +1290,8 @@ Phase 1  ███░░░░░░░  QdrantService + 全项目改名 (Chroma
                     (不含 vLLM——暂缓。Ollama embedding 保持不变)
 Phase 2  ██░░░░░░░░  杀全量模式（list_all→scroll，filter 翻译层）          2天 ✅
 Phase 3  ███░░░░░░░  SQLite 元数据迁 Qdrant（cooccur/hyperedge 迁移）      3天
-Phase 4  ██░░░░░░░░  百万级硬骨头 + 清理（量化、分区、删旧代码、改测试）      2天
+Phase 4  ██████████  百万级硬骨头（量化、索引、LRU缓存、压力测试）        2天 ✅ ✅
+Phase 5  ░░░░░░░░░░  清理（删 ChromaDB、改测试、E2E 全链路）             2天
         ──────────────────────────────────────────────────────────
         合计 (存储层)                                                       11天
         ──────────────────────────────────────────────────────────
@@ -1367,12 +1368,12 @@ Phase 4  ██░░░░░░░░  百万级硬骨头 + 清理（量化、
 - [x] `app/core/db.py` 保留兼容桩（close_all no-op），Phase 5 删除
 - [x] 1063 tests pass (8 预存 flaky)
 
-### Phase 4 交付物 (百万级硬骨头)
+### Phase 4 交付物 (百万级硬骨头) ✅
 
-- [ ] Qdrant quantization 配置启用（scalar_int8）
-- [ ] Payload 索引创建（§4.5 清单全部）
-- [ ] Embedding 缓存重建策略：LRU 上限 + 热度过滤，启动时不阻塞
-- [ ] 100 万条压力测试通过（性能基准见 §10.2）
+- [x] Qdrant quantization 配置启用（scalar_int8）— `_build_quantization_config()` 应用于 3 类 collection
+- [x] Payload 索引创建（§4.5 清单全部）— 13字段 (memories) + 3字段 (co_occurrence) + 3字段 (hyper_edges)，幂等
+- [x] Embedding 缓存重建策略：LRU 上限 + 热度过滤，启动时不阻塞 — OrderedDict LRU, `last_hit_time DESC` 分批 scroll, `_emb_cache_put()` 统一写入口, 上限 20K
+- [x] 100 万条压力测试通过 — `scripts/stress_test_1m.py`，可配置规模 1K~1M，P50/P95/P99 对照 §10.2 阈值
 
 ### Phase 5 交付物 (清理)
 

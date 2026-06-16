@@ -1,7 +1,7 @@
 # 初痕 (First Beat) CH Memory System
 
 > **这是项目的唯一权威文档。** 其他所有 .md 都以此文档为准。Agent 启动时自动加载。
-> 修改代码后必须同步更新本文档。最后修订 2026-06-16 (Phase 3 完成)。
+> 修改代码后必须同步更新本文档。最后修订 2026-06-16 (Phase 4 完成)。
 
 ---
 
@@ -83,7 +83,7 @@ d:\First Beat CH Memory System\
 │   │
 │   ├── memory/                     # 记忆存储层：Qdrant + JSONL（ChromaDB 回退保留）
 │   │   ├── chroma.py               #   ChromaService：ChromaDB 向量存储（仅回退路径）(711行)
-│   │   ├── qdrant.py               #   ★ QdrantService + CoOccurrenceStore + HyperEdgeStore (~1450行)
+│   │   ├── qdrant.py               #   ★ QdrantService + CoOccurrenceStore + HyperEdgeStore (~1800行, Phase 4: 量化+索引+LRU缓存)
 │   │   ├── history.py              #   ChatHistory：对话历史 JSONL，内存缓存最近 500 条 (270行)
 │   │   ├── working.py              #   工作记忆摘要：增量 LLM 摘要，替代注入全量历史 (165行)
 │   │   ├── inverted.py             #   词→记忆ID 倒排索引，线程安全增量更新 (157行)
@@ -181,6 +181,7 @@ d:\First Beat CH Memory System\
 │   ├── verify_infra.py             #   Phase 0: Qdrant+vLLM 连通性验证 (270行)
 │   ├── migrate_to_qdrant.py        #   Phase 0: ChromaDB+SQLite→Qdrant 数据迁移 (470行)
 │   ├── phase0_5_verify.py          #   Phase 0.5: 6项原型验证自动化 (1100行)
+    ├── stress_test_1m.py            #   Phase 4: 百万级压力测试 性能基准
 │   └── pre-push                    #   pre-push hook 备份：push 前跑 pytest tests/
 │
 ├── .claude/                        # ========== Claude Code 配置 ==========
@@ -395,7 +396,7 @@ helpers.py, bottleneck.py, heartbeat.py ──┘  (基础设施, 允许被任�
 缓存        → JSON (仅模块内部, 不共享)     → 各自的 _cache.json
 ```
 
-- **主存储为 Qdrant**：向量 + payload (元数据、entity_co_counts)
+- **主存储为 Qdrant** (Phase 4 加固)：向量 int8 量化 + 13字段 payload 索引 + LRU 20K embedding 缓存
 - **CoOccurrence / HyperEdge 为独立 Qdrant collection**（`CoOccurrenceStore` / `HyperEdgeStore`）
 - **Phase 3 已删 SQLite 存储**：cooccur.py、entity_pair.py、hyperedge.py 已移除
 - **追加写入的数据（对话历史、错误报告）继续用 JSONL**
@@ -461,12 +462,14 @@ message[last]: user         ← 当前消息
 | `BENCHMARK_MODE` | 非 benchmark 开它会降低回复质量 |
 | `DATA_DIR` | 所有路径全变 |
 | `WORK_MEMORY_TOKEN_BUDGET` | 改太小丢对话上下文 |
+| `QDRANT_QUANTIZATION` | Phase 4 int8 量化开关；关闭→向量 4× 膨胀，开启→搜索精度微降 |
+| `QDRANT_EMB_CACHE_MAX` | 改太小→注意力评分退化；改太大→内存压力（默认 20K ≈ 80MB） |
 
 ### 红线 5：Embedding 和实体抽取
 
 - `local_embed()` 依赖 Ollama `bge-m3`，9 路检索全部依赖它
 - 实体抽取依赖 Ollama `qwen2.5:3b`，改模型→实体对/超边质量下降
-- embedding 缓存 (`_embed_cache`) 有锁保护，外面不要加锁→死锁
+- Phase 4 embedding 缓存：`_emb_cache` 为 `OrderedDict` LRU，`_emb_cache_put()` 统一写入口。外部不要直接写 `_emb_cache` 或在外面加 `_emb_cache_lock`→死锁
 
 ### 红线 6：E2E 哨兵测试
 
@@ -521,6 +524,8 @@ python scripts/migrate_to_qdrant.py    # Phase 0: ChromaDB→Qdrant 数据迁移
 python scripts/migrate_to_qdrant.py --dry-run  #   干跑校验
 python scripts/phase0_5_verify.py      # Phase 0.5: 6项原型验证
 python scripts/phase0_5_verify.py --offline  #   仅本地模式 (V2-V5)
+python scripts/stress_test_1m.py           # Phase 4: 百万级压力测试 (默认 10K)
+python scripts/stress_test_1m.py --count 100000 --server http://localhost:6333  # 10万条服务器模式
 BENCHMARK_MODE=true python run.py      # Benchmark 模式
 ```
 
@@ -546,11 +551,16 @@ cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 
 ### 进行中 (2026-06-16)
 
-- ⏳ **Phase 4: 百万级硬骨头** — 量化、payload 索引、embedding 缓存 LRU、100万压力测试
 - ⏳ **Phase 5: 清理** — 删 chromadb 依赖、删 ChromaDB 数据、全项目 grep 清残留、E2E 全链路更新
 
 ### 最近完成
 
+- ✅ **Phase 4 百万级硬骨头完成**：
+  - **量化**: `scalar_int8` 量化配置，4GB→1GB 向量存储。`_build_quantization_config()` 应用于 3 类 collection。
+  - **Payload 索引**: 13 字段索引（memories）、3 字段（co_occurrence）、3 字段（hyper_edges），全部幂等。
+  - **Embedding 缓存 LRU**: `OrderedDict` LRU 淘汰，`last_hit_time DESC` 分批 scroll，`_emb_cache_put()` 统一写入口，上限 20K。
+  - **压力测试**: `scripts/stress_test_1m.py` — 可配置规模（1K~1M），P50/P95/P99 对照 §10.2 阈值判定。
+  - **本地 Payload 索引**: `_LocalPayloadIndex` (~200行) — Python 侧内存索引，补偿 Qdrant 本地模式无服务端索引。热数据过滤 0.3ms（26x vs 暴力扫描），增量维护 + 启动异步构建。
 - ✅ **Phase 3 SQLite 迁移完成**：CoOccurrenceStore / HyperEdgeStore 替代 cooccur.py / entity_pair.py / hyperedge.py
   - `app/memory/qdrant.py` 新增 `CoOccurrenceStore` (~280行)、`HyperEdgeStore` (~280行)
   - cooccur.py、entity_pair.py、hyperedge.py 已删除

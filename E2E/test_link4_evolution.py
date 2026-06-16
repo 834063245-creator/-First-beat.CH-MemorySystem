@@ -394,14 +394,15 @@ class TestM5TopicAffinityGraph:
 # ═══════════════════════════════════════════════════════════════════
 
 class TestM6PersonalityDistillation:
-    """M6 — 人格蒸馏：从对话中提取用户/AI 标签。"""
+    """M6 — 人格蒸馏（Phase 4 已退役，画像系统替代）。"""
 
+    @pytest.mark.skip(reason="Phase 4: personality_store 已退役，画像系统替代")
     def test_M6_personality_distillation(self, seeded_env_evolution):
         """验证：蒸馏后标签数量 ≥ 蒸馏前。"""
         ctx, all_ids = seeded_env_evolution
 
         # 蒸馏前计数
-        before_count = ctx.personality_store.list_tags(page=1, page_size=100)
+        before_count = 0  # personality_store removed in Phase 4
         before_total = before_count.get("total", 0)
 
         # 触发蒸馏
@@ -412,7 +413,7 @@ class TestM6PersonalityDistillation:
             pytest.skip(f"人格蒸馏执行异常（可能 LLM 不可用）: {exc}")
 
         # 蒸馏后计数
-        after_count = ctx.personality_store.list_tags(page=1, page_size=100)
+        after_count = 0  # personality_store removed in Phase 4
         after_total = after_count.get("total", 0)
 
         assert after_total >= before_total, (
@@ -507,24 +508,23 @@ class TestM8EntityPairEvolution:
         """验证：巩固后实体对记录仍存在且可查询。"""
         ctx, all_ids = seeded_env_evolution
 
-        # 手动记录实体对
-        ctx.entity_pair_tracker.record("Python", "Scrapy", "test_m8_001")
-        ctx.entity_pair_tracker.record("Python", "Docker", "test_m8_002")
-        ctx.entity_pair_tracker.record("Python", "Scrapy", "test_m8_003")
+        # 手动记录实体对 (Phase 3: entity_pair_tracker → hyperedge_index)
+        ctx.hyperedge_index.record(["Python", "Scrapy"], "test_m8_001")
+        ctx.hyperedge_index.record(["Python", "Docker"], "test_m8_002")
+        ctx.hyperedge_index.record(["Python", "Scrapy"], "test_m8_003")
 
         # 巩固前统计
-        before = ctx.entity_pair_tracker.stats()
-        assert before["total_pairs"] >= 4  # 双向
+        before = ctx.hyperedge_index.stats()
+        assert before.get("total_hyperedges", 0) >= 2  # 2 条超边
 
         # 触发浅巩固
         _force_shallow(ctx)
 
-        # 巩固后通过 expand 验证 Python-Scrapy 实体对应存在
-        result = ctx.entity_pair_tracker.expand(["Python"])
-        python_rels = result.get("Python", {})
-        scrapy_count = python_rels.get("Scrapy", 0)
+        # 巩固后通过 expand 验证 Python 相关实体
+        result = ctx.hyperedge_index.expand(["Python"])
+        scrapy_count = result.get("Scrapy", 0)
         assert scrapy_count >= 1, (
-            f"Python-Scrapy 实体对计数应 ≥ 1，实际 {scrapy_count}"
+            f"Python-Scrapy 关联计数应 >= 1，实际 {scrapy_count}"
         )
 
 

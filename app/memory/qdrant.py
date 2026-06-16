@@ -1,6 +1,6 @@
 """记忆层 — Qdrant 存储/检索 + 上下文包裹管理 (替代 chroma.py).
 
-Phase 2: 杀全量模式 — ChromaDB→Qdrant API 翻译层 + _translate_filter + MatchText。
+Phase 4: 百万级硬骨头 — 量化 + payload 索引 + embedding 缓存 LRU。
 """
 import json
 import logging
@@ -8,6 +8,7 @@ import os
 import threading
 import time
 import uuid
+from collections import OrderedDict
 from datetime import datetime, timedelta
 from typing import List, Optional
 
@@ -22,9 +23,271 @@ from app.config.settings import (
     QDRANT_ON_DISK,
     QDRANT_HNSW_M,
     QDRANT_HNSW_EF_CONSTRUCT,
+    QDRANT_QUANTIZATION,
+    QDRANT_QUANTIZATION_QUANTILE,
+    QDRANT_EMB_CACHE_MAX,
+    QDRANT_EMB_CACHE_BATCH,
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ===================================================================
+# 本地 Payload 索引 (Phase 4 — 本地模式补偿)
+# ===================================================================
+
+def _is_local_client(client: QdrantClient) -> bool:
+    """检测是否是 Qdrant 本地模式（无服务端索引）。"""
+    from qdrant_client.local.qdrant_local import QdrantLocal
+    return isinstance(client._client, QdrantLocal)
+
+
+class _LocalPayloadIndex:
+    """本地模式的内存 payload 索引，补偿 Qdrant 本地引擎无服务端索引的限制。
+
+    设计:
+      - keyword/boolean 字段: dict[value, set[point_id]] → MatchValue/MatchAny O(1)
+      - float/int 字段: sorted list[(value, point_id)] → Range O(log n)
+      - 增量维护: add/remove 实时更新，无需重建
+      - 内存: 10K 条 × 8 字段 ≈ 5-10MB
+
+    线程安全: 外部调用方自行加锁（QdrantService._lock 已保护写入路径）。
+    """
+
+    def __init__(self):
+        # keyword/boolean 索引: field -> value -> set[point_id]
+        self._kw: dict[str, dict[str, set[str]]] = {}
+        # float/int 索引: field -> list[(value, point_id)] (sorted)
+        self._num: dict[str, list[tuple[float, str]]] = {}
+        self._num_dirty: set[str] = set()  # 标记需要重排的字段
+        # 全量 ID 集合 (用于 must_not)
+        self._all_ids: set[str] = set()
+
+    # ── 构建 ──
+
+    def build(self, points: list):
+        """从已有 points 构建全量索引。"""
+        self._kw.clear()
+        self._num.clear()
+        self._all_ids.clear()
+        for pt in points:
+            self._index_point(pt.id, pt.payload or {})
+        self._sort_all_dirty()
+
+    def _index_point(self, pid: str, payload: dict):
+        """索引单条 point 的 payload。"""
+        self._all_ids.add(pid)
+        for field, val in payload.items():
+            if val is None:
+                continue
+            if isinstance(val, bool):
+                k = str(val).lower()
+                self._kw.setdefault(field, {}).setdefault(k, set()).add(pid)
+            elif isinstance(val, str):
+                self._kw.setdefault(field, {}).setdefault(val, set()).add(pid)
+            elif isinstance(val, (int, float)):
+                store = self._num.setdefault(field, [])
+                store.append((float(val), pid))
+                self._num_dirty.add(field)
+
+    # ── 增量维护 ──
+
+    def add(self, pid: str, payload: dict):
+        """添加/全量更新一条 point 的索引。"""
+        self._remove_point(pid)
+        self._index_point(pid, payload)
+
+    def update(self, pid: str, partial_payload: dict):
+        """部分更新 — 仅重新索引 payload 中出现的字段，其他字段保持不变。"""
+        # 先移除这些字段的旧值
+        for field in partial_payload:
+            self._remove_field(pid, field)
+        # 再索引新值
+        self._index_point(pid, partial_payload)
+
+    def remove(self, pid: str):
+        """增量删除一条 point。"""
+        self._remove_point(pid)
+        self._all_ids.discard(pid)
+
+    def _remove_point(self, pid: str):
+        """从所有索引中移除一个 point。"""
+        self._all_ids.discard(pid)
+        for field, val_idx in self._kw.items():
+            for val, pids in list(val_idx.items()):
+                pids.discard(pid)
+                if not pids:
+                    del val_idx[val]
+        for field in list(self._num.keys()):
+            self._num[field] = [(v, p) for v, p in self._num.get(field, []) if p != pid]
+            self._num_dirty.add(field)
+
+    def _remove_field(self, pid: str, field: str):
+        """仅移除 point 在某个字段上的索引（用于部分更新）。"""
+        # keyword 索引
+        if field in self._kw:
+            for val, pids in list(self._kw[field].items()):
+                pids.discard(pid)
+                if not pids:
+                    del self._kw[field][val]
+        # 数值索引
+        if field in self._num:
+            self._num[field] = [(v, p) for v, p in self._num[field] if p != pid]
+            self._num_dirty.add(field)
+
+    def _sort_all_dirty(self):
+        """重排所有脏的数值索引。"""
+        for field in list(self._num_dirty):
+            self._num[field].sort(key=lambda x: x[0])
+        self._num_dirty.clear()
+
+    # ── 查询 ──
+
+    def resolve(self, qdrant_filter: models.Filter | None) -> set[str] | None:
+        """将 Qdrant Filter 解析为匹配的 point ID 集合。
+
+        返回 None 表示「无法用索引解析，请回退到暴力扫描」。
+        返回空 set 表示「索引确定没有匹配结果」。
+        """
+        if qdrant_filter is None:
+            return None
+        self._sort_all_dirty()
+        return self._resolve_filter(qdrant_filter)
+
+    def _resolve_filter(self, f: models.Filter) -> set[str] | None:
+        """递归解析 Filter 对象。"""
+        result: set[str] | None = None
+
+        # must → 交集
+        if hasattr(f, 'must') and f.must:
+            ids: set[str] | None = None
+            for cond in f.must:
+                sub = self._resolve_condition(cond)
+                if sub is None:
+                    return None  # 无法解析的条件 → 回退
+                if ids is None:
+                    ids = set(sub)
+                else:
+                    ids &= sub
+                if not ids:
+                    return set()
+            result = ids if ids is not None else set(self._all_ids)
+
+        # should → 并集
+        if hasattr(f, 'should') and f.should:
+            union: set[str] = set()
+            for cond in f.should:
+                sub = self._resolve_condition(cond)
+                if sub is None:
+                    return None
+                union |= sub
+            if result is None:
+                result = union
+            else:
+                result &= union
+
+        # must_not → 差集
+        if hasattr(f, 'must_not') and f.must_not:
+            for cond in f.must_not:
+                sub = self._resolve_condition(cond)
+                if sub is None:
+                    return None
+                if result is None:
+                    result = set(self._all_ids)
+                result -= sub
+
+        return result if result is not None else set(self._all_ids)
+
+    def _resolve_condition(self, cond) -> set[str] | None:
+        """解析单个条件对象。"""
+        # FieldCondition
+        if hasattr(cond, 'key') and hasattr(cond, 'match'):
+            return self._resolve_match(cond.key, cond.match)
+        if hasattr(cond, 'key') and hasattr(cond, 'range'):
+            return self._resolve_range(cond.key, cond.range)
+        # 嵌套 Filter
+        if hasattr(cond, 'must') or hasattr(cond, 'should') or hasattr(cond, 'must_not'):
+            return self._resolve_filter(cond)
+        return None
+
+    def _resolve_match(self, key: str, match) -> set[str] | None:
+        """解析 MatchValue / MatchAny / MatchExcept / MatchText。"""
+        if hasattr(match, 'value'):
+            # MatchValue
+            val = match.value
+            lookup = str(val).lower() if isinstance(val, bool) else val
+            kw_idx = self._kw.get(key, {})
+            return kw_idx.get(lookup, set())
+        elif hasattr(match, 'any'):
+            # MatchAny
+            kw_idx = self._kw.get(key, {})
+            result: set[str] = set()
+            for v in match.any:
+                result |= kw_idx.get(v, set())
+            return result
+        elif hasattr(match, 'except_'):
+            # MatchExcept — 暂不支持，回退
+            return None
+        elif hasattr(match, 'text'):
+            # MatchText — 文本分词匹配，本地索引不支持
+            return None
+        return None
+
+    def _resolve_range(self, key: str, r) -> set[str] | None:
+        """解析 Range (gte/lte/gt/lt) 查询。"""
+        store = self._num.get(key)
+        if not store:
+            return set()
+        lo = r.gt if hasattr(r, 'gt') and r.gt is not None else \
+             (r.gte if hasattr(r, 'gte') and r.gte is not None else None)
+        hi = r.lt if hasattr(r, 'lt') and r.lt is not None else \
+             (r.lte if hasattr(r, 'lte') and r.lte is not None else None)
+        if lo is None and hi is None:
+            return None
+
+        # 二分查找边界
+        import bisect
+        if lo is not None:
+            lo_idx = bisect.bisect_right(store, (lo - 1e-10, ""), key=lambda x: x[0])
+        else:
+            lo_idx = 0
+        if hi is not None:
+            hi_idx = bisect.bisect_left(store, (hi + 1e-10, ""), key=lambda x: x[0])
+        else:
+            hi_idx = len(store)
+
+        return {pid for _, pid in store[lo_idx:hi_idx]}
+
+    def stats(self) -> dict:
+        return {
+            "kw_fields": len(self._kw),
+            "num_fields": len(self._num),
+            "total_ids": len(self._all_ids),
+            "approx_memory_bytes": (
+                sum(len(v) * 80 for idx in self._kw.values() for v in idx.values())
+                + sum(len(s) * 24 for s in self._num.values())
+            ),
+        }
+
+
+# ===================================================================
+# 量化 & 索引配置 (Phase 4)
+# ===================================================================
+
+def _build_quantization_config() -> models.QuantizationConfig | None:
+    """构建 Qdrant 量化配置。Phase 4: scalar_int8 将 4GB→1GB 向量存储。"""
+    if not QDRANT_QUANTIZATION or _is_default_local_url():
+        return None
+    if QDRANT_QUANTIZATION == "scalar_int8":
+        return models.ScalarQuantization(
+            scalar=models.ScalarQuantizationConfig(
+                type=models.ScalarType.INT8,
+                quantile=QDRANT_QUANTIZATION_QUANTILE,
+                always_ram=True,
+            ),
+        )
+    logger.warning("未知量化类型: %s，跳过量化配置", QDRANT_QUANTIZATION)
+    return None
 
 
 # ===================================================================
@@ -140,7 +403,7 @@ class _QdrantCollectionCompat:
         self._svc = service
 
     def query(self, query_embeddings, n_results, where=None, include=None):
-        """ChromaDB col.query() → Qdrant search()。
+        """ChromaDB col.query() → Qdrant search() (本地索引加速)。
 
         返回格式（兼容 ChromaDB）:
           {"ids": [[id1,id2,...]], "documents": [["doc1","doc2",...]],
@@ -153,13 +416,12 @@ class _QdrantCollectionCompat:
         ids_list, docs_list, metas_list, dists_list = [], [], [], []
         for q_emb in query_embeddings:
             try:
-                results = self._svc._client.search(
-                    collection_name=self._svc._collection_name,
+                # Phase 4: 本地索引加速
+                results = self._svc._search_with_index(
                     query_vector=q_emb,
                     query_filter=qf,
                     limit=n_results,
                     with_payload=include_meta,
-                    with_vectors=False,
                 )
             except Exception as exc:
                 logger.warning("Qdrant search 失败: %s", exc)
@@ -223,15 +485,14 @@ class _QdrantCollectionCompat:
             return {"ids": result_ids, "documents": result_docs, "metadatas": result_metas}
 
         else:
-            # 按 filter 检索
+            # 按 filter 检索 — Phase 4: 本地索引加速
             qf = _translate_filter(where) if where else None
             _limit = limit or 50000
             try:
-                pts, _ = self._svc._client.scroll(
-                    collection_name=self._svc._collection_name,
+                pts, _ = self._svc._scroll_with_index(
                     scroll_filter=qf,
-                    with_payload=True,
                     limit=_limit,
+                    with_payload=True,
                 )
             except Exception as exc:
                 logger.warning("Qdrant scroll 失败: %s", exc)
@@ -303,8 +564,8 @@ class QdrantService:
 
         self._lock = threading.Lock()
         self._desensitization_counter = 0
-        # Embedding 缓存
-        self._emb_cache: dict[str, list] = {}
+        # Phase 4: Embedding 缓存 — OrderedDict LRU, 上限 20K
+        self._emb_cache: OrderedDict[str, list] = OrderedDict()
         self._emb_cache_lock = threading.Lock()
         # list_all 缓存
         self._list_all_cache: list[dict] | None = None
@@ -321,6 +582,8 @@ class QdrantService:
         # 确保 collection 存在
         existing = {c.name for c in self._client.get_collections().collections}
         if coll_name not in existing:
+            # Phase 4: 量化配置 — scalar_int8 将 4GB→1GB
+            quant_cfg = _build_quantization_config()
             self._client.create_collection(
                 collection_name=coll_name,
                 vectors_config=models.VectorParams(
@@ -332,12 +595,185 @@ class QdrantService:
                         ef_construct=QDRANT_HNSW_EF_CONSTRUCT,
                     ) if not _is_default_local_url() else None,
                 ),
+                quantization_config=quant_cfg,
             )
-            logger.info("创建 Qdrant collection: %s", coll_name)
+            logger.info("创建 Qdrant collection: %s (quantization=%s)", coll_name, QDRANT_QUANTIZATION or "none")
+            # Phase 4: 创建 payload 索引 (idempotent, 幂等)
+            self._create_payload_indexes(coll_name)
 
         self._collection_name = coll_name
         # Phase 2: ChromaDB → Qdrant API 兼容适配器
         self._collection = _QdrantCollectionCompat(self)
+
+        # Phase 4: 本地模式补偿 — Python 侧内存 payload 索引
+        self._local_index: _LocalPayloadIndex | None = None
+        self._local_index_ready = False
+        if _is_local_client(self._client):
+            self._local_index = _LocalPayloadIndex()
+            logger.info("Qdrant 本地模式已启用 — Python 侧 payload 索引补偿")
+
+    # ------------------------------------------------------------------
+    # 本地索引辅助 (Phase 4)
+    # ------------------------------------------------------------------
+
+    def _local_index_build(self):
+        """构建本地 payload 索引（启动后异步调用）。"""
+        if self._local_index is None:
+            return
+        try:
+            all_pts, _ = self._client.scroll(
+                collection_name=self._collection_name,
+                with_payload=True,
+                with_vectors=False,
+                limit=100000,
+            )
+            self._local_index.build(all_pts)
+            self._local_index_ready = True
+            logger.info("本地 payload 索引构建完成: %s", self._local_index.stats())
+        except Exception as exc:
+            logger.warning("本地索引构建失败: %s", exc)
+
+    def _scroll_with_index(self, scroll_filter=None, limit: int = 100,
+                           with_payload: bool = True, with_vectors: bool = False,
+                           order_by=None, offset=None) -> tuple[list, str | None]:
+        """scroll() 的索引加速版。
+
+        当本地索引就绪且 filter 可解析时，先走索引缩小候选集。
+        否则回退到普通 scroll。
+        """
+        # 检查是否能用索引
+        use_index = (
+            self._local_index is not None
+            and self._local_index_ready
+            and scroll_filter is not None
+            and order_by is None  # 排序时不能用索引预筛选（影响全局排序）
+            and offset is None    # 偏移时不能用索引（需要全量结果计算 offset）
+        )
+
+        if use_index:
+            matching = self._local_index.resolve(scroll_filter)
+            if matching is not None:
+                # 索引命中 → 只 retrieve 匹配的点
+                if not matching:
+                    return [], None  # 无匹配
+                # 取 limit 个 ID，直接 retrieve
+                target_ids = list(matching)[:limit]
+                try:
+                    pts = self._client.retrieve(
+                        collection_name=self._collection_name,
+                        ids=target_ids,
+                        with_payload=with_payload,
+                        with_vectors=with_vectors,
+                    )
+                    return pts, None  # next_offset = None，索引模式不支持分页
+                except Exception:
+                    pass  # 回退到普通 scroll
+
+        # 回退：普通 scroll
+        try:
+            return self._client.scroll(
+                collection_name=self._collection_name,
+                scroll_filter=scroll_filter,
+                limit=limit,
+                with_payload=with_payload,
+                with_vectors=with_vectors,
+                order_by=order_by,
+                offset=offset,
+            )
+        except Exception:
+            return [], None
+
+    def _search_with_index(self, query_vector, query_filter=None, limit: int = 50,
+                           with_payload: bool = True, with_vectors: bool = False):
+        """search() 的索引加速版。
+
+        先用本地索引缩小候选集，再在候选集中做向量搜索。
+        如果索引不适用，回退到普通 search。
+        """
+        # 检查是否能用索引
+        use_index = (
+            self._local_index is not None
+            and self._local_index_ready
+            and query_filter is not None
+        )
+
+        if use_index:
+            matching = self._local_index.resolve(query_filter)
+            if matching is not None and len(matching) < 5000:
+                # 候选集不太大 → 用索引缩小范围
+                if not matching:
+                    return []
+                # Qdrant search 不支持 ID 列表预选，策略是：
+                # 1. 先用 search 正常搜（limit 放宽一点补偿精度损失）
+                # 2. 再用索引过滤掉不匹配的结果
+                try:
+                    results = self._client.search(
+                        collection_name=self._collection_name,
+                        query_vector=query_vector,
+                        limit=min(limit * 3, 200),
+                        with_payload=with_payload,
+                        with_vectors=with_vectors,
+                    )
+                    # 用索引过滤结果
+                    filtered = [r for r in results if r.id in matching][:limit]
+                    return filtered
+                except Exception:
+                    pass
+            # 候选集太大或无法解析 → 回退
+
+        # 回退：普通 search
+        try:
+            return self._client.search(
+                collection_name=self._collection_name,
+                query_vector=query_vector,
+                query_filter=query_filter,
+                limit=limit,
+                with_payload=with_payload,
+                with_vectors=with_vectors,
+            )
+        except Exception:
+            return []
+
+    # ------------------------------------------------------------------
+    # Payload 索引 (Phase 4 — §4.5 清单)
+    # ------------------------------------------------------------------
+
+    def _create_payload_indexes(self, coll_name: str):
+        """为 collection 创建所有高频过滤字段的 payload 索引。幂等——重复创建不报错。"""
+        # §4.5 必须建索引的字段
+        _indexes = [
+            # keyword / enum 类型
+            ("heat", models.PayloadSchemaType.KEYWORD),
+            ("emotion_valence_bin", models.PayloadSchemaType.KEYWORD),
+            ("date_tag", models.PayloadSchemaType.KEYWORD),
+            ("source", models.PayloadSchemaType.KEYWORD),
+            # float (range queries)
+            ("timestamp", models.PayloadSchemaType.FLOAT),
+            ("last_hit_time", models.PayloadSchemaType.FLOAT),
+            # integer
+            ("emotional_intensity", models.PayloadSchemaType.INTEGER),
+            # bool
+            ("stale", models.PayloadSchemaType.BOOL),
+            ("archived", models.PayloadSchemaType.BOOL),
+            # text (MatchText on document)
+            ("document", models.PayloadSchemaType.TEXT),
+            # 按需: 嵌套 entity keyword
+            ("entities[].text", models.PayloadSchemaType.KEYWORD),
+            ("entities[].type", models.PayloadSchemaType.KEYWORD),
+            # 按需: year_month
+            ("year_month", models.PayloadSchemaType.KEYWORD),
+        ]
+        for field_name, schema_type in _indexes:
+            try:
+                self._client.create_payload_index(
+                    collection_name=coll_name,
+                    field_name=field_name,
+                    field_schema=schema_type,
+                )
+            except Exception as exc:
+                # 索引已存在或字段类型不兼容——跳过
+                logger.debug("payload 索引 %s/%s: %s", coll_name, field_name, exc)
+        logger.info("payload 索引创建完成: %s (%d 字段)", coll_name, len(_indexes))
 
     # ------------------------------------------------------------------
     # 记忆写入
@@ -399,6 +835,9 @@ class QdrantService:
             )],
         )
         logger.info("记忆写入完成 id=%s source=%s summary=%s", memory_id[:8], source, summary[:60])
+        # Phase 4: 维护本地索引
+        if self._local_index is not None:
+            self._local_index.add(memory_id, payload)
         if self._earliest_ts is None or timestamp < self._earliest_ts:
             self._earliest_ts = timestamp
         if self._latest_ts is None or timestamp > self._latest_ts:
@@ -534,6 +973,9 @@ class QdrantService:
                 points=[memory_id],
             )
             self._total_hits += delta
+            # Phase 4: 维护本地索引
+            if self._local_index is not None:
+                self._local_index.add(memory_id, payload)
 
         self._desensitization_counter += 1
         if self._desensitization_counter >= self.DESENSITIZATION_CHECK_INTERVAL:
@@ -580,6 +1022,12 @@ class QdrantService:
                     points=[mid],
                 )
             self._total_hits += sum(aggregated.values())
+            # Phase 4: 维护本地索引（批量）
+            if self._local_index is not None:
+                for mid, total_delta in aggregated.items():
+                    payload = payload_map.get(mid)
+                    if payload is not None:
+                        self._local_index.add(mid, payload)
 
         self._desensitization_counter += len(ids_and_deltas)
         if self._desensitization_counter >= self.DESENSITIZATION_CHECK_INTERVAL:
@@ -593,8 +1041,7 @@ class QdrantService:
     def _apply_emotional_desensitization(self):
         """情绪淡化：扫描 emotional_intensity>=1 的记忆，超期未命中则减 1。"""
         try:
-            pts, _ = self._client.scroll(
-                collection_name=self._collection_name,
+            pts, _ = self._scroll_with_index(
                 scroll_filter=models.Filter(must=[
                     models.FieldCondition(
                         key="emotional_intensity",
@@ -681,6 +1128,12 @@ class QdrantService:
                 },
                 points=[old_id],
             )
+        # Phase 4: 维护本地索引（部分更新）
+        if self._local_index is not None:
+            self._local_index.update(old_id, {
+                "stale": True, "superseded_by": new_id,
+                "supersede_reason": reason, "superseded_at": _dt.now().isoformat(),
+            })
         self._invalidate_list_all_cache()
         logger.info(
             "事实取代: %s → %s reason=%s",
@@ -698,8 +1151,7 @@ class QdrantService:
             must.append(models.FieldCondition(
                 key="timestamp", range=models.Range(lte=until_ts),
             ))
-        pts, _ = self._client.scroll(
-            collection_name=self._collection_name,
+        pts, _ = self._scroll_with_index(
             scroll_filter=models.Filter(must=must),
             with_payload=True,
             limit=limit,
@@ -775,6 +1227,9 @@ class QdrantService:
             points_selector=[memory_id],
         )
         self._emb_cache.pop(memory_id, None)
+        # Phase 4: 维护本地索引
+        if self._local_index is not None:
+            self._local_index.remove(memory_id)
         self._invalidate_list_all_cache()
         logger.info("Qdrant 删除成功 id=%s", memory_id[:8])
 
@@ -882,8 +1337,7 @@ class QdrantService:
     def list_since(self, since_ts: float, limit: int = 500) -> list[dict]:
         """按时间过滤：返回 timestamp >= since_ts 的记忆。"""
         try:
-            pts, _ = self._client.scroll(
-                collection_name=self._collection_name,
+            pts, _ = self._scroll_with_index(
                 scroll_filter=models.Filter(must=[
                     models.FieldCondition(
                         key="timestamp", range=models.Range(gte=since_ts),
@@ -943,8 +1397,7 @@ class QdrantService:
     def list_before(self, before_ts: float, limit: int = 500) -> list[dict]:
         """按时间过滤：返回 timestamp < before_ts 的记忆。"""
         try:
-            pts, _ = self._client.scroll(
-                collection_name=self._collection_name,
+            pts, _ = self._scroll_with_index(
                 scroll_filter=models.Filter(must=[
                     models.FieldCondition(
                         key="timestamp", range=models.Range(lt=before_ts),
@@ -1001,32 +1454,63 @@ class QdrantService:
             self._list_all_cache_time = 0.0
 
     # ------------------------------------------------------------------
-    # Embedding 缓存（attention 位移因子用）
+    # Embedding 缓存（attention 位移因子用）— Phase 4: LRU 20K
     # ------------------------------------------------------------------
-    _EMB_CACHE_MAX = 10000
 
     def _build_embedding_cache(self):
-        """从 Qdrant 批量读取已有记忆的 embedding 到内存缓存。"""
+        """按 last_hit_time DESC 分批 scroll 最近 N 条记忆的 embedding 到 LRU 缓存。
+
+        Phase 4: 上限 20K, 按 last_hit_time 降序（自然偏向活跃记忆）,
+        分批 scroll 避免单次大量传输, 启动时不阻塞（由 storage_executor.submit 调用）。
+        """
+        loaded = 0
         try:
-            pts, _ = self._client.scroll(
-                collection_name=self._collection_name,
-                with_payload=["last_hit_time"],
-                with_vectors=True,
-                limit=self._EMB_CACHE_MAX,
-            )
-            with self._emb_cache_lock:
-                for pt in pts:
-                    if pt.vector is not None:
-                        self._emb_cache[pt.id] = pt.vector
-            logger.info("embedding 缓存构建完成: %d/%d 条", len(self._emb_cache), len(pts))
+            offset = None
+            while loaded < QDRANT_EMB_CACHE_MAX:
+                pts, next_offset = self._client.scroll(
+                    collection_name=self._collection_name,
+                    with_payload=["last_hit_time"],
+                    with_vectors=True,
+                    limit=min(QDRANT_EMB_CACHE_BATCH, QDRANT_EMB_CACHE_MAX - loaded),
+                    offset=offset,
+                )
+                if not pts:
+                    break
+                with self._emb_cache_lock:
+                    for pt in pts:
+                        if pt.vector is not None:
+                            self._emb_cache[pt.id] = pt.vector
+                            # LRU: 新加载的放到末尾
+                            self._emb_cache.move_to_end(pt.id)
+                loaded += len(pts)
+                if next_offset is None or len(pts) < QDRANT_EMB_CACHE_BATCH:
+                    break
+                offset = next_offset
+            logger.info("embedding 缓存构建完成: %d 条 (max=%d)", len(self._emb_cache), QDRANT_EMB_CACHE_MAX)
         except Exception as exc:
             with self._emb_cache_lock:
-                self._emb_cache = {}
+                self._emb_cache = OrderedDict()
             logger.warning("embedding 缓存构建失败，回退空缓存: %s", exc)
 
     def _get_embedding_cached(self, memory_id: str) -> list | None:
-        """获取缓存的 embedding。"""
-        return self._emb_cache.get(memory_id)
+        """获取缓存的 embedding，LRU 更新访问时间。"""
+        with self._emb_cache_lock:
+            emb = self._emb_cache.get(memory_id)
+            if emb is not None:
+                self._emb_cache.move_to_end(memory_id)
+            return emb
+
+    def _emb_cache_put(self, memory_id: str, embedding: list):
+        """写入 embedding 缓存（LRU 淘汰）。"""
+        with self._emb_cache_lock:
+            if memory_id in self._emb_cache:
+                self._emb_cache.move_to_end(memory_id)
+                self._emb_cache[memory_id] = embedding
+                return
+            # LRU 淘汰: 超过上限时移除最旧条目
+            while len(self._emb_cache) >= QDRANT_EMB_CACHE_MAX:
+                self._emb_cache.popitem(last=False)
+            self._emb_cache[memory_id] = embedding
 
     # ------------------------------------------------------------------
     # ChromaDB Collection API 兼容 (Phase 2: delegate to _collection adapter)
@@ -1053,7 +1537,7 @@ class QdrantService:
         with self._lock:
             self._client.close() if hasattr(self._client, 'close') else None
         with self._emb_cache_lock:
-            self._emb_cache = {}
+            self._emb_cache = OrderedDict()
 
 def _is_default_local_url() -> bool:
     """判断 QDRANT_URL 是否是默认本地地址（未显式配置远程服务器）。"""
@@ -1092,6 +1576,7 @@ class CoOccurrenceStore:
     def _ensure_collection(self):
         existing = {c.name for c in self._client.get_collections().collections}
         if self._coll not in existing:
+            quant_cfg = _build_quantization_config()
             self._client.create_collection(
                 collection_name=self._coll,
                 vectors_config=models.VectorParams(
@@ -1099,8 +1584,24 @@ class CoOccurrenceStore:
                     distance=models.Distance.COSINE,
                     on_disk=QDRANT_ON_DISK,
                 ),
+                quantization_config=quant_cfg,
             )
-            logger.info("创建 Qdrant collection: %s (co_occurrence)", self._coll)
+            logger.info("创建 Qdrant collection: %s (co_occurrence, quantization=%s)",
+                       self._coll, QDRANT_QUANTIZATION or "none")
+            # Phase 4: payload 索引 — id_a, id_b keyword, count integer
+            for field, stype in [
+                ("id_a", models.PayloadSchemaType.KEYWORD),
+                ("id_b", models.PayloadSchemaType.KEYWORD),
+                ("count", models.PayloadSchemaType.INTEGER),
+            ]:
+                try:
+                    self._client.create_payload_index(
+                        collection_name=self._coll,
+                        field_name=field,
+                        field_schema=stype,
+                    )
+                except Exception:
+                    pass
 
     # ── 向后兼容方法 ──
 
@@ -1417,6 +1918,7 @@ class HyperEdgeStore:
     def _ensure_collection(self):
         existing = {c.name for c in self._client.get_collections().collections}
         if self._coll not in existing:
+            quant_cfg = _build_quantization_config()
             self._client.create_collection(
                 collection_name=self._coll,
                 vectors_config=models.VectorParams(
@@ -1424,8 +1926,24 @@ class HyperEdgeStore:
                     distance=models.Distance.COSINE,
                     on_disk=QDRANT_ON_DISK,
                 ),
+                quantization_config=quant_cfg,
             )
-            logger.info("创建 Qdrant collection: %s (hyper_edges)", self._coll)
+            logger.info("创建 Qdrant collection: %s (hyper_edges, quantization=%s)",
+                       self._coll, QDRANT_QUANTIZATION or "none")
+            # Phase 4: payload 索引 — entities keyword, created_at float, edge_size integer
+            for field, stype in [
+                ("entities", models.PayloadSchemaType.KEYWORD),
+                ("created_at", models.PayloadSchemaType.KEYWORD),
+                ("edge_size", models.PayloadSchemaType.INTEGER),
+            ]:
+                try:
+                    self._client.create_payload_index(
+                        collection_name=self._coll,
+                        field_name=field,
+                        field_schema=stype,
+                    )
+                except Exception:
+                    pass
 
     # ── 向后兼容 ──
 

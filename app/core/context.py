@@ -738,8 +738,7 @@ class AppContext:
                     tags_str = ",".join(tags) if tags else ""
                     self.inverted_index.add_tags(memory_id, tags_str)
                     if embedding is not None:
-                        with self.chroma_service._emb_cache_lock:
-                            self.chroma_service._emb_cache[memory_id] = embedding
+                        self.chroma_service._emb_cache_put(memory_id, embedding)
                 except Exception:
                     pass
                 # AI 侧入库 fire-and-forget：done callback 记录结果，不阻塞 queue worker
@@ -856,7 +855,10 @@ class AppContext:
             _ = self.chroma_service.count()
             self.chroma_service._build_embedding_cache()
             self.ai_chroma_service._build_embedding_cache()
-            logger.info("检索预热完成：共现缓存+ChromaDB+embedding缓存")
+            # Phase 4: 构建本地 payload 索引（本地模式补偿）
+            self.chroma_service._local_index_build()
+            self.ai_chroma_service._local_index_build()
+            logger.info("检索预热完成：共现缓存+ChromaDB+embedding缓存+本地索引")
         except Exception as exc:
             logger.debug("检索预热跳过: %s", exc)
 

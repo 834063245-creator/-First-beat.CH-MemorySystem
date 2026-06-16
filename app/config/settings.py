@@ -119,12 +119,17 @@ QDRANT_GRPC_PORT = int(os.getenv("QDRANT_GRPC_PORT", "6334"))
 
 # Qdrant 量化配置 (Phase 4 启用)
 QDRANT_ON_DISK = os.getenv("QDRANT_ON_DISK", "true").lower() == "true"
-QDRANT_QUANTIZATION = os.getenv("QDRANT_QUANTIZATION", None)  # "scalar_int8" for prod
+QDRANT_QUANTIZATION = os.getenv("QDRANT_QUANTIZATION", "scalar_int8")  # Phase 4: 默认启用 int8 量化
+QDRANT_QUANTIZATION_QUANTILE = float(os.getenv("QDRANT_QUANTIZATION_QUANTILE", "0.99"))
 
 # Qdrant HNSW 参数
 QDRANT_HNSW_M = int(os.getenv("QDRANT_HNSW_M", "16"))
 QDRANT_HNSW_EF_CONSTRUCT = int(os.getenv("QDRANT_HNSW_EF_CONSTRUCT", "100"))
 QDRANT_HNSW_EF = int(os.getenv("QDRANT_HNSW_EF", "64"))
+
+# Qdrant Embedding 缓存 (Phase 4)
+QDRANT_EMB_CACHE_MAX = int(os.getenv("QDRANT_EMB_CACHE_MAX", "20000"))  # LRU 上限
+QDRANT_EMB_CACHE_BATCH = int(os.getenv("QDRANT_EMB_CACHE_BATCH", "500"))  # 分批 scroll 大小
 
 # ============================================================
 # ChromaDB 持久化（回退保留）

@@ -705,7 +705,7 @@ class TestR16_WeaveNarrative:
 
         # 直接调用 weave_context（非 BM 路径）
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.personality_store, ctx.impulse_scheduler,
+            ctx.chroma_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         cognitive = UserMessageAnalysis(intent="recall")
@@ -784,7 +784,7 @@ class TestR18_WeaveLayering:
         }]
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.personality_store, ctx.impulse_scheduler,
+            ctx.chroma_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         cognitive = UserMessageAnalysis(intent="recall")
@@ -824,7 +824,7 @@ class TestR18_WeaveLayering:
         }]
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.personality_store, ctx.impulse_scheduler,
+            ctx.chroma_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         cognitive = UserMessageAnalysis(intent="recall")
@@ -877,7 +877,7 @@ class TestR19_StaleHandling:
         }]
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.personality_store, ctx.impulse_scheduler,
+            ctx.chroma_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         cognitive = UserMessageAnalysis(intent="recall")
@@ -917,7 +917,7 @@ class TestR19_StaleHandling:
         }]
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.personality_store, ctx.impulse_scheduler,
+            ctx.chroma_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         cognitive = UserMessageAnalysis(intent="recall")
@@ -1045,7 +1045,7 @@ class TestR21_TokenBudget:
             })
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.personality_store, ctx.impulse_scheduler,
+            ctx.chroma_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         cognitive = UserMessageAnalysis(intent="recall")
@@ -1093,7 +1093,7 @@ class TestR22_CasualSilence:
             })
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.personality_store, ctx.impulse_scheduler,
+            ctx.chroma_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         cognitive = UserMessageAnalysis(intent="casual")
@@ -1135,7 +1135,7 @@ class TestR22_CasualSilence:
             })
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.personality_store, ctx.impulse_scheduler,
+            ctx.chroma_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         cognitive = UserMessageAnalysis(intent="recall")
@@ -1229,7 +1229,7 @@ class TestR24_RelationshipState:
         )
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.personality_store, ctx.impulse_scheduler,
+            ctx.chroma_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         spec = orch.process(query, q_emb, ctx,
@@ -1259,7 +1259,7 @@ class TestR24_RelationshipState:
             query, q_emb, ctx, intent="casual"
         )
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.personality_store, ctx.impulse_scheduler,
+            ctx.chroma_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         spec1 = orch.process(query, q_emb, ctx,
@@ -1457,11 +1457,7 @@ class TestR30_PersonalityUser:
         """回路处理后 personality_notes 应包含用户人格标签"""
         ctx, _ = seeded_env
 
-        # 先确保人格库中有数据
-        try:
-            ctx.personality_store.add_tag("用户喜欢深入讨论技术话题", source="user")
-        except Exception:
-            pass  # 人格库可能不可用
+        # Phase 4: personality_store 已退役，画像系统替代。跳过预填充。
 
         query = "技术编程"
         q_emb = local_embed(query)
@@ -1470,7 +1466,7 @@ class TestR30_PersonalityUser:
         )
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.personality_store, ctx.impulse_scheduler,
+            ctx.chroma_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         spec = orch.process(query, q_emb, ctx,
@@ -1502,7 +1498,7 @@ class TestR31_PersonalityAI:
         )
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.personality_store, ctx.impulse_scheduler,
+            ctx.chroma_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         spec = orch.process(query, q_emb, ctx,
@@ -1540,7 +1536,7 @@ class TestR32_TopicNotes:
         )
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.personality_store, ctx.impulse_scheduler,
+            ctx.chroma_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         spec = orch.process(query, q_emb, ctx,
@@ -1594,7 +1590,7 @@ class TestR34_ReplyContainsReference:
         )
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.personality_store, ctx.impulse_scheduler,
+            ctx.chroma_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         spec = orch.process(query, q_emb, ctx,
@@ -1680,7 +1676,7 @@ class TestR35_NoSuppressed:
         )
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.personality_store, ctx.impulse_scheduler,
+            ctx.chroma_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         spec = orch.process(query, q_emb, ctx,
@@ -1747,7 +1743,7 @@ class TestR35_NoSuppressed:
         _, _, _, memories = run_chat_retrieval(query, q_emb, ctx, intent="recall")
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.personality_store, ctx.impulse_scheduler,
+            ctx.chroma_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         spec = orch.process(query, q_emb, ctx,

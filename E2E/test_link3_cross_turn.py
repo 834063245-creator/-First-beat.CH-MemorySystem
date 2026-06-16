@@ -61,7 +61,7 @@ def _run_pipeline(ctx, query: str):
         query, q_emb, ctx, intent=None
     )
     orch = CircuitOrchestrator(
-        ctx.chroma_service, ctx.personality_store, ctx.impulse_scheduler,
+        ctx.chroma_service, ctx.impulse_scheduler,
         ctx.dmn, ctx.chat_history, ctx.co_tracker,
         mirror_neuron=ctx.mirror_neuron,
     )
