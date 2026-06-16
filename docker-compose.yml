@@ -1,8 +1,112 @@
-# 初痕记忆引擎 + Ollama 一键启动
+# 初痕记忆引擎 — 一键启动（含 Qdrant + vLLM 双实例 + Ollama 回滚保留）
 # 用法: docker compose up -d
-# 首次: docker compose exec ollama ollama pull bge-m3 && docker compose exec ollama ollama pull qwen2.5:3b
+# 首次 vLLM:
+#   docker compose run --rm vllm-embed python -c "import sentence_transformers; sentence_transformers.SentenceTransformer('BAAI/bge-m3')"
+#   docker compose run --rm vllm-chat python -c "from transformers import AutoModelForCausalLM; AutoModelForCausalLM.from_pretrained('Qwen/Qwen2.5-3B-Instruct')"
+#
+# GPU 资源: bge-m3 ~1.3GB VRAM (vllm-embed), qwen2.5:3b ~6GB VRAM (vllm-chat).
+#           单卡 ≥8GB 可全承载。无 GPU 时用 CPU 模式（设置 OLLAMA 回退或删除 vLLM 服务）。
+#           若要同时跑 Ollama，需要额外 2-4GB VRAM。
 
 services:
+  # ============================================================
+  # Qdrant 向量数据库 — 替代 ChromaDB
+  # ============================================================
+  qdrant:
+    image: qdrant/qdrant:v1.16.0
+    container_name: firstbeat-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"   # gRPC
+      - "6334:6334"   # HTTP REST
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+    deploy:
+      resources:
+        reservations:
+          devices: []   # Qdrant 跑 CPU，不占 GPU
+
+  # ============================================================
+  # vLLM Embedding 实例 — bge-m3 (1024-dim)
+  # ============================================================
+  vllm-embed:
+    image: vllm/vllm-openai:latest
+    container_name: firstbeat-vllm-embed
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    command:
+      - "--model"
+      - "BAAI/bge-m3"
+      - "--port"
+      - "8001"
+      - "--task"
+      - "embed"
+      - "--max-model-len"
+      - "8192"
+      - "--gpu-memory-utilization"
+      - "0.90"
+    volumes:
+      - vllm_cache:/root/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 15s
+      timeout: 10s
+      start_period: 60s
+      retries: 5
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ============================================================
+  # vLLM Chat 实例 — qwen2.5:3b (摘要 + 实体抽取)
+  # ============================================================
+  vllm-chat:
+    image: vllm/vllm-openai:latest
+    container_name: firstbeat-vllm-chat
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    command:
+      - "--model"
+      - "Qwen/Qwen2.5-3B-Instruct"
+      - "--port"
+      - "8002"
+      - "--max-model-len"
+      - "8192"
+      - "--gpu-memory-utilization"
+      - "0.90"
+    volumes:
+      - vllm_cache:/root/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 15s
+      timeout: 10s
+      start_period: 60s
+      retries: 5
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ============================================================
+  # Ollama — 回滚保留（Phase 0-5 过渡期并存）
+  # ============================================================
   ollama:
     image: ollama/ollama:latest
     container_name: firstbeat-ollama
@@ -17,7 +121,12 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 5
+    profiles:
+      - rollback   # 默认不启动，Ollama 回退时启用: docker compose --profile rollback up -d ollama
 
+  # ============================================================
+  # 初痕应用
+  # ============================================================
   firstbeat:
     build: .
     container_name: firstbeat-app
@@ -25,19 +134,36 @@ services:
     ports:
       - "8082:8082"
     environment:
+      # ── 存储后端 ──
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-qdrant}
+      - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
+      # ── Embedding ──
+      - EMBED_PROVIDER=${EMBED_PROVIDER:-vllm}
+      - VLLM_EMBED_URL=${VLLM_EMBED_URL:-http://vllm-embed:8001}
+      - VLLM_EMBED_MODEL=${VLLM_EMBED_MODEL:-BAAI/bge-m3}
+      # ── 本地 LLM (摘要/实体抽取) ──
+      - VLLM_CHAT_URL=${VLLM_CHAT_URL:-http://vllm-chat:8002}
+      - VLLM_CHAT_MODEL=${VLLM_CHAT_MODEL:-Qwen/Qwen2.5-3B-Instruct}
+      # ── Ollama 回退 (EMBED_PROVIDER=ollama 时用) ──
       - LOCAL_LLM_OLLAMA_URL=${LOCAL_LLM_OLLAMA_URL:-http://ollama:11434}
       - OLLAMA_EMBED_MODEL=${OLLAMA_EMBED_MODEL:-bge-m3}
       - OLLAMA_NUM_THREADS=${OLLAMA_NUM_THREADS:-4}
+      # ── LLM API ──
       - LLM_API_KEY=${LLM_API_KEY:-}
       - LLM_BASE_URL=${LLM_BASE_URL:-https://api.deepseek.com}
       - LLM_MODEL=${LLM_MODEL:-deepseek-v4-flash}
       - LOCAL_LLM_ENABLED=${LOCAL_LLM_ENABLED:-true}
-      - LOCAL_LLM_MODEL=${LOCAL_LLM_MODEL:-qwen2.5:3b}
+      - LOCAL_LLM_MODEL=${LOCAL_LLM_MODEL:-Qwen/Qwen2.5-3B-Instruct}
+      # ── 数据 ──
       - DATA_DIR=${DATA_DIR:-/app/data}
     volumes:
       - firstbeat_data:/app/data
     depends_on:
-      ollama:
+      qdrant:
+        condition: service_healthy
+      vllm-embed:
+        condition: service_healthy
+      vllm-chat:
         condition: service_healthy
     logging:
       driver: "json-file"
@@ -46,5 +172,7 @@ services:
         max-file: "3"
 
 volumes:
+  qdrant_data:
+  vllm_cache:
   ollama_models:
   firstbeat_data:

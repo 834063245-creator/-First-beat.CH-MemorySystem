@@ -15,7 +15,25 @@ if not os.path.exists(_env_path):
 load_dotenv(_env_path)
 
 # ============================================================
-# Embedding (Ollama GPU)
+# Embedding 提供者切换（Phase 0-5 过渡期）
+# ============================================================
+EMBED_PROVIDER = os.getenv("EMBED_PROVIDER", "ollama")  # "vllm" 启用新后端, "ollama" 回退
+
+# ============================================================
+# vLLM 推理服务 — 替代 Ollama (Phase 1+)
+# ============================================================
+# vLLM 实例1: bge-m3 embedding
+VLLM_EMBED_URL = os.getenv("VLLM_EMBED_URL", "http://localhost:8001")
+VLLM_EMBED_MODEL = os.getenv("VLLM_EMBED_MODEL", "BAAI/bge-m3")
+VLLM_EMBED_TIMEOUT = int(os.getenv("VLLM_EMBED_TIMEOUT", "30"))
+
+# vLLM 实例2: qwen2.5:3b 摘要 + 实体抽取
+VLLM_CHAT_URL = os.getenv("VLLM_CHAT_URL", "http://localhost:8002")
+VLLM_CHAT_MODEL = os.getenv("VLLM_CHAT_MODEL", "Qwen/Qwen2.5-3B-Instruct")
+VLLM_CHAT_TIMEOUT = int(os.getenv("VLLM_CHAT_TIMEOUT", "60"))
+
+# ============================================================
+# Embedding (Ollama GPU) — 回退保留
 # ============================================================
 OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "bge-m3")
 
@@ -87,7 +105,29 @@ if _OLLAMA_MODELS:
     os.environ["OLLAMA_MODELS"] = _OLLAMA_MODELS
 
 # ============================================================
-# ChromaDB 持久化
+# 存储后端切换（Phase 0-5 过渡期）
+# ============================================================
+STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "chromadb")  # "qdrant" 启用新后端, "chromadb" 回退
+TEST_BACKEND = os.getenv("TEST_BACKEND", STORAGE_BACKEND)   # 测试中动态选择后端
+
+# ============================================================
+# Qdrant 向量数据库 — 替代 ChromaDB (Phase 1+)
+# ============================================================
+QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", None)  # None = 本地开发无认证
+QDRANT_GRPC_PORT = int(os.getenv("QDRANT_GRPC_PORT", "6334"))
+
+# Qdrant 量化配置 (Phase 4 启用)
+QDRANT_ON_DISK = os.getenv("QDRANT_ON_DISK", "true").lower() == "true"
+QDRANT_QUANTIZATION = os.getenv("QDRANT_QUANTIZATION", None)  # "scalar_int8" for prod
+
+# Qdrant HNSW 参数
+QDRANT_HNSW_M = int(os.getenv("QDRANT_HNSW_M", "16"))
+QDRANT_HNSW_EF_CONSTRUCT = int(os.getenv("QDRANT_HNSW_EF_CONSTRUCT", "100"))
+QDRANT_HNSW_EF = int(os.getenv("QDRANT_HNSW_EF", "64"))
+
+# ============================================================
+# ChromaDB 持久化（回退保留）
 # ============================================================
 CHROMA_PERSIST_DIR = os.path.join(DATA_DIR, "chroma")
 CHROMA_COLLECTION_NAME = "memories"
@@ -153,7 +193,7 @@ EMBED_MODELS = {
     "bge-m3": {
         "dimension": 1024,
         "collection": "memories",
-        "provider": "ollama",
+        "provider": EMBED_PROVIDER,  # "vllm" or "ollama"
     },
 }
 EMBED_BACKFILL_MARKER = os.path.join(DATA_DIR, ".embed_model_backfill_done")

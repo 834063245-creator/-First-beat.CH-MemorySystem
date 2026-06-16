@@ -1,7 +1,7 @@
 # 初痕 (First Beat) CH Memory System
 
 > **这是项目的唯一权威文档。** 其他所有 .md 都以此文档为准。Agent 启动时自动加载。
-> 修改代码后必须同步更新本文档。最后修订 2026-06-14。
+> 修改代码后必须同步更新本文档。最后修订 2026-06-16。
 
 ---
 
@@ -52,6 +52,7 @@ d:\First Beat CH Memory System\
 ├── CONTRIBUTING_EN.md              # 贡献指南（英文）
 ├── EVEROS_INSIGHTS.md              # EverOS 设计洞见
 ├── SPEC_DRIFT.md                   # DriftTracker 规格说明
+├── SPEC_MIGRATION.md                # 存储&推理基础设施迁移蓝图 (v1.6)
 │
 ├── app/                            # ========== 主源码 ==========
 │   ├── api/                        # FastAPI 层：接收请求，返回响应
@@ -180,6 +181,8 @@ d:\First Beat CH Memory System\
 │   ├── audit.py                    #   记忆审计 v4：8类生产数据检索层测试 (737行)
 │   ├── check_conventions.py        #   代码规范检查：依赖方向/import 审查/SQLite 规范 (1015行)
 │   ├── compare_reports.py          #   审计报告对比：两轮审计 diff 工具 (70行)
+│   ├── verify_infra.py             #   Phase 0: Qdrant+vLLM 连通性验证 (270行)
+│   ├── migrate_to_qdrant.py        #   Phase 0: ChromaDB+SQLite→Qdrant 数据迁移 (470行)
 │   └── pre-push                    #   pre-push hook 备份：push 前跑 pytest tests/
 │
 ├── .claude/                        # ========== Claude Code 配置 ==========
@@ -513,6 +516,10 @@ python scripts/audit.py                # 记忆审计 (8类, 全量)
 python scripts/audit.py --quick        # 快速审计
 python scripts/check_conventions.py    # 代码规范检查
 python scripts/compare_reports.py      # 审计报告对比
+python scripts/verify_infra.py         # Phase 0: Qdrant+vLLM 连通性验证
+python scripts/verify_infra.py --quick #   仅快速验证
+python scripts/migrate_to_qdrant.py    # Phase 0: ChromaDB→Qdrant 数据迁移
+python scripts/migrate_to_qdrant.py --dry-run  #   干跑校验
 BENCHMARK_MODE=true python run.py      # Benchmark 模式
 ```
 
@@ -535,6 +542,21 @@ cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 ---
 
 ## 8. 当前状态
+
+### 进行中 (2026-06-16)
+
+- 🔄 **Phase 0.5 原型验证**：从现有 ChromaDB 导出 1000 条真实记忆，验证 vLLM vs Ollama 向量余弦 ≥0.99、Qdrant HNSW 召回率 ≥0.95、CoOccurrence 独立 collection 延迟 <100ms 等 6 项通过标准。**全部通过后才能进入 Phase 1**。
+  - 验证脚本：`scripts/verify_infra.py`
+  - 迁移脚本：`scripts/migrate_to_qdrant.py`（支持 --dry-run）
+  - 规格：`SPEC_MIGRATION.md` §9 Phase 0.5
+- ✅ **Phase 0 infra 搭建完成**：docker-compose 加 Qdrant+vLLM×2 服务、settings.py 加 STORAGE_BACKEND/EMBED_PROVIDER/TEST_BACKEND 切换开关、连通性验证脚本 + 数据迁移脚本就绪
+  - 核心原则：**检索管线 9 路结构完全不变**，仅底层 API 翻译 + 删 bm25。inverted_index 保留。不合并路径、不改分数量纲、不改 heat 过滤
+  - 删除清单：`chroma.py`、`cooccur.py`、`entity_pair.py`、`hyperedge.py`、`bm25_fulltext.py`、`db.py`、`data/chroma/`、3 个 SQLite .db
+  - **不删**：`inverted.py`（157 行纯 Python，保留，改数据源为 Qdrant scroll）
+
+### 计划中
+
+- ⏳ **asyncio 化**：Qdrant 迁移完成后独立执行。目标——`pipeline.py` 的 `ThreadPoolExecutor` 10 路并发 → `asyncio.gather()`、`embed.py` 同步 HTTP → `httpx.AsyncClient`、`context.py` 后台线程 → asyncio Task。**不在迁移 spec 范围内**，两个工作解耦。vLLM HTTP 层的 `embed.py`/`local.py` 改写优先用 `httpx.AsyncClient`（新代码不引入同步 HTTP 债务），外部暂时 `asyncio.to_thread()` 包一层
 
 ### 最近完成 (2026-06-14)
 
