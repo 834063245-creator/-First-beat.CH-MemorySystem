@@ -1,7 +1,7 @@
-"""记忆层 — Qdrant 存储/检索 + 上下文包裹管理（唯一向量存储后端）。
+"""Memory layer -- Qdrant storage/retrieval + context management (sole vector backend).
 
-Phase 4: 百万级硬骨头 — 量化 + payload 索引 + embedding 缓存 LRU。
-Phase 5: ChromaDB 已移除，Qdrant 为唯一后端。
+Phase 4: million-scale -- quantization + payload index + embedding cache LRU.
+Phase 5: ChromaDB removed, Qdrant sole backend.
 """
 import json
 import logging
