@@ -39,3 +39,33 @@ def clear_memory_errors(memory_id: str, data_dir: str = "data") -> int:
     except Exception as e:
         logger.error("清除错误报告失败: %s", e)
         return 0
+
+
+def get_recent_corrected_ids(data_dir: str = "data", since_hours: int = 24) -> set[str]:
+    """读取近 N 小时内被用户标记为错误的 memory_id 集合。
+
+    供 PortraitWriter 消费：用户说"记错了"→关联画像条目标记为待验证。
+    """
+    path = os.path.join(data_dir, "error_reports.jsonl")
+    if not os.path.exists(path):
+        return set()
+    cutoff = time.time() - since_hours * 3600
+    ids: set[str] = set()
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                # 跳过 clear 标记，只看 error 报告
+                if rec.get("action") == "clear":
+                    continue
+                if rec.get("timestamp", 0) > cutoff and rec.get("memory_id"):
+                    ids.add(rec["memory_id"])
+    except OSError:
+        pass
+    return ids

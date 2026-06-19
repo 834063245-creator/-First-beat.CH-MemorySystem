@@ -174,6 +174,7 @@ class AppContext:
         self.impulse_scheduler = ImpulseScheduler(
             state_path=f"{data_dir}/impulse_state.json",
             temporal_pattern_index=self.temporal_pattern_index,
+            portrait_manager=self.portrait,
         )
         self.mirror_neuron = BehaviorPredictor(data_dir=data_dir)
 

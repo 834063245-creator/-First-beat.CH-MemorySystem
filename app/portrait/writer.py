@@ -163,6 +163,22 @@ class PortraitWriter:
             self.realtime_update_ai(utterance_spec, relationship)
         except Exception as exc:
             logger.warning("AI 画像实时更新失败: %s", exc)
+        # ── 反馈消费：用户"记错了" → 关联画像条目 confidence 下降 ──
+        try:
+            from app.core.feedback import get_recent_corrected_ids
+            corrected = get_recent_corrected_ids()
+            if corrected:
+                for entry_id, entry in list(self._manager._entries.items()):
+                    # 检查条目标签或文本是否引用了被纠正的 memory_id
+                    entry_text_and_tags = entry.text + " " + " ".join(entry.tags)
+                    if any(mid in entry_text_and_tags for mid in corrected):
+                        entry.confidence = max(0.1, entry.confidence - 0.3)
+                        entry.status = EntryStatus.PENDING
+                        logger.info("画像条目 %s confidence 降至 %.2f（反馈纠正）",
+                                    entry_id, entry.confidence)
+        except Exception:
+            pass  # 反馈消费失败不影响主链路
+
         self._turns_since_last_deep += 1
         self._manager.save()
 

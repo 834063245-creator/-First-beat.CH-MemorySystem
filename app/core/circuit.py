@@ -115,6 +115,7 @@ def basal_ganglia_gate(
     impulses: list,
     personality_notes: list,
     ctx_obj=None,
+    mirror_prediction: dict | None = None,
 ) -> GatingDecision:
     """根据用户消息分析结果，决定输出语气 + 压制不合适的冲动。"""
     tone = "warm"
@@ -194,6 +195,34 @@ def basal_ganglia_gate(
         except Exception:
             pass
 
+        # Phase 2: 画像情绪趋势调制语气
+        try:
+            portrait = getattr(ctx_obj, "portrait", None)
+            if portrait is not None and not portrait.is_empty:
+                usr6_entries = portrait.get_dim_entries("usr6")
+                negative_keywords = ("低落", "焦虑", "沮丧", "压力", "烦躁", "疲惫",
+                                     "negative", "anxious", "depressed", "frustrated")
+                negative_count = sum(
+                    1 for e in usr6_entries
+                    if e.status.value == "active"
+                    and any(kw in e.text for kw in negative_keywords)
+                )
+                if negative_count >= 2 and pfc.intent not in ("conflict",):
+                    # 长期低落 → 收敛直接语气，避免过于轻快
+                    if tone in ("warm", "direct"):
+                        tone = "soft"
+                    formality = max(formality, 0.4)
+        except Exception:
+            pass
+
+    # Phase 2: 行为预测预调门控模式
+    if mirror_prediction:
+        predicted_intent = mirror_prediction.get("predicted_intent", "")
+        if predicted_intent == "ask_fact" and response_mode == "auto":
+            response_mode = "direct_answer"
+        elif predicted_intent == "emotional_sharing" and tone == "warm":
+            tone = "caring"
+
     return GatingDecision(
         tone=tone, formality=formality, intimacy=intimacy,
         response_mode=response_mode,
@@ -269,7 +298,15 @@ class CircuitOrchestrator:
 
         _log_step('mirror_predict')
         # ── 引擎编织：从候选集中织出上下文（替代 TOP_K 截断）──
-        woven = self.weave_context(memories, prefrontal)
+        # 预计算画像 boost map，供 weave_context 调制分层阈值
+        _portrait_boost = {}
+        try:
+            if hasattr(ctx_obj, "portrait") and ctx_obj.portrait is not None:
+                _portrait_boost = ctx_obj.portrait.compute_portrait_boost_map()
+        except Exception:
+            pass
+
+        woven = self.weave_context(memories, prefrontal, portrait_boost=_portrait_boost)
         if not woven.should_speak:
             memories = []
         else:
@@ -394,7 +431,8 @@ class CircuitOrchestrator:
 
         # ④ 响应门控
         gate = basal_ganglia_gate(
-            prefrontal, fact_memories, impulses, temp.personality_notes, ctx_obj)
+            prefrontal, fact_memories, impulses, temp.personality_notes,
+            ctx_obj, mirror_prediction=mirror_prediction)
 
         # ── Part A: 偏移率门控调制 ──────────────────────────
         drift_text = ""
@@ -522,6 +560,7 @@ class CircuitOrchestrator:
         self,
         candidates: list[dict],
         cognitive_state,
+        portrait_boost: dict[str, float] | None = None,
     ) -> "WovenContext":
         """引擎编织记忆上下文。替代原来的 TOP_K 截断。
 
@@ -690,11 +729,20 @@ class CircuitOrchestrator:
         # ═══════════════════════════════════════════════════
         MIN_FACT_DIST = 0.30  # 语义距离阈值
 
+        # ── 画像 boost 预计算：tag → 调制系数 ──
+        _pboost = portrait_boost or {}
+
         for m in active:
             mid = m.get("id", "")
             dist = m.get("distance", 0.5)
             source = m.get("source", "semantic")
             is_stale = m.get("_stale", False)
+
+            # 画像 tag boost：命中画像热点 → 放宽阈值
+            tag_multiplier = 1.0
+            if _pboost:
+                for tag in m.get("_tags", []):
+                    tag_multiplier = max(tag_multiplier, 1.0 + _pboost.get(tag, 0.0))
 
             # story line 里的：非 stale → fact，stale → stale_context
             if mid in used_in_narrative:
@@ -714,7 +762,7 @@ class CircuitOrchestrator:
                             "fulltext": 0.75,
                             "ai_expression": 0.7}
             boost = source_boost.get(source, 0.8)
-            threshold = MIN_FACT_DIST * boost
+            threshold = MIN_FACT_DIST * boost * tag_multiplier
 
             if dist < threshold:
                 if is_stale:

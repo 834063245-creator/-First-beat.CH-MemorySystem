@@ -271,6 +271,65 @@ def source_curiosity(memory_service, all_mems=None) -> tuple | None:
     return None
 
 
+def source_portrait_curiosity(portrait_manager=None, all_mems=None, **kwargs) -> tuple | None:
+    """画像驱动的好奇心源：对用户关注但引擎了解不足的话题主动探索。
+
+    数据来源：
+      - usr2（当前状态/关注焦点） → extract_focus_keywords()
+      - usr5（兴趣图谱）           → extract_hot_topics()
+      - usr6（情绪图谱）           → 排除负向触发，避免踩雷
+
+    优先级 20（介于随机漫游 18 和好奇心 15 之间，画像引导比随机更有价值）。
+    """
+    if portrait_manager is None:
+        return None
+    try:
+        focus_tags = portrait_manager.extract_focus_keywords()
+        hot_tags = portrait_manager.extract_hot_topics()
+        neg_tags = set(portrait_manager.extract_negative_triggers())
+
+        # 合并候选：关注焦点优先
+        candidates = []
+        for tag in focus_tags:
+            if tag not in neg_tags:
+                candidates.append(tag)
+        for tag in hot_tags:
+            if tag not in neg_tags and tag not in candidates:
+                candidates.append(tag)
+
+        if not candidates:
+            logger.debug("portrait_curiosity 跳过: 无可用候选标签")
+            return None
+
+        # 加权随机：关注焦点（前几个）权重更高
+        weights = [1.5 if i < len(focus_tags) else 1.0 for i in range(len(candidates))]
+        total_w = sum(weights)
+        r = random.uniform(0, total_w)
+        cumulative = 0.0
+        picked_tag = candidates[-1]
+        for tag, w in zip(candidates, weights):
+            cumulative += w
+            if r <= cumulative:
+                picked_tag = tag
+                break
+
+        # 检查记忆库中该 tag 的覆盖深度：少则探索，多则跳过
+        if all_mems:
+            tagged_count = sum(
+                1 for m in all_mems
+                if picked_tag in ((m.get("metadata") or {}).get("tags", "") or "")
+            )
+            if tagged_count >= 10:
+                logger.debug("portrait_curiosity 跳过: tag '%s' 已覆盖 %d 条",
+                             picked_tag, tagged_count)
+                return None
+
+        return (f"我注意到你最近常提到「{picked_tag}」，想多聊聊这个话题吗？", 20)
+    except Exception as exc:
+        logger.debug("portrait_curiosity 源异常: %s", exc)
+    return None
+
+
 # ── 调度器 ──────────────────────────────────────────────────
 
 class ImpulseScheduler:
@@ -288,11 +347,14 @@ class ImpulseScheduler:
         ("时间节律", source_time_rhythm, 1800),     # 平均每 30 分钟（模式索引更稳，不用频繁查）
         ("随机漫游", source_random_roam, 600),       # 平均每 10 分钟
         ("好奇心", source_curiosity, 1200),          # 平均每 20 分钟（探索从未提起的记忆）
+        ("画像探索", source_portrait_curiosity, 900),  # 平均每 15 分钟
     ]
 
-    def __init__(self, state_path: str, temporal_pattern_index=None):
+    def __init__(self, state_path: str, temporal_pattern_index=None,
+                 portrait_manager=None):
         self._state_path = state_path
         self._temporal_index = temporal_pattern_index
+        self._portrait_manager = portrait_manager
         self._pq = queue.PriorityQueue()  # 无界：泊松源发射频率由 SOURCE_CONFIG 限制，排队项 < MAX_HISTORY
         self._lock = threading.Lock()
         self._history: list[dict] = []
@@ -450,6 +512,7 @@ class ImpulseScheduler:
             "时间节律": {"memory_service": memory_service, "temporal_pattern_index": self._temporal_index},
             "随机漫游": {"memory_service": memory_service},
             "好奇心": {"memory_service": memory_service},
+            "画像探索": {"memory_service": memory_service, "portrait_manager": self._portrait_manager},
         }
 
         for name, source_fn, avg_interval in self.SOURCE_CONFIG:
