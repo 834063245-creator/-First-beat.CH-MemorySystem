@@ -1,0 +1,53 @@
+---
+description: 初痕存储层与检索管线——Qdrant/Chroma 切换与 metadata
+globs: app/memory/**/*.py,app/retrieval/**/*.py,app/core/context.py
+alwaysApply: false
+---
+
+# 存储与检索
+
+## 唯一后端：Qdrant（ChromaDB 已移除）
+
+`app/config/settings.py` → `QDRANT_URL`：
+
+- 留空 `""` — 本地嵌入式文件模式，`QdrantClient(path=...)`，数据在 `data/qdrant` / `data/ai_qdrant`
+- `http(s)://...` — 连接 Qdrant 服务器（docker-compose 显式注入）
+
+`context.py` 初始化无分支：`self.memory_service = QdrantService(persist_dir=f"{data_dir}/qdrant", ...)`、`self.ai_memory_service = QdrantService(persist_dir=f"{data_dir}/ai_qdrant", ...)`。
+
+无 `STORAGE_BACKEND` 开关、无 ChromaDB。`chromadb` 依赖已删，`requirements.txt` 用 `qdrant-client`。
+
+## Qdrant 模块地图
+
+| 文件 | 职责 |
+|------|------|
+| `qdrant.py` | `QdrantService`, `_QdrantCollectionCompat`, `_LocalPayloadIndex`, LRU cache |
+| `qdrant_cooccur.py` | `CoOccurrenceStore` |
+| `qdrant_hyperedge.py` | `HyperEdgeStore` |
+
+`entity_co_counts` 入库时预计算写入 Qdrant payload（替代旧 EntityPairTracker）。
+
+## 检索 9 路并行（`retrieval/pipeline.py`）
+
+semantic · keyword · tag · entity · temporal · topic · attention · fulltext · ai_memory + co_occurrence 扩展
+
+`ThreadPoolExecutor(max_workers=8)`；未来计划 asyncio 化（独立任务，勿混在迁移 PR 里）。
+
+## Qdrant API 注意
+
+- 改 `QdrantService.add_memory()` payload 字段 = 红线 2。
+- `QdrantService._collection`（`_QdrantCollectionCompat`）暴露 `query/get/update/count` 集合 API，pipeline 用 chroma 风格 `where` → `_translate_filter` 翻译为 Qdrant Filter。
+- 向量检索用 `client.query_points(...).points`（qdrant-client 1.10+ 已弃用 `search`）。
+- 点 ID 必须是 UUID 或无符号整数（Qdrant 限制；入库用 `uuid4`）。
+
+## 低级错误
+
+- ❌ 用已删的 `client.search()`（改用 `query_points(...).points`）
+- ❌ 给 Qdrant 点用非 UUID/整数 ID
+- ❌ 新建 SQLite 表或 `json.load` 做跨模块结构化存储
+- ❌ 直接操作 `_emb_cache` 或在外部加 embedding 锁
+- ❌ 改 collection 名不同步 `dispatch.py` 与 `settings.MEMORIES_COLLECTION`
+- ❌ 忘记 `storage_complete` 状态机（write → mark_storage_complete）
+- ❌ 检索路径绕过 `compute_score()` 自己算分
+- ✅ 原子写：`app/tools/atomic.py`
+- ✅ 冲突检测：`app/core/conflict.py` → stale 标记

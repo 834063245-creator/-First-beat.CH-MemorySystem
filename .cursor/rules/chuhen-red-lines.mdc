@@ -1,0 +1,83 @@
+---
+description: 初痕六条红线——改动会静默崩溃，不主动碰
+alwaysApply: true
+---
+
+# 红线：静默失败区
+
+> 改了通常不报错但系统行为会悄悄坏掉。除非用户明确要求，不要动。
+
+## 红线 1 — LLM Prompt 消息结构
+
+**文件**: `app/llm/deepseek.py` → `generate()`
+
+固定顺序（前缀缓存依赖此结构，命中率 >95%）：
+
+```
+message[0]: system ← stable prompt + _CORE_RULES + portrait_stable(8维)
+message[1..N]: user/assistant ← 历史
+message[N+1]: system ← portrait_dynamic(4维) + session_context + now_hint()
+message[N+2]: assistant ← tool_call: retrieve_memories
+message[N+3]: tool ← 记忆 JSON
+message[N+4..5]: natural_thoughts（有冲动才加）
+message[N+6]: system ← execute_directive
+message[N+7..8]: pattern_observations（有内容才加）
+message[last]: user ← 当前消息
+```
+
+禁止改：`_CORE_RULES` 常量、tool role 注入模式、消息顺序。
+
+## 红线 2 — Qdrant Payload Schema
+
+**文件**: `app/memory/qdrant.py` → `QdrantService.add_memory()`
+
+payload 字段名不可改名/删除：`timestamp, hit_count, heat, embed_model, stale, archived, superseded_by, storage_complete, source, summary, tags, entities, date_tag`
+
+`storage_complete` 控制后台队列重试（`mark_storage_complete(memory_id)` 置位）；collection 名 `"memories"` / `"ai_memories"`（settings `MEMORIES_COLLECTION` / `AI_COLLECTION`）。
+
+## 红线 3 — 后台线程
+
+**文件**: `app/core/context.py`, `app/background/`
+
+| 线程 | 静默死亡后果 |
+|------|-------------|
+| `store_queue_*` | 对话不再入库 |
+| `impulse_consumer_*` | 不再主动开口 |
+| `dmn_ticker_*` | 巩固+画像更新停止 |
+| `ai_desensitize_*` | AI 情绪淡化停止 |
+| 4 个冲动源泊松线程 | 冲动信号消失 |
+
+禁止改：`daemon=True`、`_stop_event` 检查、DMN ticker 合并逻辑。
+
+## 红线 4 — Settings 承重墙
+
+**文件**: `app/config/settings.py`
+
+| 配置 | 乱改后果 |
+|------|---------|
+| `LLM_BASE_URL` / `LLM_MODEL` | 前缀缓存策略失效 |
+| `OLLAMA_EMBED_MODEL` | 旧 embedding 全部作废 |
+| `BENCHMARK_MODE` | 非 benchmark 开它降质量 |
+| `DATA_DIR` | 所有路径全变 |
+| `QDRANT_URL` | 空=本地文件模式；http=服务器。乱设→连不上后端 |
+| `QDRANT_QUANTIZATION` | 关→4× 膨胀；开→精度微降 |
+| `QDRANT_EMB_CACHE_MAX` | 太小→注意力退化；太大→内存压力 |
+
+## 红线 5 — Embedding 与实体抽取
+
+- `local_embed()` 依赖 `bge-m3`；9 路检索全依赖它
+- 实体抽取依赖 `qwen2.5:3b`；换模型降质量
+- `_emb_cache` 是 `OrderedDict` LRU；只用 `_emb_cache_put()` 写入
+- **禁止**在外部直接写 `_emb_cache` 或额外加 `_emb_cache_lock`（死锁）
+
+## 红线 6 — E2E 哨兵测试
+
+5 链路 = 系统体温计；失败 = 核心链路断了：
+
+- `E2E/test_write_path.py` — 存进去了吗
+- `E2E/test_link2_retrieve.py` — 找得到吗
+- `E2E/test_link3_cross_turn.py` — 跨轮还记得吗
+- `E2E/test_link4_evolution.py` — 时间过了退化了吗
+- `E2E/test_background.py` — 后台在干什么
+
+禁止改 `E2E/conftest.py` 的 fixture 初始化逻辑。

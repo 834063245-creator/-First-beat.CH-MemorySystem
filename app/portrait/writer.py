@@ -197,7 +197,7 @@ class PortraitWriter:
     def shallow_update(self, ctx_obj: Any):
         """浅巩固画像更新 — dim 3/5/6 (用户) + AI 镜像。
 
-        用户侧和 AI 侧并行执行（独立 ChromaDB，无竞态）。
+        用户侧和 AI 侧并行执行（独立 Qdrant collection，无竞态）。
         """
         import time as _time
         now = _time.time()
@@ -229,7 +229,7 @@ class PortraitWriter:
     def _shallow_update_user(self, ctx: Any):
         """用户侧浅巩固: dim 3(行为节律), dim 5(兴趣图谱), dim 6(情绪图谱)。"""
         # Step 1: 拉数据
-        tag_stats = self._pull_tag_stats(ctx.chroma_service)
+        tag_stats = self._pull_tag_stats(ctx.memory_service)
         temporal_data = self._pull_temporal(ctx)
 
         # Step 2-3: 四态分类 + Step 4: LLM 合成
@@ -245,19 +245,19 @@ class PortraitWriter:
 
     def _shallow_update_ai(self, ctx: Any):
         """AI 侧浅巩固: dim 3(行为节律), dim 5(知识图谱), dim 6(情绪/表达图谱)。"""
-        tag_stats = self._pull_tag_stats(ctx.ai_chroma_service)
+        tag_stats = self._pull_tag_stats(ctx.ai_memory_service)
         # dim 5: 知识图谱
         self._update_interest_graph(ctx, tag_stats, "ai5", "ai")
 
-    def _pull_tag_stats(self, chroma_service) -> dict:
-        """从 ChromaDB 拉取标签分布统计。
+    def _pull_tag_stats(self, memory_service) -> dict:
+        """从 Qdrant 拉取标签分布统计。
 
         Returns:
             {tag: {count, last_seen_days, ids}}
         """
         stats: dict[str, dict] = {}
         try:
-            all_data = chroma_service.list_all_cached()
+            all_data = memory_service.list_all_cached()
             now = datetime.now()
             for mem in all_data:
                 meta = mem.get("metadata") or {}
@@ -305,7 +305,7 @@ class PortraitWriter:
         """拉取情绪相关数据供画像 dim 6 使用。"""
         data = {}
         try:
-            all_data = ctx.chroma_service.list_all_cached()
+            all_data = ctx.memory_service.list_all_cached()
             emotions = []
             for mem in all_data:
                 meta = mem.get("metadata") or {}
@@ -596,9 +596,9 @@ class PortraitWriter:
         except Exception:
             pass
 
-        # 从 ChromaDB 长期统计读取
+        # 从 Qdrant 长期统计读取
         try:
-            all_data = ctx.chroma_service.list_all_cached()
+            all_data = ctx.memory_service.list_all_cached()
             total_mems = len(all_data)
             if total_mems > 0:
                 days_span = "N/A"
@@ -646,7 +646,7 @@ class PortraitWriter:
 
         # 从 AI 记忆库统计
         try:
-            all_data = ctx.ai_chroma_service.list_all_cached()
+            all_data = ctx.ai_memory_service.list_all_cached()
             if all_data:
                 evidence_summary.append(f"AI 记忆库: {len(all_data)} 条")
                 # 表达色调统计

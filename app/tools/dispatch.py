@@ -170,7 +170,7 @@ def query_memory(collection, query: str = "", from_date: str = "", to_date: str 
         return []
 
     # ── 时间过滤条件 ──
-    # ChromaDB query() 不支持 $and（内部崩溃），改用 get() 取 ID 集 + query() 取语义交集
+    # 历史遗留：$and 复合过滤改用 get() 取 ID 集 + query() 取语义交集
     where_get = None  # 给 get() 用的格式
     where_query = None  # 给 query() 用的单操作符格式
     if from_date and to_date:
@@ -259,7 +259,7 @@ def query_memory(collection, query: str = "", from_date: str = "", to_date: str 
         # 替代原 3 次独立 collection.get(limit=50000) 全量扫描
         _all_data = None
 
-        # 原文主动检索：去 ChromaDB 原文里搜字面匹配
+        # 原文主动检索：去记忆库原文里搜字面匹配
         text_matched_ids = set()
         try:
             _all_data = collection.get(include=["documents", "metadatas"])
@@ -281,7 +281,7 @@ def query_memory(collection, query: str = "", from_date: str = "", to_date: str 
                         continue
                     meta = extra["metadatas"][i] if extra.get("metadatas") else {}
                     doc = extra["documents"][i] if extra.get("documents") else ""
-                    mem_ctx = chat_history_obj.get_context_by_chroma_id(mid, before=10, after=10) if chat_history_obj else {"context_before": [], "context_after": []}
+                    mem_ctx = chat_history_obj.get_context_by_memory_id(mid, before=10, after=10) if chat_history_obj else {"context_before": [], "context_after": []}
                     memories.append({
                         "id": mid,
                         "document": doc,
@@ -308,7 +308,7 @@ def query_memory(collection, query: str = "", from_date: str = "", to_date: str 
             time_str = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M") if ts else ""
             kw_match = mem_id in text_matched_ids
 
-            ctx_data = chat_history_obj.get_context_by_chroma_id(mem_id, before=3, after=3) if chat_history_obj else {"context_before": [], "context_after": []}
+            ctx_data = chat_history_obj.get_context_by_memory_id(mem_id, before=3, after=3) if chat_history_obj else {"context_before": [], "context_after": []}
 
             memories.append({
                 "id": mem_id,
@@ -502,7 +502,7 @@ def query_memory(collection, query: str = "", from_date: str = "", to_date: str 
             meta = results["metadatas"][i] if results.get("metadatas") else {}
             doc = results["documents"][i] if results.get("documents") else ""
             ts = meta.get("timestamp", 0)
-            ctx_data = chat_history_obj.get_context_by_chroma_id(mem_id, before=3, after=3) if chat_history_obj else {"context_before": [], "context_after": []}
+            ctx_data = chat_history_obj.get_context_by_memory_id(mem_id, before=3, after=3) if chat_history_obj else {"context_before": [], "context_after": []}
             memories.append({
                 "id": mem_id,
                 "summary": meta.get("summary", "")[:80],
@@ -544,34 +544,30 @@ def count_memories(collection) -> dict:
 # 查询工具（合并）— query_explore 替代 5 个独立工具
 # ===================================================================
 _query_explore_init_lock = threading.Lock()
-_query_explore_clients: dict[str, object] = {}  # path → PersistentClient
+_query_explore_clients: dict[str, object] = {}  # path → QdrantService
 _QUERY_EXPLORE_MAX_CLIENTS = 10  # LRU 上限，防止无限增长
 
-def _get_chroma_collection(path: str, name: str = "memories"):
-    """返回 ChromaDB collection 或 QdrantService（取决于 STORAGE_BACKEND）。
-
-    Phase 1: 保留 ChromaDB 路径。Qdrant 路径在 Phase 2 重构 dispatch.py 时启用。
-    """
-    from app.config.settings import STORAGE_BACKEND as _sb
-    if _sb == "qdrant":
-        from app.memory.qdrant import QdrantService
-        return QdrantService(persist_dir=path, collection_name=name)
-    import chromadb
-    if path not in _query_explore_clients:
+def _get_memory_collection(path: str, name: str = "memories"):
+    """返回独立的 QdrantService 探索实例（按 persist_dir 缓存，LRU 上限）。"""
+    from app.memory.qdrant import QdrantService
+    key = f"{path}::{name}"
+    if key not in _query_explore_clients:
         with _query_explore_init_lock:
-            if path not in _query_explore_clients:
+            if key not in _query_explore_clients:
                 if len(_query_explore_clients) >= _QUERY_EXPLORE_MAX_CLIENTS:
                     oldest = next(iter(_query_explore_clients))
                     del _query_explore_clients[oldest]
-                _query_explore_clients[path] = chromadb.PersistentClient(path=path)
-    return _query_explore_clients[path].get_or_create_collection(name, embedding_function=None)
+                _query_explore_clients[key] = QdrantService(
+                    persist_dir=path, collection_name=name,
+                )
+    return _query_explore_clients[key]
 
 def query_explore(mode: str = "timeline", _collection=None, **kwargs) -> str:
     """统一探索接口。mode: timeline / emotion / topics / co_occurrence / rhythm"""
     from datetime import datetime, timedelta
     if _collection is None:
-        from app.config.settings import CHROMA_PERSIST_DIR
-        _collection = _get_chroma_collection(CHROMA_PERSIST_DIR)
+        from app.config.settings import QDRANT_PERSIST_DIR
+        _collection = _get_memory_collection(QDRANT_PERSIST_DIR)
     coll = _collection
 
     if mode == "timeline":
@@ -665,19 +661,13 @@ def query_explore(mode: str = "timeline", _collection=None, **kwargs) -> str:
 
     elif mode == "co_occurrence":
         mid = kwargs.get("memory_id", ""); tk = kwargs.get("top_k", 5)
-        # Phase 3: CoOccurrenceStore 替代 CoOccurrenceTracker
-        from app.config.settings import STORAGE_BACKEND as _sb_dispatch
+        # CoOccurrenceStore 复用当前记忆库的 Qdrant 客户端
         from app.memory.qdrant_cooccur import CoOccurrenceStore
-        if _sb_dispatch == "qdrant":
-            from app.memory.qdrant import QdrantService
-            if isinstance(_collection, QdrantService):
-                _client = _collection.client
-            else:
-                _client = _collection._svc.client
+        from app.memory.qdrant import QdrantService
+        if isinstance(_collection, QdrantService):
+            _client = _collection.client
         else:
-            # ChromaDB 回退：新建本地 Qdrant 客户端
-            from qdrant_client import QdrantClient
-            _client = QdrantClient(location=":memory:")
+            _client = _collection._svc.client
         co = CoOccurrenceStore(_client, "co_occurrence"); related = co.get_co_with(mid)
         if not related: return "未找到共现关系"
         pids = [r["id"] for r in related[:tk]]
@@ -732,8 +722,8 @@ def query_explore(mode: str = "timeline", _collection=None, **kwargs) -> str:
         if _collection is not None:
             coll = _collection
         else:
-            from app.config.settings import CHROMA_PERSIST_DIR
-            coll = _get_chroma_collection(CHROMA_PERSIST_DIR)
+            from app.config.settings import QDRANT_PERSIST_DIR
+            coll = _get_memory_collection(QDRANT_PERSIST_DIR)
         try:
             r = coll.get(include=["metadatas"], limit=50000)
         except Exception as e:
@@ -815,8 +805,8 @@ def analyze_pattern(memory_ids: list[str] = None, analysis_type: str = "summary"
     """将一批记忆的原文取出，供 LLM 自己分析规律。结果不进记忆库。"""
     if not memory_ids:
         return "请提供要分析的记忆 ID 列表"
-    from app.config.settings import CHROMA_PERSIST_DIR
-    coll = _get_chroma_collection(CHROMA_PERSIST_DIR, "memories")
+    from app.config.settings import QDRANT_PERSIST_DIR
+    coll = _get_memory_collection(QDRANT_PERSIST_DIR, "memories")
     try:
         results = coll.get(ids=memory_ids, include=["documents", "metadatas"])
     except Exception as e:

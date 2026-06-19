@@ -84,12 +84,12 @@ class ConsolidationEngine:
 
     MAX_PREHEAT_CACHE = 10
 
-    def __init__(self, chroma_service, chat_history, co_tracker, *,
+    def __init__(self, memory_service, chat_history, co_tracker, *,
                  state_path: str, notes_path: str,
                  temporal_pattern_index=None, topic_affinity=None, ai_co_tracker=None):
         self._state_path = state_path
         self._notes_path = notes_path
-        self._chroma = chroma_service
+        self._memory = memory_service
         self._chat_history = chat_history
         self._co_tracker = co_tracker
         self._ai_co_tracker = ai_co_tracker
@@ -158,7 +158,7 @@ class ConsolidationEngine:
     def _review_today(self) -> dict:
         """回顾今天的记忆，提取话题和情绪统计。"""
         today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-        today_mems = self._chroma.list_since(today_start, limit=500)
+        today_mems = self._memory.list_since(today_start, limit=500)
 
         # 话题提取
         all_text = ""
@@ -207,7 +207,7 @@ class ConsolidationEngine:
         time_titles = []
         try:
             now = datetime.now()
-            all_mems = self._chroma.list_all_cached()
+            all_mems = self._memory.list_all_cached()
             for m in all_mems:
                 meta = m.get("metadata") or {}
                 ts = meta.get("timestamp", 0)
@@ -245,7 +245,7 @@ class ConsolidationEngine:
         queries = unique_queries[:IDLE_PREHEAT_QUERIES]
 
         # 对每个预测 query 做检索预热，缓存为 chat 流程兼容格式
-        collection = self._chroma._collection
+        collection = self._memory._collection
         for query in queries:
             try:
                 results = query_memory(collection, query=query, top_k=5)
@@ -304,7 +304,7 @@ class ConsolidationEngine:
     def _consolidate_day(self) -> dict:
         """日巩固：统计今天话题分布和情绪状况。"""
         today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-        all_memories = self._chroma.list_all_cached()
+        all_memories = self._memory.list_all_cached()
         today_mems = [
             m for m in all_memories
             if (m.get("metadata") or {}).get("timestamp", 0) >= today_start
@@ -377,13 +377,13 @@ class ConsolidationEngine:
     def _check_conflicts(self) -> list[dict]:
         """冲突预扫描：最近 7 天记忆 vs 旧记忆的关键词冲突检测。
 
-        v2: ChromaDB server 端按时间过滤，不再全量加载。
+        v2: Qdrant server 端按时间过滤，不再全量加载。
         """
         seven_days_ago = (datetime.now().timestamp() - 7 * 86400)
 
         # 只拉最近 7 天 + 旧的各一批，不走 list_all
-        recent = self._chroma.list_since(seven_days_ago, limit=200)
-        old_memories = self._chroma.list_before(seven_days_ago, limit=500)
+        recent = self._memory.list_since(seven_days_ago, limit=200)
+        old_memories = self._memory.list_before(seven_days_ago, limit=500)
 
         conflicts = []
         now_ts = datetime.now().timestamp()
@@ -432,12 +432,12 @@ class ConsolidationEngine:
         不放 LLM，纯算法。
         """
         try:
-            all_mems = self._chroma.list_all_cached()
+            all_mems = self._memory.list_all_cached()
             state = self._read_state()
 
             # 确保 embedding cache 已构建（供下方重复检测使用）
-            if not self._chroma._emb_cache:
-                self._chroma._build_embedding_cache()
+            if not self._memory._emb_cache:
+                self._memory._build_embedding_cache()
 
             # 更新话题亲和图 + 时间模式索引（只处理新记忆）
             try:
@@ -467,12 +467,12 @@ class ConsolidationEngine:
             except Exception as exc:
                 logger.debug("话题亲和图/时间模式/标签嵌入更新跳过: %s", exc)
 
-            # 检测语义重复：利用 ChromaDB 内建 hnsw 索引逐条近邻查询。
+            # 检测语义重复：利用 Qdrant 内建 hnsw 索引逐条近邻查询。
             # 替代旧的双层 for 循环 O(n²)，每条记忆只查 top-3 近邻，O(n log n)。
             merged = 0
             try:
                 seen_dupes: set[str] = set()
-                collection = self._chroma._collection
+                collection = self._memory._collection
                 # 只查最近 30 天入库的记忆（旧记忆重复已在之前的浅巩固中处理）
                 recent_cutoff = _time.time() - 86400 * 30
                 recent_mems = [
@@ -480,7 +480,7 @@ class ConsolidationEngine:
                     if (m.get("metadata") or {}).get("timestamp", 0) >= recent_cutoff
                     and not (m.get("metadata") or {}).get("stale", False)
                 ]
-                # 批量查询：每批 100 条，利用 ChromaDB 内部批处理
+                # 批量查询：每批 100 条，利用 Qdrant 内部批处理
                 BATCH_SIZE = 100
                 for batch_start in range(0, len(recent_mems), BATCH_SIZE):
                     batch = recent_mems[batch_start:batch_start + BATCH_SIZE]
@@ -488,13 +488,13 @@ class ConsolidationEngine:
                     batch_ids = []
                     for m in batch:
                         emb = (m.get("metadata") or {}).get("embedding") or \
-                              self._chroma._emb_cache.get(m.get("id", ""))
+                              self._memory._emb_cache.get(m.get("id", ""))
                         if emb:
                             batch_embs.append(emb)
                             batch_ids.append(m["id"])
                     if not batch_embs:
                         continue
-                    # ChromaDB query：每条找 top-3 近邻
+                    # Qdrant query：每条找 top-3 近邻
                     results = collection.query(
                         query_embeddings=batch_embs,
                         n_results=3,
@@ -509,7 +509,7 @@ class ConsolidationEngine:
                             if nid == mid:
                                 continue  # 跳过自己
                             dist = distances[j] if j < len(distances) else 1.0
-                            # ChromaDB 返回 L2 或 cosine distance；阈值 0.05 = cosine sim ~0.95
+                            # Qdrant 返回 L2 或 cosine distance；阈值 0.05 = cosine sim ~0.95
                             if dist < 0.05:
                                 # 额外校验：共享 tag
                                 mi_meta = (next((mm.get("metadata") for mm in batch if mm["id"] == mid), None) or {})
@@ -525,9 +525,9 @@ class ConsolidationEngine:
                                 mid_ts = (next((mm.get("metadata") for mm in batch if mm["id"] == mid), None) or {}).get("timestamp", 0)
                                 nj_ts = nj_meta.get("timestamp", 0)
                                 if mid_ts >= nj_ts:
-                                    self._chroma.supersede_memory(nid, mid, "语义重复（浅巩固检测）")
+                                    self._memory.supersede_memory(nid, mid, "语义重复（浅巩固检测）")
                                 else:
-                                    self._chroma.supersede_memory(mid, nid, "语义重复（浅巩固检测）")
+                                    self._memory.supersede_memory(mid, nid, "语义重复（浅巩固检测）")
                                 break  # 每条记忆最多标记一次
             except Exception as exc:
                 logger.debug("语义重复检测异常（回退跳过）: %s", exc)
@@ -558,7 +558,7 @@ class ConsolidationEngine:
                     # 批量更新
                     for i in range(0, len(cooling), 100):
                         batch = cooling[i:i + 100]
-                        self._chroma._collection.update(
+                        self._memory._collection.update(
                             ids=batch,
                             metadatas=[{"heat": "cool"}] * len(batch),
                         )
@@ -661,8 +661,8 @@ class ConsolidationEngine:
             cutoff = now_ts - self.CONTRADICTION_RECENT_DAYS * 86400
 
             # Server 端按时间过滤，Python 侧只排除 stale
-            raw_new = self._chroma.list_since(cutoff, limit=500)
-            raw_old = self._chroma.list_before(cutoff, limit=500)
+            raw_new = self._memory.list_since(cutoff, limit=500)
+            raw_old = self._memory.list_before(cutoff, limit=500)
             new_mems = [m for m in raw_new
                         if not (m.get("metadata") or {}).get("stale", False)]
             old_mems = [m for m in raw_old
@@ -672,8 +672,8 @@ class ConsolidationEngine:
                 return 0
 
             # 确保 embedding cache 可用
-            if not self._chroma._emb_cache:
-                self._chroma._build_embedding_cache()
+            if not self._memory._emb_cache:
+                self._memory._build_embedding_cache()
 
             # 预计算所有旧记忆的 tag set（第一层粗筛，避免每轮重复 parse）
             old_mem_tags: dict[str, set[str]] = {}
@@ -689,7 +689,7 @@ class ConsolidationEngine:
             # 预计算所有旧记忆的 L2 范数（避免内层循环重复 N×M 次）
             old_norms: dict[str, float] = {}
             for old_m in old_mems:
-                old_emb = self._chroma._emb_cache.get(old_m["id"])
+                old_emb = self._memory._emb_cache.get(old_m["id"])
                 if old_emb:
                     old_norms[old_m["id"]] = (sum(b * b for b in old_emb) ** 0.5) or 1e-10
 
@@ -699,7 +699,7 @@ class ConsolidationEngine:
                 new_tags = {t.strip() for t in new_tags_str.split(",") if len(t.strip()) >= 2}
                 if not new_tags:
                     continue
-                new_emb = self._chroma._emb_cache.get(new_m["id"])
+                new_emb = self._memory._emb_cache.get(new_m["id"])
                 if not new_emb:
                     continue
 
@@ -712,7 +712,7 @@ class ConsolidationEngine:
                     new_branch = new_tags
 
                 for old_m in old_mems:
-                    old_emb = self._chroma._emb_cache.get(old_m["id"])
+                    old_emb = self._memory._emb_cache.get(old_m["id"])
                     if not old_emb or len(old_emb) != len(new_emb):
                         continue
 
@@ -759,7 +759,7 @@ class ConsolidationEngine:
                         f"sim={sim:.2f} "
                         f"tags={list(shared)[:3]}"
                     )
-                    self._chroma.supersede_memory(old_m["id"], new_m["id"], reason)
+                    self._memory.supersede_memory(old_m["id"], new_m["id"], reason)
                     superseded += 1
 
                     # 状态追踪
@@ -801,7 +801,7 @@ class ConsolidationEngine:
             notes_count = self._generate_topic_notes()
             # 情绪淡化：扫描 emotional_intensity>=1 且长时间未提及的记忆
             try:
-                self._chroma._apply_emotional_desensitization()
+                self._memory._apply_emotional_desensitization()
             except Exception as exc:
                 logger.debug("情绪淡化跳过: %s", exc)
             state["last_deep_consolidation"] = _time.time()
@@ -821,7 +821,7 @@ class ConsolidationEngine:
         v2: 分页加载，Python 侧过滤已归档。
         """
         try:
-            all_mems = self._chroma.list_all_paginated(batch_size=500)
+            all_mems = self._memory.list_all_paginated(batch_size=500)
             from collections import defaultdict as _dd
             clusters: dict[str, list[dict]] = _dd(list)
 
@@ -863,7 +863,7 @@ class ConsolidationEngine:
                     mem_ids = [m["id"] for m in mems if m.get("id")]
                     if mem_ids:
                         try:
-                            self._chroma.archive_topic_cluster(tag, mem_ids)
+                            self._memory.archive_topic_cluster(tag, mem_ids)
                             archived_count += 1
                         except Exception as exc:
                             logger.debug("归档失败 tag=%s: %s", tag, exc)
@@ -884,7 +884,7 @@ class ConsolidationEngine:
         存于 topic_notes.json。笔记不替换原始记忆，只作为检索辅助入口。
         """
         try:
-            all_mems = self._chroma.list_all_paginated(batch_size=500)
+            all_mems = self._memory.list_all_paginated(batch_size=500)
             from collections import defaultdict as _dd
             clusters: dict[str, list[dict]] = _dd(list)
 

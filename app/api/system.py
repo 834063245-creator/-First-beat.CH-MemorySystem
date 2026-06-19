@@ -153,7 +153,7 @@ def api_status():
     """引擎全维度可观测性端点 — 一站式诊断。
 
     返回记忆库、巩固、冲动、蒸馏、模式发现、
-    ChromaDB、线程池的聚合快照。
+    Qdrant、线程池的聚合快照。
     """
     now = time.time()
     snapshot = {
@@ -172,10 +172,10 @@ def api_status():
 
         # ── 记忆库 ──
         try:
-            mem_count = ctx.chroma_service.count()
+            mem_count = ctx.memory_service.count()
             heat_dist = {}
             try:
-                all_mems = ctx.chroma_service.list_all_cached()
+                all_mems = ctx.memory_service.list_all_cached()
                 for m in all_mems:
                     h = (m.get("metadata") or {}).get("heat", "unknown")
                     heat_dist[h] = heat_dist.get(h, 0) + 1
@@ -202,7 +202,7 @@ def api_status():
 
         # ── AI 记忆库 ──
         try:
-            ai_count = ctx.ai_chroma_service.count()
+            ai_count = ctx.ai_memory_service.count()
             snapshot["ai_memory"] = {"total": ai_count}
         except Exception as exc:
             snapshot["ai_memory"] = {"error": str(exc)}
@@ -265,15 +265,15 @@ def api_status():
         except Exception as exc:
             snapshot["chat_history"] = {"error": str(exc)}
 
-        # ── ChromaDB 集合信息 ──
+        # ── 向量库集合信息 ──
         try:
-            col = ctx.chroma_service._collection
-            snapshot["chromadb"] = {
+            col = ctx.memory_service._collection
+            snapshot["vector_store"] = {
                 "collection_name": col.name,
                 "count": col.count(),
             }
         except Exception as exc:
-            snapshot["chromadb"] = {"error": str(exc)}
+            snapshot["vector_store"] = {"error": str(exc)}
 
         # ── 事件循环/线程摘要 ──
         try:

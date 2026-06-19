@@ -221,13 +221,13 @@ def _wait_store_queue(ctx, timeout: float = 2.0):
 
 
 def get_all_memory_ids(ctx) -> list[str]:
-    all_mems = ctx.chroma_service.list_all()
+    all_mems = ctx.memory_service.list_all()
     return [m["id"] for m in all_mems]
 
 
 def get_memory_by_id(ctx, mid: str) -> dict | None:
     try:
-        result = ctx.chroma_service._collection.get(
+        result = ctx.memory_service._collection.get(
             ids=[mid],
             include=["documents", "metadatas", "embeddings"],
         )
@@ -248,7 +248,7 @@ def get_memory_by_id(ctx, mid: str) -> dict | None:
 
 @pytest.fixture
 def isolated_env():
-    """临时隔离环境 — 独立的 ChromaDB + 数据目录。"""
+    """临时隔离环境 — 独立的 Qdrant + 数据目录。"""
     tmpdir = tempfile.mkdtemp(prefix="henscratch_int_")
     data_dir = os.path.join(tmpdir, "data")
     os.makedirs(data_dir, exist_ok=True)

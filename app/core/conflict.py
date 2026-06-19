@@ -31,7 +31,7 @@ _RESOLUTION_TTL = 86400
 def check_resolution(
     user_message: str,
     pending_conflicts: list[dict],
-    chroma_service,
+    memory_service,
     co_tracker,
 ) -> dict | None:
     """检查用户消息是否确认了某条冲突的旧记忆是错的。
@@ -39,7 +39,7 @@ def check_resolution(
     参数:
         user_message: 用户当前消息
         pending_conflicts: DMN 的 pending_conflicts 列表
-        chroma_service: ChromaService 实例（用于标记 stale）
+        memory_service: QdrantService 实例（用于标记 stale）
         co_tracker: CoOccurrenceStore 实例（清理孤儿关联）
 
     返回:
@@ -76,7 +76,7 @@ def check_resolution(
             continue
 
         try:
-            chroma_service._collection.update(
+            memory_service._collection.update(
                 ids=[old_id],
                 metadatas=[{"stale": True}],
             )

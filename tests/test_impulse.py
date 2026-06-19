@@ -76,8 +76,8 @@ class TestStatePersistence:
 # 冲动源
 # ═══════════════════════════════════════════════════════════════
 
-def _make_chroma_service(memories=None):
-    """构造一个假的 chroma_service，支持 list_all() 和 list_all_cached()。"""
+def _make_memory_service(memories=None):
+    """构造一个假的 memory_service，支持 list_all() 和 list_all_cached()。"""
     svc = MagicMock()
     svc.list_all.return_value = memories or []
     svc.list_all_cached.side_effect = lambda *a, **kw: svc.list_all()
@@ -106,7 +106,7 @@ class TestSourceEmotionTrend:
     """情绪趋势冲动源。"""
 
     def test_returns_none_when_empty(self):
-        svc = _make_chroma_service([])
+        svc = _make_memory_service([])
         result = source_emotion_trend(svc)
         assert result is None
 
@@ -114,7 +114,7 @@ class TestSourceEmotionTrend:
         now = time.time()
         # 只有 1 条今天的记忆
         mems = [_make_memory("1", now - 60, emotional_intensity=3)]
-        svc = _make_chroma_service(mems)
+        svc = _make_memory_service(mems)
         result = source_emotion_trend(svc)
         assert result is None
 
@@ -125,7 +125,7 @@ class TestSourceEmotionTrend:
             _make_memory("2", now - 120, emotional_intensity=0, summary="天气还行"),
             _make_memory("3", now - 180, emotional_intensity=4, summary="崩溃了"),
         ]
-        svc = _make_chroma_service(mems)
+        svc = _make_memory_service(mems)
         result = source_emotion_trend(svc)
         # 3 条中 2 条高情绪（ratio=0.67 > 0.4）
         assert result is not None
@@ -141,7 +141,7 @@ class TestSourceEmotionTrend:
             _make_memory("3", now - 180, emotional_intensity=0),
             _make_memory("4", now - 240, emotional_intensity=1),
         ]
-        svc = _make_chroma_service(mems)
+        svc = _make_memory_service(mems)
         result = source_emotion_trend(svc)
         # ratio=0/4=0
         assert result is None
@@ -153,7 +153,7 @@ class TestSourceEmotionTrend:
             _make_memory("1", now - 60, emotional_intensity=3, summary="好累"),
             _make_memory("2", now - 120, emotional_intensity=3, summary="好烦"),
         ]
-        svc = _make_chroma_service([])  # list_all 返回空
+        svc = _make_memory_service([])  # list_all 返回空
         result = source_emotion_trend(svc, all_mems=mems)
         # 用 all_mems 而不是 list_all
         assert result is not None
@@ -163,7 +163,7 @@ class TestSourceRandomRoam:
     """随机漫游冲动源。"""
 
     def test_returns_none_when_empty(self):
-        svc = _make_chroma_service([])
+        svc = _make_memory_service([])
         result = source_random_roam(svc)
         assert result is None
 
@@ -171,7 +171,7 @@ class TestSourceRandomRoam:
         now = time.time()
         # 都是最近 1 小时内的，没有 1 小时前的旧记忆
         mems = [_make_memory(str(i), now - 60) for i in range(5)]
-        svc = _make_chroma_service(mems)
+        svc = _make_memory_service(mems)
         result = source_random_roam(svc)
         assert result is None
 
@@ -188,7 +188,7 @@ class TestSourceRandomRoam:
                          emotional_intensity=0),
             _make_memory("4", now - 60, summary="这是一条刚写入的新记忆不应被选中"),
         ]
-        svc = _make_chroma_service(mems)
+        svc = _make_memory_service(mems)
         # 多试几次，避免随机命中低分导致的偶发失败
         for _ in range(5):
             result = source_random_roam(svc)
@@ -204,7 +204,7 @@ class TestSourceCuriosity:
     """好奇心冲动源。"""
 
     def test_returns_none_when_empty(self):
-        svc = _make_chroma_service([])
+        svc = _make_memory_service([])
         result = source_curiosity(svc)
         assert result is None
 
@@ -215,7 +215,7 @@ class TestSourceCuriosity:
             _make_memory("1", now - 7200, hit_count=5, summary="高频记忆A"),
             _make_memory("2", now - 7200, hit_count=10, summary="高频记忆B"),
         ]
-        svc = _make_chroma_service(mems)
+        svc = _make_memory_service(mems)
         result = source_curiosity(svc)
         assert result is None
 
@@ -226,7 +226,7 @@ class TestSourceCuriosity:
             _make_memory("2", now - 86400, hit_count=1, summary="很少会被提起的陈旧记忆"),
             _make_memory("3", now - 86400, hit_count=0, summary="第三条几乎被遗忘的记忆"),
         ]
-        svc = _make_chroma_service(mems)
+        svc = _make_memory_service(mems)
         result = source_curiosity(svc)
         assert result is not None
         content, priority = result

@@ -561,9 +561,9 @@ class TestPullTagStats:
         assert result == {}
 
     def test_handles_exception_gracefully(self, writer):
-        chroma_mock = MagicMock()
-        chroma_mock.list_all_cached.side_effect = RuntimeError("ChromaDB down")
-        result = writer._pull_tag_stats(chroma_mock)
+        storage_mock = MagicMock()
+        storage_mock.list_all_cached.side_effect = RuntimeError("Qdrant down")
+        result = writer._pull_tag_stats(storage_mock)
         assert result == {}
 
 
@@ -585,7 +585,7 @@ class TestPullEmotionData:
 
     def test_extracts_emotion_triggers(self, writer):
         ctx_mock = MagicMock()
-        ctx_mock.chroma_service.list_all_cached.return_value = [
+        ctx_mock.memory_service.list_all_cached.return_value = [
             {
                 "metadata": {
                     "emotion_valence": 0.5,
@@ -613,13 +613,13 @@ class TestPullEmotionData:
 
     def test_handles_exception_gracefully(self, writer):
         ctx_mock = MagicMock()
-        ctx_mock.chroma_service.list_all_cached.side_effect = RuntimeError("fail")
+        ctx_mock.memory_service.list_all_cached.side_effect = RuntimeError("fail")
         result = writer._pull_emotion_data(ctx_mock)
         assert result == {}
 
     def test_no_emotion_data_returns_empty_dicts(self, writer):
         ctx_mock = MagicMock()
-        ctx_mock.chroma_service.list_all_cached.return_value = [
+        ctx_mock.memory_service.list_all_cached.return_value = [
             {"metadata": {"tags": "test"}},
         ]
         result = writer._pull_emotion_data(ctx_mock)

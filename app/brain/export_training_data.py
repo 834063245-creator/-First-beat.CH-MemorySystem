@@ -1,4 +1,4 @@
-"""导出训练数据：从 ChromaDB + ChatHistory 提取意图和情绪标注
+"""导出训练数据：从 Qdrant + ChatHistory 提取意图和情绪标注
 
 用法: python -m app.brain.export_training_data
 输出: app/brain/training_data.jsonl

@@ -53,22 +53,20 @@ CHAT_HISTORY: list[dict] = []
 
 def load_data():
     global CHROMA_DATA, PORTRAIT_DATA, CHAT_HISTORY
-    from app.config.settings import CHROMA_PERSIST_DIR, CHAT_HISTORY_PATH, PORTRAIT_FILE_PATH
-    import chromadb
+    from app.config.settings import QDRANT_PERSIST_DIR, CHAT_HISTORY_PATH, PORTRAIT_FILE_PATH
+    from app.memory.qdrant import QdrantService
 
-    client = chromadb.PersistentClient(path=CHROMA_PERSIST_DIR)
-    coll = client.get_or_create_collection("memories", embedding_function=None)
-    all_data = coll.get(include=["metadatas", "documents"])
+    svc = QdrantService(persist_dir=QDRANT_PERSIST_DIR, collection_name="memories")
     CHROMA_DATA = []
-    for i, mid in enumerate(all_data.get("ids", [])):
-        meta = dict(all_data["metadatas"][i]) if all_data.get("metadatas") else {}
-        doc = all_data["documents"][i] if all_data.get("documents") else ""
+    for item in svc.list_all():
+        meta = dict(item.get("metadata") or {})
+        doc = item.get("document") or ""
         CHROMA_DATA.append({
-            "id": mid, "document": doc,
+            "id": item["id"], "document": doc,
             **meta, "_meta": meta,
         })
-    CHROMA_DATA.sort(key=lambda x: x["id"])
-    logger.info("ChromaDB: %d memories", len(CHROMA_DATA))
+    CHROMA_DATA.sort(key=lambda x: str(x["id"]))
+    logger.info("Qdrant memories: %d", len(CHROMA_DATA))
 
     # 画像 PORTRAIT.md（替代 Phase 4 退役的 personality_chroma）
     PORTRAIT_DATA = {"dims": {}, "version": 0, "entry_count": 0}
@@ -121,14 +119,13 @@ def _get_embedding(text: str) -> list[float] | None:
 
 
 # ═══════════════════════════════════════════════════════════════
-# 辅助：ChromaDB query
+# 辅助：Qdrant query
 # ═══════════════════════════════════════════════════════════════
 
 def _chroma_query(query_emb: list[float], n_results: int = 0) -> list[dict]:
-    from app.config.settings import CHROMA_PERSIST_DIR
-    import chromadb
-    client = chromadb.PersistentClient(path=CHROMA_PERSIST_DIR)
-    coll = client.get_or_create_collection("memories", embedding_function=None)
+    from app.config.settings import QDRANT_PERSIST_DIR
+    from app.memory.qdrant import QdrantService
+    coll = QdrantService(persist_dir=QDRANT_PERSIST_DIR, collection_name="memories")
     if n_results <= 0:
         total = coll.count()
         n_results = max(30, min(total // 20, 100))
@@ -145,7 +142,7 @@ def _chroma_query(query_emb: list[float], n_results: int = 0) -> list[dict]:
             out.append({"id": mid, "distance": dist, "metadata": meta})
         return out
     except Exception as e:
-        logger.warning("ChromaDB query failed: %s", e)
+        logger.warning("Qdrant query failed: %s", e)
         return []
 
 
@@ -389,7 +386,7 @@ def test_portrait_consistency(sample_n: int = 3) -> dict:
                     evidence_hits += 1
             checks.append({"check": "portrait entry evidence (tags match memories)",
                            "pass": evidence_hits >= max(1, len(sample) // 2),
-                           "detail": f"{evidence_hits}/{len(sample)} entries have tag evidence in ChromaDB"})
+                           "detail": f"{evidence_hits}/{len(sample)} entries have tag evidence in Qdrant"})
         else:
             checks.append({"check": "portrait entry evidence", "pass": True,
                            "detail": "no tag-bearing entries to check"})

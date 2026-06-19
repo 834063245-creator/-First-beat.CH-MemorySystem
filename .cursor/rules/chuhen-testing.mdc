@@ -1,0 +1,54 @@
+---
+description: 初痕测试约定——fixture、隔离环境、E2E
+globs: tests/**/*.py,E2E/**/*.py,integration/**/*.py
+alwaysApply: false
+---
+
+# 测试约定
+
+## 三层测试
+
+| 目录 | 用途 | 命令 |
+|------|------|------|
+| `tests/` | 单元测试 (~62 文件) | `pytest tests/ -q` |
+| `integration/` | 集成测试 (6 文件) | `pytest integration/ -v` |
+| `E2E/` | 端到端哨兵 (5 链路) | `pytest E2E/ -v` |
+
+## Fixture（`tests/conftest.py`）
+
+- **全局 autouse**：mock Ollama embedding → 确定性 1024 维向量，避免测试卡死
+- **`isolated_env`**：临时目录 + 隔离 Qdrant 环境（`QDRANT_URL` 空 → 本地文件模式）
+- **`seeded_env`**：预写入 12+ 条标准记忆
+- 不要改 fixture 初始化逻辑（E2E conftest 同理）
+
+## close_all()
+
+测试结束调用 `from app.core.db import close_all; close_all()`（兼容桩，Phase 5 移除前仍需）。
+
+`conftest.py` 和少数测试已有；新增涉及 AppContext/存储的测试应在 teardown 调用。
+
+## Mock 策略
+
+- Embedding：已被 autouse mock，不要发真实 Ollama 请求
+- LLM 生成：用 `AsyncMock` / `patch` mock `deepseek.generate`
+- 需要真实向量的检索测试：用 `seeded_env` + dummy embedding
+
+## 低级错误清单
+
+- ❌ 在单元测试里依赖 `data/` 生产目录
+- ❌ 给 Qdrant 测试数据用非 UUID 点 ID（本地 Qdrant 会 `ValueError`）
+- ❌ mock 用 `ctx.chroma_service`（已改名 `ctx.memory_service` / `ai_memory_service`）
+- ❌ 改 E2E 哨兵文件的断言来「让测试过」而非修 bug
+- ❌ 跳过 `close_all()` / `ctx.close()` 导致 Qdrant 客户端/线程泄漏
+- ✅ 新检索路径：补 `tests/test_pipeline*.py` + 考虑 E2E link2
+- ✅ 新入库逻辑：补 `tests/` + E2E `test_write_path.py`
+
+## E2E 与 real_embed
+
+- E2E 用真实组件（真实 Ollama embedding）；Ollama 未启动时这些会失败/超时
+- `@pytest.mark.real_embed` 测试需真实 Ollama，否则自动跳过
+- 标准 pre-push 门禁通常在 Ollama 关闭下跑（real_embed 跳过）
+
+## Pre-push
+
+`git push` 前跑 `pytest tests/`（`scripts/pre-push` hook）。

@@ -1,7 +1,7 @@
 # 初痕 (First Beat) CH Memory System
 
 > **这是项目的唯一权威文档。** 其他所有 .md 都以此文档为准。Agent 启动时自动加载。
-> 修改代码后必须同步更新本文档。最后修订 2026-06-16 (Phase 4 完成)。
+> 修改代码后必须同步更新本文档。最后修订 2026-06-19 (Phase 5 完成：ChromaDB 移除，Qdrant 唯一后端)。
 
 ---
 
@@ -81,9 +81,10 @@ d:\First Beat CH Memory System\
 │   │   ├── metadata.py.bak         #   REMOVED: DEPRECATED 旧的元数据提取 (2026-06-14)
 │   │   └── user_context.py         #   多用户 AppContext 管理器
 │   │
-│   ├── memory/                     # 记忆存储层：Qdrant + JSONL（ChromaDB 回退保留）
-│   │   ├── chroma.py               #   ChromaService：ChromaDB 向量存储（仅回退路径）(711行)
-│   │   ├── qdrant.py               #   ★ QdrantService + CoOccurrenceStore + HyperEdgeStore (~1800行, Phase 4: 量化+索引+LRU缓存)
+│   ├── memory/                     # 记忆存储层：Qdrant + JSONL（ChromaDB 已移除）
+│   │   ├── qdrant.py               #   ★ QdrantService：唯一向量后端，量化+payload索引+LRU缓存 (~1400行)
+│   │   ├── qdrant_cooccur.py       #   CoOccurrenceStore：共现独立 collection
+│   │   ├── qdrant_hyperedge.py     #   HyperEdgeStore：超边独立 collection
 │   │   ├── history.py              #   ChatHistory：对话历史 JSONL，内存缓存最近 500 条 (270行)
 │   │   ├── working.py              #   工作记忆摘要：增量 LLM 摘要，替代注入全量历史 (165行)
 │   │   ├── inverted.py             #   词→记忆ID 倒排索引，线程安全增量更新 (157行)
@@ -179,8 +180,7 @@ d:\First Beat CH Memory System\
 │   ├── check_conventions.py        #   代码规范检查：依赖方向/import 审查/SQLite 规范 (1015行)
 │   ├── compare_reports.py          #   审计报告对比：两轮审计 diff 工具 (70行)
 │   ├── verify_infra.py             #   Phase 0: Qdrant+vLLM 连通性验证 (270行)
-│   ├── migrate_to_qdrant.py        #   Phase 0: ChromaDB+SQLite→Qdrant 数据迁移 (470行)
-│   ├── phase0_5_verify.py          #   Phase 0.5: 6项原型验证自动化 (1100行)
+│   │                               #   (migrate_to_qdrant.py / phase0_5_verify.py 已随 Phase 5 删除)
     ├── stress_test_1m.py            #   Phase 4: 百万级压力测试 性能基准
 │   └── pre-push                    #   pre-push hook 备份：push 前跑 pytest tests/
 │
@@ -203,10 +203,9 @@ d:\First Beat CH Memory System\
 │
 └── data/                           # ========== 运行时数据 ==========
     ├── PORTRAIT.md                  #   画像文件（运行时读写，非文档）
-    ├── chroma/                      #   ChromaDB 用户记忆向量库
-    ├── ai_chroma/                   #   ChromaDB AI 自我记忆向量库
-    ├── behavior_chroma/             #   DEPRECATED：旧行为ChromaDB（Phase 4退役残留）
-    ├── personality_chroma/          #   DEPRECATED：旧人格ChromaDB（Phase 4退役残留，仅审计引用）
+    ├── qdrant/                      #   Qdrant 用户记忆向量库（本地嵌入式）
+    ├── ai_qdrant/                   #   Qdrant AI 自我记忆向量库（本地嵌入式）
+    │                                #   (旧 chroma*/behavior_chroma/personality_chroma 已随 Phase 5 弃用)
     ├── *.db                         #   SQLite：co_occurrence, entity_pairs, hyper_edges, timeline等
     ├── *.json                       #   JSON 缓存：affinity, tree, temporal_patterns, working_memory等
     ├── chat_history.jsonl           #   对话历史
@@ -281,7 +280,7 @@ d:\First Beat CH Memory System\
 │   ├─ 解析 LLM 响应 (DSML tool_call 格式兼容)
 │   ├─ 流式返回给用户
 │   └─ 触发生命周期钩子:
-│       ├─ _store_conversation() → ChromaDB 入库 (异步队列)
+│       ├─ _store_conversation() → Qdrant 入库 (异步队列)
 │       ├─ pulse() → 冲动信号检查
 │       ├─ sync_turn() → 对话历史追加
 │       └─ DMN ticker → 空闲检测→巩固调度
@@ -293,7 +292,7 @@ d:\First Beat CH Memory System\
     ├─ 实体抽取 (qwen2.5:3b + 正则)
     ├─ 情绪分析 (Russell 2D)
     ├─ embedding 计算 (bge-m3, 1024维)
-    ├─ ChromaDB insert (user + AI 双写)
+    ├─ Qdrant upsert (user + AI 双写)
     ├─ 冲突检测 → mark_stale
     ├─ 情绪反转检测
     ├─ EntityPair / HyperEdge 更新
@@ -313,10 +312,10 @@ d:\First Beat CH Memory System\
 用户.2 当前状态     ← 实时(<100ms) 引擎直写 数据源: UtteranceSpec 情绪/意图/关注焦点
 用户.3 行为节律     ← 浅巩固(4h) LLM合成   数据源: BehaviorPredictor + TemporalPatternIndex + PatternDiscovery
 用户.4 关系快照     ← 实时 引擎直写         数据源: RelationshipState (trust/closeness/familiarity/interaction_mode)
-用户.5 兴趣图谱     ← 浅巩固(4h) LLM合成   数据源: ChromaDB tag 分布 + TopicAffinity + TopicTree
+用户.5 兴趣图谱     ← 浅巩固(4h) LLM合成   数据源: Qdrant tag 分布 + TopicAffinity + TopicTree
 用户.6 情绪图谱     ← 浅巩固(4h) LLM合成   数据源: 入库 emotion + PatternDiscovery + 情绪淡化统计
 
-AI.1-6            ← 完全镜像用户维度         数据源: AI ChromaDB 独立记忆库 + AI ConsolidationEngine
+AI.1-6            ← 完全镜像用户维度         数据源: AI Qdrant 独立记忆库 + AI ConsolidationEngine
 ```
 
 #### 条目四态操作（引擎删, LLM 写）
@@ -382,7 +381,7 @@ helpers.py, bottleneck.py, heartbeat.py ──┘  (基础设施, 允许被任�
 | 决策 | 含义 |
 |------|------|
 | **引擎决策 → LLM 执行** | LLM 不调内部记忆检索工具，不出记忆决策；LLM 仅调外部功能工具（search_web/read_file 等）。引擎决定"记住什么/检索什么/何时巩固"，LLM 只做文本合成 |
-| **原文永不压缩** | ChromaDB 存原文，摘要只是索引。prompt 中传原文，不做有损压缩 |
+| **原文永不压缩** | Qdrant 存原文，摘要只是索引。prompt 中传原文，不做有损压缩 |
 | **时间不做衰减** | 用 hit_count 做权重，不用时间衰减函数。记忆靠「被用了多少次」自然排序 |
 | **1对1服务** | 一个 AppContext 服务一个用户，不同用户完全隔离 (data/users/{name}/) |
 | **无 pickle** | 任何场景都不用 pickle |
@@ -390,15 +389,18 @@ helpers.py, bottleneck.py, heartbeat.py ──┘  (基础设施, 允许被任�
 ### 存储规范
 
 ```
-向量+元数据 → Qdrant (本地/远程)          → app/memory/qdrant.py
-向量回退    → ChromaDB (PersistentClient)  → app/memory/chroma.py (仅 STORAGE_BACKEND=chromadb)
-流式/追加   → JSONL 追加写入               → open(path, "a")
-缓存        → JSON (仅模块内部, 不共享)     → 各自的 _cache.json
+向量+元数据 → Qdrant (本地嵌入式/远程服务器)  → app/memory/qdrant.py
+流式/追加   → JSONL 追加写入                 → open(path, "a")
+缓存        → JSON (仅模块内部, 不共享)       → 各自的 _cache.json
 ```
 
-- **主存储为 Qdrant** (Phase 4 加固)：向量 int8 量化 + 13字段 payload 索引 + LRU 20K embedding 缓存
-- **CoOccurrence / HyperEdge 为独立 Qdrant collection**（`CoOccurrenceStore` / `HyperEdgeStore`）
+- **唯一存储后端为 Qdrant** (Phase 5：ChromaDB 已移除)：向量 int8 量化 + payload 索引 + LRU 20K embedding 缓存
+- `QDRANT_URL` 留空 → 本地嵌入式文件模式（`data/qdrant`, `data/ai_qdrant`）；设 `http(s)://` → 连服务器（docker 注入）
+- **无 `STORAGE_BACKEND` 开关、无 ChromaDB 回退**；`chromadb` 依赖已删，`requirements.txt` 用 `qdrant-client`
+- **CoOccurrence / HyperEdge 为独立 Qdrant collection**（`qdrant_cooccur.py` / `qdrant_hyperedge.py`）
 - **Phase 3 已删 SQLite 存储**：cooccur.py、entity_pair.py、hyperedge.py 已移除
+- **AppContext 存储属性**：`memory_service` / `ai_memory_service`（旧 `chroma_service` 命名已废）
+- **向量检索**用 `client.query_points(...).points`（qdrant-client 1.10+ 弃用 `search`）；点 ID 必须 UUID/整数
 - **追加写入的数据（对话历史、错误报告）继续用 JSONL**
 - **模块私有的缓存 JSON 可以保留**
 
@@ -428,14 +430,14 @@ message[last]: user         ← 当前消息
 
 **不能动**: `_CORE_RULES` 常量、tool role 注入模式、消息顺序。动了前缀缓存命中率暴跌。
 
-### 红线 2：ChromaDB Metadata Schema
+### 红线 2：Qdrant Payload Schema
 
-**位置**: `app/memory/chroma.py` — `add_memory()` 方法
+**位置**: `app/memory/qdrant.py` — `QdrantService.add_memory()` 方法
 
-**字段名不可改名/删除**: `timestamp, hit_count, heat, embed_model, stale, archived, superseded_by, storage_complete, source, summary, tags, entities, date_tag`
+**payload 字段名不可改名/删除**: `timestamp, hit_count, heat, embed_model, stale, archived, superseded_by, storage_complete, source, summary, tags, entities, date_tag`
 
-- `storage_complete` flag 控制后台队列是否重试入库
-- collection 名 `"memories"` / `"ai_memories"` 在 dispatch.py 中有硬编码
+- `storage_complete` flag 控制后台队列是否重试入库（`mark_storage_complete(memory_id)` 置位）
+- collection 名 `"memories"` / `"ai_memories"`（settings `MEMORIES_COLLECTION` / `AI_COLLECTION`），dispatch.py 硬编码 `"memories"`
 
 ### 红线 3：后台线程
 
@@ -520,10 +522,6 @@ python scripts/check_conventions.py    # 代码规范检查
 python scripts/compare_reports.py      # 审计报告对比
 python scripts/verify_infra.py         # Phase 0: Qdrant+vLLM 连通性验证
 python scripts/verify_infra.py --quick #   仅快速验证
-python scripts/migrate_to_qdrant.py    # Phase 0: ChromaDB→Qdrant 数据迁移
-python scripts/migrate_to_qdrant.py --dry-run  #   干跑校验
-python scripts/phase0_5_verify.py      # Phase 0.5: 6项原型验证
-python scripts/phase0_5_verify.py --offline  #   仅本地模式 (V2-V5)
 python scripts/stress_test_1m.py           # Phase 4: 百万级压力测试 (默认 10K)
 python scripts/stress_test_1m.py --count 100000 --server http://localhost:6333  # 10万条服务器模式
 BENCHMARK_MODE=true python run.py      # Benchmark 模式
@@ -549,11 +547,18 @@ cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 
 ## 8. 当前状态
 
-### 进行中 (2026-06-16)
+### 最近完成 (2026-06-19)
 
-- ⏳ **Phase 5: 清理** — 删 chromadb 依赖、删 ChromaDB 数据、全项目 grep 清残留、E2E 全链路更新
-
-### 最近完成
+- ✅ **Phase 5 完成：ChromaDB 彻底移除，Qdrant 成为唯一后端**：
+  - 删 `app/memory/chroma.py`、`requirements.txt` 去 `chromadb` 加 `qdrant-client`、删 `STORAGE_BACKEND`/`TEST_BACKEND` 开关
+  - `context.py` 单一 Qdrant 路径；`chroma_service`/`ai_chroma_service` → `memory_service`/`ai_memory_service` 全项目重命名
+  - 删 `migrate_to_qdrant.py`、`phase0_5_verify.py`（chroma 时代脚本）；audit.py / check_conventions.py / verify_env.py / run.py 切 Qdrant
+  - **修复此前从未端到端跑通的 Qdrant 路径隐藏 bug**：
+    - Windows 本地模式探测（盘符 `C:` 的冒号误判为 URL）→ 改用 scheme 前缀判断，`QDRANT_URL` 默认空走本地文件模式
+    - qdrant-client 1.10+ 删除 `client.search`，改 `query_points(...).points`（语义检索之前静默失败）
+    - 补全 `QdrantService.count/clear_all/_local_index_build/update_entity_co_counts`；修 `mark_storage_complete(memory_id)` 与 `add_memory` 签名（chroma 兼容 + 红线 2 payload）；`clear()` 改按 ID 删（本地模式 delete_collection 重建不清数据）
+  - 测试：tests 984 通过（仅 10 个 `weave_context` 为 master 上既存失败）、integration 19 通过、audit_pipeline 29 通过；check_conventions 15 通过 0 错误
+  - **注意**：原 `data/chroma*` 旧数据按用户决定丢弃，Qdrant 从空开始
 
 - ✅ **Phase 4 百万级硬骨头完成**：
   - **量化**: `scalar_int8` 量化配置，4GB→1GB 向量存储。`_build_quantization_config()` 应用于 3 类 collection。

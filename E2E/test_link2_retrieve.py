@@ -245,7 +245,7 @@ class TestR5_KeywordRetrieval:
         """倒排索引查询应返回匹配的记忆 ID（或至少在构建中）"""
         ctx, _ = seeded_env
 
-        # 倒排索引在 AppContext 初始化时从 ChromaDB 构建
+        # 倒排索引在 AppContext 初始化时从 Qdrant 构建
         # 但由于队列 worker 异步写入，部分记忆可能尚未入库
         # 验证倒排索引对象存在且 query_tags 方法可用
         tag_ids = list(ctx.inverted_index.query_tags(["宠物"]))
@@ -398,9 +398,9 @@ class TestR10_AIExpressionRetrieval:
     def test_R10_ai_memory_stored(self, seeded_env):
         """AI 记忆存储集合应存在且可访问（BM 模式下可能为空，但集合应可用）"""
         ctx, _ = seeded_env
-        ai_count = ctx.ai_chroma_service.count()
+        ai_count = ctx.ai_memory_service.count()
         # BM 模式下 AI 记忆可能异步写入，允许为 0
-        assert ai_count >= 0, f"AI ChromaDB count 应 >= 0，实际 {ai_count}"
+        assert ai_count >= 0, f"AI Qdrant count 应 >= 0，实际 {ai_count}"
 
     def test_R10_ai_expression_retrieval(self, seeded_env):
         """AI 表达记忆可通过向量检索命中"""
@@ -410,7 +410,7 @@ class TestR10_AIExpressionRetrieval:
 
         # 检索 AI 记忆
         try:
-            results = ctx.ai_chroma_service._collection.query(
+            results = ctx.ai_memory_service._collection.query(
                 query_embeddings=[q_emb],
                 n_results=5,
                 include=["documents", "metadatas"],
@@ -679,7 +679,7 @@ class TestR16_WeaveNarrative:
         time.sleep(0.3)
 
         # 构建候选集
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         candidates = []
         for m in all_mems:
             meta = m.get("metadata") or {}
@@ -705,7 +705,7 @@ class TestR16_WeaveNarrative:
 
         # 直接调用 weave_context（非 BM 路径）
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.impulse_scheduler,
+            ctx.memory_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         cognitive = UserMessageAnalysis(intent="recall")
@@ -764,7 +764,7 @@ class TestR18_WeaveLayering:
         # 写入一条记忆
         ctx._store_conversation("测试分层记忆", "测试回复", "2026-06-06 10:00:00")
         time.sleep(0.3)
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
 
         if not all_mems:
             pytest.skip("无可用记忆")
@@ -784,7 +784,7 @@ class TestR18_WeaveLayering:
         }]
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.impulse_scheduler,
+            ctx.memory_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         cognitive = UserMessageAnalysis(intent="recall")
@@ -805,7 +805,7 @@ class TestR18_WeaveLayering:
 
         ctx._store_conversation("远距离测试记忆", "测试回复", "2026-06-06 10:00:00")
         time.sleep(0.3)
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         if not all_mems:
             pytest.skip("无可用记忆")
 
@@ -824,7 +824,7 @@ class TestR18_WeaveLayering:
         }]
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.impulse_scheduler,
+            ctx.memory_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         cognitive = UserMessageAnalysis(intent="recall")
@@ -855,7 +855,7 @@ class TestR19_StaleHandling:
         ctx = isolated_env_no_bm
         ctx._store_conversation("stale测试记忆内容", "测试回复内容", "2026-06-06 10:00:00")
         time.sleep(0.3)
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         if not all_mems:
             pytest.skip("无可用记忆")
 
@@ -877,7 +877,7 @@ class TestR19_StaleHandling:
         }]
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.impulse_scheduler,
+            ctx.memory_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         cognitive = UserMessageAnalysis(intent="recall")
@@ -898,7 +898,7 @@ class TestR19_StaleHandling:
         ctx = isolated_env_no_bm
         ctx._store_conversation("正常记忆测试", "测试回复", "2026-06-06 10:00:00")
         time.sleep(0.3)
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         if not all_mems:
             pytest.skip("无可用记忆")
 
@@ -917,7 +917,7 @@ class TestR19_StaleHandling:
         }]
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.impulse_scheduler,
+            ctx.memory_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         cognitive = UserMessageAnalysis(intent="recall")
@@ -969,13 +969,13 @@ class TestR20_ConflictDetection:
         ctx._store_conversation("其实我叫李四", "已更正", "2026-06-02 10:00:00")
         time.sleep(0.3)
 
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         if len(all_mems) >= 2:
             # 手动执行 supersede
             ids_sorted = sorted(all_mems, key=lambda m: m.get("metadata", {}).get("timestamp", 0))
             old_id = ids_sorted[0]["id"]
             new_id = ids_sorted[1]["id"]
-            ctx.chroma_service.supersede_memory(old_id, new_id, "测试冲突取代")
+            ctx.memory_service.supersede_memory(old_id, new_id, "测试冲突取代")
 
             # 验证旧记忆被标记 stale
             old_mem = _get_memory_by_id_safe(ctx, old_id)
@@ -1020,7 +1020,7 @@ class TestR21_TokenBudget:
             time.sleep(0.02)
         time.sleep(0.3)
 
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         candidates = []
         for m in all_mems:
             meta = m.get("metadata", {})
@@ -1045,7 +1045,7 @@ class TestR21_TokenBudget:
             })
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.impulse_scheduler,
+            ctx.memory_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         cognitive = UserMessageAnalysis(intent="recall")
@@ -1075,7 +1075,7 @@ class TestR22_CasualSilence:
         ctx._store_conversation("闲聊测试2", "回复2", "2026-06-06 11:00:00")
         time.sleep(0.3)
 
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         candidates = []
         for m in all_mems[:3]:
             meta = m.get("metadata", {})
@@ -1093,7 +1093,7 @@ class TestR22_CasualSilence:
             })
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.impulse_scheduler,
+            ctx.memory_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         cognitive = UserMessageAnalysis(intent="casual")
@@ -1117,7 +1117,7 @@ class TestR22_CasualSilence:
             time.sleep(0.02)
         time.sleep(0.3)
 
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         candidates = []
         for m in all_mems:
             meta = m.get("metadata", {})
@@ -1135,7 +1135,7 @@ class TestR22_CasualSilence:
             })
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.impulse_scheduler,
+            ctx.memory_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         cognitive = UserMessageAnalysis(intent="recall")
@@ -1196,10 +1196,10 @@ class TestR23_CognitiveLayering:
         ctx._store_conversation("新事实记忆覆盖旧信息", "新回复", "2026-06-06 10:00:00")
         time.sleep(0.3)
 
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         if len(all_mems) >= 2:
             ids_sorted = sorted(all_mems, key=lambda m: m.get("metadata", {}).get("timestamp", 0))
-            ctx.chroma_service.supersede_memory(ids_sorted[0]["id"], ids_sorted[1]["id"], "测试")
+            ctx.memory_service.supersede_memory(ids_sorted[0]["id"], ids_sorted[1]["id"], "测试")
 
             # 验证旧记忆 stale=True
             old = _get_memory_by_id_safe(ctx, ids_sorted[0]["id"])
@@ -1229,7 +1229,7 @@ class TestR24_RelationshipState:
         )
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.impulse_scheduler,
+            ctx.memory_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         spec = orch.process(query, q_emb, ctx,
@@ -1259,7 +1259,7 @@ class TestR24_RelationshipState:
             query, q_emb, ctx, intent="casual"
         )
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.impulse_scheduler,
+            ctx.memory_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         spec1 = orch.process(query, q_emb, ctx,
@@ -1466,7 +1466,7 @@ class TestR30_PersonalityUser:
         )
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.impulse_scheduler,
+            ctx.memory_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         spec = orch.process(query, q_emb, ctx,
@@ -1498,7 +1498,7 @@ class TestR31_PersonalityAI:
         )
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.impulse_scheduler,
+            ctx.memory_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         spec = orch.process(query, q_emb, ctx,
@@ -1536,7 +1536,7 @@ class TestR32_TopicNotes:
         )
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.impulse_scheduler,
+            ctx.memory_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         spec = orch.process(query, q_emb, ctx,
@@ -1590,7 +1590,7 @@ class TestR34_ReplyContainsReference:
         )
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.impulse_scheduler,
+            ctx.memory_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         spec = orch.process(query, q_emb, ctx,
@@ -1661,10 +1661,10 @@ class TestR35_NoSuppressed:
         time.sleep(0.3)
 
         # 标记该记忆为 stale（某种程度上模拟 suppressed）
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         if all_mems:
             target_id = all_mems[0]["id"]
-            ctx.chroma_service._collection.update(
+            ctx.memory_service._collection.update(
                 ids=[target_id],
                 metadatas=[{"stale": True}],
             )
@@ -1676,7 +1676,7 @@ class TestR35_NoSuppressed:
         )
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.impulse_scheduler,
+            ctx.memory_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         spec = orch.process(query, q_emb, ctx,
@@ -1728,12 +1728,12 @@ class TestR35_NoSuppressed:
         ctx._store_conversation("敏感信息测试", "回复", "2026-06-06 10:00:00")
         time.sleep(0.3)
 
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         if not all_mems:
             pytest.skip("无记忆可标记")
 
         # 标记为 stale
-        ctx.chroma_service._collection.update(
+        ctx.memory_service._collection.update(
             ids=[all_mems[0]["id"]],
             metadatas=[{"stale": True}],
         )
@@ -1743,7 +1743,7 @@ class TestR35_NoSuppressed:
         _, _, _, memories = run_chat_retrieval(query, q_emb, ctx, intent="recall")
 
         orch = CircuitOrchestrator(
-            ctx.chroma_service, ctx.impulse_scheduler,
+            ctx.memory_service, ctx.impulse_scheduler,
             ctx.dmn, ctx.chat_history, ctx.co_tracker, ctx.mirror_neuron,
         )
         spec = orch.process(query, q_emb, ctx,

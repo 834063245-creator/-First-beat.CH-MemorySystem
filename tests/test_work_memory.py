@@ -109,15 +109,15 @@ class TestGetRecentByTokenBudget:
         result = ch.get_recent(token_budget=100)
         assert len(result) == 5
 
-    def test_chroma_id_merged_in_result(self, tmp_path):
-        """验证返回结果中 chroma_id 已合并。"""
+    def test_memory_id_merged_in_result(self, tmp_path):
+        """验证返回结果中 memory_id 已合并。"""
         ch = _make_history(tmp_path, count=3, text_len=60)
-        # 模拟 chroma_id 回写
+        # 模拟 memory_id 回写
         ts = ch.records[-1]["timestamp"]
-        ch.update_chroma_id(ts, "test-chroma-id-123")
+        ch.update_memory_id(ts, "test-memory-id-123")
         result = ch.get_recent(token_budget=500_000)
         last = result[-1]
-        assert last.get("chroma_id") == "test-chroma-id-123"
+        assert last.get("memory_id") == "test-memory-id-123"
 
     def test_estimate_tokens_zero_for_empty(self, tmp_path):
         """空文本的 token 估算至少为 1（防除零）。"""

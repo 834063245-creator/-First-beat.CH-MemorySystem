@@ -1,28 +1,30 @@
 """Tests for query_explore and related tool functions."""
+import uuid
 import pytest
-import chromadb
 from datetime import datetime
+from app.memory.qdrant import QdrantService
 from app.tools.dispatch import query_explore, analyze_pattern
 
 
 def _make_collection(tmp_path):
-    """Create an isolated test ChromaDB collection."""
-    client = chromadb.PersistentClient(path=str(tmp_path))
-    coll = client.get_or_create_collection("memories", embedding_function=None)
+    """Create an isolated test Qdrant memory store (Qdrant 要求 UUID 点 ID)。"""
+    svc = QdrantService(persist_dir=str(tmp_path), collection_name="memories")
     now = datetime.now().timestamp()
-    ids = [f"test_{i}" for i in range(5)]
-    docs = [f"用户：这是第{i}条测试消息\nAI：回复{i}" for i in range(5)]
-    metas = [{
-        "timestamp": now - (5 - i) * 86400,
-        "summary": f"测试记忆第{i}条",
-        "tags": "test,测试,AI",
-        "hit_count": i * 10,
-        "emotional_intensity": min(i, 3),
-        "emotion_valence": "positive" if i % 2 == 0 else "negative",
-    } for i in range(5)]
-    embs = [[0.1] * 1024 for _ in range(5)]
-    coll.add(ids=ids, documents=docs, metadatas=metas, embeddings=embs)
-    return coll
+    for i in range(5):
+        svc.add(
+            document=f"用户：这是第{i}条测试消息\nAI：回复{i}",
+            metadata={
+                "timestamp": now - (5 - i) * 86400,
+                "summary": f"测试记忆第{i}条",
+                "tags": "test,测试,AI",
+                "hit_count": i * 10,
+                "emotional_intensity": min(i, 3),
+                "emotion_valence": "positive" if i % 2 == 0 else "negative",
+            },
+            embedding=[0.1] * 1024,
+            id=str(uuid.uuid4()),
+        )
+    return svc
 
 
 class TestQueryExplore:

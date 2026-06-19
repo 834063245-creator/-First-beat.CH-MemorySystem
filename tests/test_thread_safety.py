@@ -98,7 +98,7 @@ class TestImpulseLock:
 
 
 class TestEmbCacheConcurrentWrite:
-    """ChromaService._emb_cache 并发写测试。"""
+    """QdrantService._emb_cache 并发写测试。"""
 
     def test_concurrent_write_different_keys(self):
         import threading

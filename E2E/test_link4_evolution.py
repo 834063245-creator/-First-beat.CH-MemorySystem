@@ -8,7 +8,7 @@
 须知：
   - 不真实等待 4h/24h，手动调用 ctx.dmn.consolidate_shallow/deep()
   - M13 情绪衰减通过直接调用 _apply_emotional_desensitization 模拟
-  - M14 AI 巩固通过直接操作 ai_chroma_service 验证
+  - M14 AI 巩固通过直接操作 ai_memory_service 验证
   - M15 反馈闭环通过写入 error_reports.jsonl / correction_log.jsonl 验证
   - M16 原文不变通过 MD5 哈希比对
 """
@@ -43,7 +43,7 @@ def _doc_hash(memory: dict) -> str:
 def _get_mem_meta(ctx, mid: str) -> dict:
     """获取记忆的 metadata 字典。"""
     try:
-        result = ctx.chroma_service._collection.get(
+        result = ctx.memory_service._collection.get(
             ids=[mid],
             include=["documents", "metadatas"],
         )
@@ -57,7 +57,7 @@ def _get_mem_meta(ctx, mid: str) -> dict:
 def _get_mem_doc(ctx, mid: str) -> str:
     """获取记忆的 document 字段。"""
     try:
-        result = ctx.chroma_service._collection.get(
+        result = ctx.memory_service._collection.get(
             ids=[mid],
             include=["documents"],
         )
@@ -70,7 +70,7 @@ def _get_mem_doc(ctx, mid: str) -> str:
 
 def _all_mems_meta(ctx):
     """获取所有记忆的 {id: metadata} 映射。"""
-    all_mems = ctx.chroma_service.list_all()
+    all_mems = ctx.memory_service.list_all()
     return {m["id"]: m.get("metadata", {}) or {} for m in all_mems}
 
 
@@ -116,7 +116,7 @@ class TestM1TopicTreeRebuild:
         ctx, all_ids = seeded_env_evolution
 
         # 先更新亲和图以积累共现数据（多次喂入确保达到 MIN_STRENGTH=3）
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         for m in all_mems:
             meta = m.get("metadata", {}) or {}
             tags_str = meta.get("tags", "") or ""
@@ -181,9 +181,9 @@ class TestM2DuplicateDetection:
         _wait_queue(ctx)
 
         # 构建 embedding 缓存供重复检测使用
-        ctx.chroma_service._build_embedding_cache()
+        ctx.memory_service._build_embedding_cache()
         # 手动填充缓存
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         for m in all_mems:
             meta = m.get("metadata", {}) or {}
             user_msg = meta.get("user_message", "") or ""
@@ -192,16 +192,16 @@ class TestM2DuplicateDetection:
             if user_msg:
                 emb = local_embed(full_text)
                 if emb:
-                    ctx.chroma_service._emb_cache[m["id"]] = emb
+                    ctx.memory_service._emb_cache[m["id"]] = emb
 
         # 验证这两条记忆确实高度相似
-        new_mems = ctx.chroma_service.list_all()
+        new_mems = ctx.memory_service.list_all()
         similar_pair = [m for m in new_mems
                         if similar_user in (m.get("metadata", {}).get("user_message", "") or "")
                         or similar_user2 in (m.get("metadata", {}).get("user_message", "") or "")]
         if len(similar_pair) >= 2:
-            emb_a = ctx.chroma_service._emb_cache.get(similar_pair[0]["id"])
-            emb_b = ctx.chroma_service._emb_cache.get(similar_pair[1]["id"])
+            emb_a = ctx.memory_service._emb_cache.get(similar_pair[0]["id"])
+            emb_b = ctx.memory_service._emb_cache.get(similar_pair[1]["id"])
             if emb_a and emb_b:
                 sim = _compute_cosine_sim(emb_a, emb_b)
                 assert sim > 0.9, (
@@ -213,7 +213,7 @@ class TestM2DuplicateDetection:
 
         # 验证：至少有一条被标记为 stale
         stale_count = 0
-        for m in ctx.chroma_service.list_all():
+        for m in ctx.memory_service.list_all():
             meta = m.get("metadata", {}) or {}
             if meta.get("stale", False):
                 stale_count += 1
@@ -249,7 +249,7 @@ class TestM3SupersedeLink:
         _wait_queue(ctx)
 
         # 获取两条记忆的 ID
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         old_mem = None
         new_mem = None
         for m in all_mems:
@@ -264,7 +264,7 @@ class TestM3SupersedeLink:
         assert new_mem is not None, "应找到新记忆"
 
         # 构建 embedding 缓存
-        ctx.chroma_service._build_embedding_cache()
+        ctx.memory_service._build_embedding_cache()
         for m in all_mems:
             meta = m.get("metadata", {}) or {}
             user_msg = meta.get("user_message", "") or ""
@@ -273,17 +273,17 @@ class TestM3SupersedeLink:
             if user_msg:
                 emb = local_embed(full_text)
                 if emb:
-                    ctx.chroma_service._emb_cache[m["id"]] = emb
+                    ctx.memory_service._emb_cache[m["id"]] = emb
 
         # 验证余弦相似度 > 0.9
-        emb_old = ctx.chroma_service._emb_cache.get(old_mem["id"])
-        emb_new = ctx.chroma_service._emb_cache.get(new_mem["id"])
+        emb_old = ctx.memory_service._emb_cache.get(old_mem["id"])
+        emb_new = ctx.memory_service._emb_cache.get(new_mem["id"])
         if emb_old and emb_new:
             sim = _compute_cosine_sim(emb_old, emb_new)
             assert sim > 0.9, f"重复对相似度应 > 0.9，实际 {sim:.4f}"
 
         # 直接调用 supersede（绕过可能未触发的自动检测）
-        ctx.chroma_service.supersede_memory(
+        ctx.memory_service.supersede_memory(
             old_mem["id"], new_mem["id"], "语义重复（测试注入）"
         )
 
@@ -313,7 +313,7 @@ class TestM4TagEmbeddingIndex:
 
         # 收集所有标签
         all_tags: set[str] = set()
-        for m in ctx.chroma_service.list_all():
+        for m in ctx.memory_service.list_all():
             meta = m.get("metadata", {}) or {}
             tags_str = meta.get("tags", "") or ""
             for t in tags_str.split(","):
@@ -445,7 +445,7 @@ class TestM7HotColdTransition:
         _wait_queue(ctx)
 
         # 找到这条记忆
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         old_mem = None
         for m in all_mems:
             meta = m.get("metadata", {}) or {}
@@ -458,7 +458,7 @@ class TestM7HotColdTransition:
         assert old_mem is not None, "应找到刚写入的旧记忆"
 
         # 强制设置 metadata：warm + hit_count=0 + 旧时间戳（绕开基准模式覆盖）
-        ctx.chroma_service._collection.update(
+        ctx.memory_service._collection.update(
             ids=[old_mem["id"]],
             metadatas=[{
                 "hit_count": 0,
@@ -486,7 +486,7 @@ class TestM7HotColdTransition:
         # 该快照可能未反映上面的 update；若未触发冷却则直接标记
         if meta_after.get("heat") != "cool":
             # 手动标记为 cool 验证条件成立
-            ctx.chroma_service._collection.update(
+            ctx.memory_service._collection.update(
                 ids=[old_mem["id"]],
                 metadatas=[{"heat": "cool"}],
             )
@@ -640,13 +640,13 @@ class TestM10ArchivalAssessment:
             _wait_queue(ctx)
 
         # 强制设置这些记忆的 last_hit_time 为旧时间（模拟未命中）
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         old_tag_mems = [
             m for m in all_mems
             if "古董" in ((m.get("metadata", {}) or {}).get("user_message", "") or "")
         ]
         for m in old_tag_mems:
-            ctx.chroma_service._collection.update(
+            ctx.memory_service._collection.update(
                 ids=[m["id"]],
                 metadatas=[{"last_hit_time": old_ts, "timestamp": old_ts}],
             )
@@ -656,7 +656,7 @@ class TestM10ArchivalAssessment:
 
         # 验证：old_tag_mems 中应有被 archived 的记忆
         archived_count = 0
-        for m in ctx.chroma_service.list_all():
+        for m in ctx.memory_service.list_all():
             if m["id"] in [om["id"] for om in old_tag_mems]:
                 meta = m.get("metadata", {}) or {}
                 if meta.get("archived", False):
@@ -755,7 +755,7 @@ class TestM12EmotionDesensitization:
         _wait_queue(ctx)
 
         # 找到这条高情绪记忆
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         emo_mem = None
         for m in all_mems:
             meta = m.get("metadata", {}) or {}
@@ -766,7 +766,7 @@ class TestM12EmotionDesensitization:
         assert emo_mem is not None, "应找到高情绪记忆"
 
         # 强制设置高 intensity 和旧 last_hit_time
-        ctx.chroma_service._collection.update(
+        ctx.memory_service._collection.update(
             ids=[emo_mem["id"]],
             metadatas=[{
                 "emotional_intensity": 3,
@@ -787,7 +787,7 @@ class TestM12EmotionDesensitization:
         after_meta = _get_mem_meta(ctx, emo_mem["id"])
         after_intensity = after_meta.get("emotional_intensity", 0)
 
-        # 情绪强度应下降（宽松断言，可能因 ChromaDB 内部限制而不触发）
+        # 情绪强度应下降（宽松断言，可能因 Qdrant 内部限制而不触发）
         if after_intensity < before_intensity:
             assert after_intensity >= 0, "emotional_intensity 不应为负"
 
@@ -815,7 +815,7 @@ class TestM13EmotionDecay:
         )
         _wait_queue(ctx)
 
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         emo_mem = None
         for m in all_mems:
             meta = m.get("metadata", {}) or {}
@@ -826,7 +826,7 @@ class TestM13EmotionDecay:
         assert emo_mem is not None, "应找到高情绪记忆"
 
         # 设置高 emotional_intensity + 旧 last_hit_time
-        ctx.chroma_service._collection.update(
+        ctx.memory_service._collection.update(
             ids=[emo_mem["id"]],
             metadatas=[{
                 "emotional_intensity": 3,
@@ -839,7 +839,7 @@ class TestM13EmotionDecay:
         before_intensity = before_meta.get("emotional_intensity", 0)
 
         # 直接调用情绪淡化函数（模拟 50 次 increment 触发）
-        ctx.chroma_service._apply_emotional_desensitization()
+        ctx.memory_service._apply_emotional_desensitization()
 
         after_meta = _get_mem_meta(ctx, emo_mem["id"])
         after_intensity = after_meta.get("emotional_intensity", 0)
@@ -873,7 +873,7 @@ class TestM14AISelfConsolidation:
             ai_msg = f"作为AI助手，我在思考关于第{i+1}个哲学问题的回答方式"
             emb = _le(ai_msg)
             if emb:
-                ctx.ai_chroma_service.add_memory(
+                ctx.ai_memory_service.add_memory(
                     user_message="[AI]",
                     ai_message=ai_msg,
                     summary=f"AI思考哲学问题{i+1}",
@@ -883,7 +883,7 @@ class TestM14AISelfConsolidation:
                 )
 
         # 测试 AI 情绪淡化
-        ai_all = ctx.ai_chroma_service.list_all()
+        ai_all = ctx.ai_memory_service.list_all()
         ai_ids = [m["id"] for m in ai_all]
         assert len(ai_ids) >= 3, (
             f"AI 记忆应至少 3 条，实际 {len(ai_ids)}"
@@ -894,7 +894,7 @@ class TestM14AISelfConsolidation:
             import time as _time
             old_ts = _time.time() - 86400 * 5
             for aid in ai_ids[:2]:
-                ctx.ai_chroma_service._collection.update(
+                ctx.ai_memory_service._collection.update(
                     ids=[aid],
                     metadatas=[{
                         "emotional_intensity": 2,
@@ -906,7 +906,7 @@ class TestM14AISelfConsolidation:
             before_intensity = 0
             for aid in ai_ids[:2]:
                 try:
-                    result = ctx.ai_chroma_service._collection.get(
+                    result = ctx.ai_memory_service._collection.get(
                         ids=[aid], include=["metadatas"],
                     )
                     if result["ids"]:
@@ -917,14 +917,14 @@ class TestM14AISelfConsolidation:
 
             # 执行 AI 情绪淡化
             try:
-                ctx.ai_chroma_service._apply_emotional_desensitization()
+                ctx.ai_memory_service._apply_emotional_desensitization()
             except Exception as exc:
                 pytest.fail(f"AI 情绪淡化应无异常，实际: {exc}")
 
             # 验证 AI 记忆也正常进行浅/深巩固相关操作
             # 构建 embedding 缓存
             try:
-                ctx.ai_chroma_service._build_embedding_cache()
+                ctx.ai_memory_service._build_embedding_cache()
             except Exception as exc:
                 pytest.fail(f"AI embedding 缓存构建应无异常: {exc}")
 

@@ -1,6 +1,6 @@
 """链路 4：巩固流水线集成测试。
 
-验证：巩固引擎在真实 ChromaDB 数据上的行为。
+验证：巩固引擎在真实 Qdrant 数据上的行为。
 BENCHMARK_MODE=true 下 dmn=None，因此手动构建 ConsolidationEngine。
 """
 import os
@@ -65,7 +65,7 @@ def consolidation_env(isolated_env):
     # 手动构建 ConsolidationEngine
     from app.background.consolidation import ConsolidationEngine
     dmn = ConsolidationEngine(
-        chroma_service=ctx.chroma_service,
+        memory_service=ctx.memory_service,
         chat_history=ctx.chat_history,
         co_tracker=ctx.co_tracker,
         state_path=os.path.join(ctx.data_dir, "dmn_state.json"),
@@ -74,7 +74,7 @@ def consolidation_env(isolated_env):
         topic_affinity=getattr(ctx, 'topic_affinity', None),
     )
 
-    all_ids = [m["id"] for m in ctx.chroma_service.list_all()]
+    all_ids = [m["id"] for m in ctx.memory_service.list_all()]
     return ctx, dmn, all_ids
 
 

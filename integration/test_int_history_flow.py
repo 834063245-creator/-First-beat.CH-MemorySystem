@@ -60,16 +60,16 @@ class TestIntHistoryFlow:
             r.get("timestamp") != ts for r in recent
         ), "删除后不应在最近记录中出现"
 
-    def test_update_chroma_id(self, isolated_env):
-        """写入 → update_chroma_id → snapshot 中该条含 chroma_id。"""
+    def test_update_memory_id(self, isolated_env):
+        """写入 → update_memory_id → snapshot 中该条含 memory_id。"""
         ctx = isolated_env
         ts = "2026-06-01 10:00:00"
         ctx.chat_history.append("测试更新", "回复", ts)
-        ctx.chat_history.update_chroma_id(ts, "abc123")
+        ctx.chat_history.update_memory_id(ts, "abc123")
 
         snapshot = ctx.chat_history.get_records_snapshot()
         matching = [r for r in snapshot if r.get("timestamp") == ts]
         assert len(matching) >= 1, "应找到对应记录"
-        assert matching[0].get("chroma_id") == "abc123", (
-            f"chroma_id 应为 'abc123'，实际: {matching[0].get('chroma_id')}"
+        assert matching[0].get("memory_id") == "abc123", (
+            f"memory_id 应为 'abc123'，实际: {matching[0].get('memory_id')}"
         )

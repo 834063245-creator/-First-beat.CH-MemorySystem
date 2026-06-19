@@ -120,7 +120,7 @@ async def chat_stream(req: ChatRequest, user_ctx = Depends(get_user_context)):
             from app.core.conflict import check_resolution
             resolved = check_resolution(
                 user_message, pending,
-                user_ctx.chroma_service, user_ctx.co_tracker,
+                user_ctx.memory_service, user_ctx.co_tracker,
             )
             if resolved:
                 remaining = [
@@ -146,7 +146,7 @@ async def chat_stream(req: ChatRequest, user_ctx = Depends(get_user_context)):
     utterance_spec = await loop.run_in_executor(
         user_ctx.storage_executor,
         lambda: CircuitOrchestrator(
-            user_ctx.chroma_service, user_ctx.impulse_scheduler,
+            user_ctx.memory_service, user_ctx.impulse_scheduler,
             user_ctx.dmn, user_ctx.chat_history, user_ctx.co_tracker,
             mirror_neuron=user_ctx.mirror_neuron,
         ).process(
@@ -263,8 +263,8 @@ async def chat_stream(req: ChatRequest, user_ctx = Depends(get_user_context)):
             if req.test_mode:
                 logger.debug("test mode enabled, skipping storage")
             elif req.benchmark_inject:
-                # benchmark 注入：存 ChromaDB 但不写 chat_history / working memory
-                logger.debug("benchmark inject: storing to ChromaDB only")
+                # benchmark 注入：存 Qdrant 但不写 chat_history / working memory
+                logger.debug("benchmark inject: storing to Qdrant only")
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 loop = asyncio.get_running_loop()
                 await loop.run_in_executor(user_ctx.storage_executor, user_ctx._enqueue_store_task, user_message, full_text, timestamp)
@@ -313,7 +313,7 @@ async def chat(req: ChatRequest, user_ctx = Depends(get_user_context)):
     utterance_spec = await loop.run_in_executor(
         user_ctx.storage_executor,
         lambda: CircuitOrchestrator(
-            user_ctx.chroma_service, user_ctx.impulse_scheduler,
+            user_ctx.memory_service, user_ctx.impulse_scheduler,
             user_ctx.dmn, user_ctx.chat_history, user_ctx.co_tracker,
             mirror_neuron=user_ctx.mirror_neuron,
         ).process(
@@ -375,8 +375,8 @@ async def chat(req: ChatRequest, user_ctx = Depends(get_user_context)):
     if req.test_mode:
         logger.debug("test mode enabled, skipping storage")
     elif req.benchmark_inject:
-        # benchmark 注入：存 ChromaDB 但不写 chat_history / working memory
-        logger.debug("benchmark inject: storing to ChromaDB only")
+        # benchmark 注入：存 Qdrant 但不写 chat_history / working memory
+        logger.debug("benchmark inject: storing to Qdrant only")
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(user_ctx.storage_executor, user_ctx._enqueue_store_task, user_message, ai_response, timestamp)
     else:
@@ -461,7 +461,7 @@ async def openai_chat_completions(raw: dict, user_ctx = Depends(get_user_context
     utterance_spec = await loop.run_in_executor(
         user_ctx.storage_executor,
         lambda: CircuitOrchestrator(
-            user_ctx.chroma_service, user_ctx.impulse_scheduler,
+            user_ctx.memory_service, user_ctx.impulse_scheduler,
             user_ctx.dmn, user_ctx.chat_history, user_ctx.co_tracker,
             mirror_neuron=user_ctx.mirror_neuron,
         ).process(
@@ -599,7 +599,7 @@ class BenchmarkInjectRequest(_PydanticBase):
 
 @router.post("/benchmark/inject")
 async def benchmark_inject(req: BenchmarkInjectRequest, user_ctx = Depends(get_user_context)):
-    """注入完整对话轮次：走 embed → summarize → tag → ChromaDB，不调 LLM。
+    """注入完整对话轮次：走 embed → summarize → tag → Qdrant，不调 LLM。
 
     Benchmark 用：将数据集中的完整对话（user + assistant）作为成品记忆存储。
     跳过 LLM 生成和认知管线，但完整经过系统的存储管线。
@@ -618,12 +618,12 @@ async def benchmark_inject(req: BenchmarkInjectRequest, user_ctx = Depends(get_u
 
 @router.post("/admin/reset")
 async def admin_reset(user_ctx = Depends(get_user_context)):
-    """清空当前用户的 ChromaDB 和 chat history（benchmark 用）。"""
+    """清空当前用户的 Qdrant 记忆和 chat history（benchmark 用）。"""
     try:
-        # 清空主 ChromaDB
-        user_ctx.chroma_service.clear_all()
-        # 清空 AI ChromaDB
-        user_ctx.ai_chroma_service.clear_all()
+        # 清空用户记忆
+        user_ctx.memory_service.clear_all()
+        # 清空 AI 记忆
+        user_ctx.ai_memory_service.clear_all()
         # 清空聊天历史
         user_ctx.chat_history.clear()
         # 清空倒排索引
@@ -634,7 +634,7 @@ async def admin_reset(user_ctx = Depends(get_user_context)):
         user_ctx.ai_co_tracker.clear()
         # Phase 2: BM25 已删除 — Qdrant MatchText 替代
         logger.info("admin/reset: 已清空所有记忆和聊天历史 for %s", user_ctx.data_dir)
-        return {"status": "ok", "message": "ChromaDB + chat history cleared"}
+        return {"status": "ok", "message": "Qdrant + chat history cleared"}
     except Exception as exc:
         logger.error("admin/reset 失败: %s", exc)
         return JSONResponse(

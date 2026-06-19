@@ -21,7 +21,7 @@ from app.background.consolidation import (
 # ═══════════════════════════════════════════════════════════════
 
 def _make_chroma_mock(memories=None):
-    """构造假的 chroma_service。"""
+    """构造假的 memory_service。"""
     svc = MagicMock()
     svc.list_all.return_value = memories or []
     svc.list_all_cached.side_effect = lambda *a, **kw: svc.list_all()
@@ -176,7 +176,7 @@ class TestPreheatCache:
 
     def _make_engine(self, tmp_dir, chroma=None):
         return ConsolidationEngine(
-            chroma_service=chroma or _make_chroma_mock(),
+            memory_service=chroma or _make_chroma_mock(),
             chat_history=_make_chat_history(),
             co_tracker=MagicMock(),
             state_path=os.path.join(tmp_dir, "state.json"),
@@ -227,7 +227,7 @@ class TestConflictDetection:
 
     def _make_engine(self, tmp_dir, chroma=None, chat_history=None):
         return ConsolidationEngine(
-            chroma_service=chroma or _make_chroma_mock(),
+            memory_service=chroma or _make_chroma_mock(),
             chat_history=chat_history or _make_chat_history(),
             co_tracker=MagicMock(),
             state_path=os.path.join(tmp_dir, "state.json"),
@@ -351,7 +351,7 @@ class TestTopicNotes:
 
     def _make_engine(self, tmp_dir, chroma=None):
         return ConsolidationEngine(
-            chroma_service=chroma or _make_chroma_mock(),
+            memory_service=chroma or _make_chroma_mock(),
             chat_history=_make_chat_history(),
             co_tracker=MagicMock(),
             state_path=os.path.join(tmp_dir, "state.json"),
@@ -399,7 +399,7 @@ class TestTopicNotes:
             ConsolidationEngine._save_notes(notes, path)
 
             engine = ConsolidationEngine(
-                chroma_service=_make_chroma_mock(),
+                memory_service=_make_chroma_mock(),
                 chat_history=_make_chat_history(),
                 co_tracker=MagicMock(),
                 state_path=os.path.join(tmp, "state.json"),
@@ -420,7 +420,7 @@ class TestTopicNotes:
             ConsolidationEngine._save_notes(notes, path)
 
             engine = ConsolidationEngine(
-                chroma_service=_make_chroma_mock(),
+                memory_service=_make_chroma_mock(),
                 chat_history=_make_chat_history(),
                 co_tracker=MagicMock(),
                 state_path=os.path.join(tmp, "state.json"),
@@ -443,7 +443,7 @@ class TestStateUpdate:
 
     def _make_engine(self, tmp_dir):
         return ConsolidationEngine(
-            chroma_service=_make_chroma_mock(),
+            memory_service=_make_chroma_mock(),
             chat_history=_make_chat_history(),
             co_tracker=MagicMock(),
             state_path=os.path.join(tmp_dir, "state.json"),
@@ -489,7 +489,7 @@ class TestArchival:
         with tempfile.TemporaryDirectory() as tmp:
             chroma = _make_chroma_mock([])
             engine = ConsolidationEngine(
-                chroma_service=chroma,
+                memory_service=chroma,
                 chat_history=_make_chat_history(),
                 co_tracker=MagicMock(),
                 state_path=os.path.join(tmp, "state.json"),
@@ -510,7 +510,7 @@ class TestArchival:
             ]
             chroma = _make_chroma_mock(mems)
             engine = ConsolidationEngine(
-                chroma_service=chroma,
+                memory_service=chroma,
                 chat_history=_make_chat_history(),
                 co_tracker=MagicMock(),
                 state_path=os.path.join(tmp, "state.json"),
@@ -532,7 +532,7 @@ class TestArchival:
             ]
             chroma = _make_chroma_mock(mems)
             engine = ConsolidationEngine(
-                chroma_service=chroma,
+                memory_service=chroma,
                 chat_history=_make_chat_history(),
                 co_tracker=MagicMock(),
                 state_path=os.path.join(tmp, "state.json"),
@@ -551,7 +551,7 @@ class TestConsolidateDay:
         with tempfile.TemporaryDirectory() as tmp:
             chroma = _make_chroma_mock([])
             engine = ConsolidationEngine(
-                chroma_service=chroma,
+                memory_service=chroma,
                 chat_history=_make_chat_history(),
                 co_tracker=MagicMock(),
                 state_path=os.path.join(tmp, "state.json"),
@@ -572,7 +572,7 @@ class TestConsolidateDay:
             ]
             chroma = _make_chroma_mock(mems)
             engine = ConsolidationEngine(
-                chroma_service=chroma,
+                memory_service=chroma,
                 chat_history=_make_chat_history(),
                 co_tracker=MagicMock(),
                 state_path=os.path.join(tmp, "state.json"),
@@ -594,7 +594,7 @@ class TestConsolidateDay:
             ]
             chroma = _make_chroma_mock(mems)
             engine = ConsolidationEngine(
-                chroma_service=chroma,
+                memory_service=chroma,
                 chat_history=_make_chat_history(),
                 co_tracker=MagicMock(),
                 state_path=os.path.join(tmp, "state.json"),
@@ -615,7 +615,7 @@ class TestPreheatPredictions:
             behavior = MagicMock()
             behavior.list_all.return_value = []
             engine = ConsolidationEngine(
-                chroma_service=chroma,
+                memory_service=chroma,
                 chat_history=_make_chat_history(),
                 co_tracker=MagicMock(),
                 state_path=os.path.join(tmp, "state.json"),
@@ -632,7 +632,7 @@ class TestPreheatPredictions:
             behavior = MagicMock()
             behavior.list_all.return_value = []
             engine = ConsolidationEngine(
-                chroma_service=chroma,
+                memory_service=chroma,
                 chat_history=_make_chat_history(),
                 co_tracker=MagicMock(),
                 state_path=os.path.join(tmp, "state.json"),
@@ -656,7 +656,7 @@ class TestConsolidateShallow:
         with tempfile.TemporaryDirectory() as tmp:
             chroma = _make_chroma_mock([])
             engine = ConsolidationEngine(
-                chroma_service=chroma,
+                memory_service=chroma,
                 chat_history=_make_chat_history(),
                 co_tracker=MagicMock(),
                 state_path=os.path.join(tmp, "state.json"),
@@ -676,7 +676,7 @@ class TestConsolidateShallow:
             ]
             chroma = _make_chroma_mock(mems)
             engine = ConsolidationEngine(
-                chroma_service=chroma,
+                memory_service=chroma,
                 chat_history=_make_chat_history(),
                 co_tracker=MagicMock(),
                 state_path=os.path.join(tmp, "state.json"),
@@ -692,7 +692,7 @@ class TestConsolidateDeep:
         with tempfile.TemporaryDirectory() as tmp:
             chroma = _make_chroma_mock([])
             engine = ConsolidationEngine(
-                chroma_service=chroma,
+                memory_service=chroma,
                 chat_history=_make_chat_history(),
                 co_tracker=MagicMock(),
                 state_path=os.path.join(tmp, "state.json"),
@@ -715,7 +715,7 @@ class TestConsolidateDeep:
             ]
             chroma = _make_chroma_mock(mems)
             engine = ConsolidationEngine(
-                chroma_service=chroma,
+                memory_service=chroma,
                 chat_history=_make_chat_history(),
                 co_tracker=MagicMock(),
                 state_path=os.path.join(tmp, "state.json"),

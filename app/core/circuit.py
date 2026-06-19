@@ -209,9 +209,9 @@ def basal_ganglia_gate(
 class CircuitOrchestrator:
     """编排一次用户消息的完整处理通路。"""
 
-    def __init__(self, chroma_service, impulse_scheduler=None,
+    def __init__(self, memory_service, impulse_scheduler=None,
                  dmn_engine=None, chat_history=None, co_tracker=None, mirror_neuron=None):
-        self._chroma = chroma_service
+        self._memory = memory_service
         self._impulse = impulse_scheduler
         self._dmn = dmn_engine
         self._chat_history = chat_history
@@ -415,7 +415,7 @@ class CircuitOrchestrator:
         self_mirror_text = ""
         try:
             if (ctx_obj is not None and hasattr(ctx_obj, 'self_mirror') and ctx_obj.self_mirror
-                    and hasattr(ctx_obj, 'ai_chroma_service') and hasattr(ctx_obj, 'chat_history')):
+                    and hasattr(ctx_obj, 'ai_memory_service') and hasattr(ctx_obj, 'chat_history')):
                 user_emotion = {
                     "valence": 0.0,
                     "arousal": 0.0,
@@ -434,7 +434,7 @@ class CircuitOrchestrator:
 
                 self_mirror_text = ctx_obj.self_mirror.build_mirror(
                     user_emotion=user_emotion,
-                    ai_chroma=ctx_obj.ai_chroma_service,
+                    ai_memory=ctx_obj.ai_memory_service,
                     chat_history=ctx_obj.chat_history,
                     limit=3,
                 )

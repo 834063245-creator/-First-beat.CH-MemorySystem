@@ -23,11 +23,11 @@ logger = logging.getLogger(__name__)
 
 
 from app.config.settings import (                  # noqa: E402
-    CHROMA_PERSIST_DIR, DATA_DIR, DEFAULT_TOP_K, MAX_MEMORIES_IN_PROMPT,
+    QDRANT_PERSIST_DIR, DATA_DIR, DEFAULT_TOP_K, MAX_MEMORIES_IN_PROMPT,
     CHAT_HISTORY_PATH, CHAT_HISTORY_MAX_MEMORY, DEBUG_INCLUDE_PROMPT,
     STORE_FAILURES_PATH,
     CONSOLIDATION_SHALLOW_INTERVAL, CONSOLIDATION_DEEP_INTERVAL,
-    AI_CHROMA_DIR, AI_COLLECTION,
+    AI_QDRANT_DIR, AI_COLLECTION, MEMORIES_COLLECTION,
     IMPULSE_ACTIVE_PATH_B,
     WORK_MEMORY_TOKEN_BUDGET, USER_DATA_DIRS,
     BENCHMARK_MODE,
@@ -35,10 +35,7 @@ from app.config.settings import (                  # noqa: E402
     DRIFT_DECISION_LOG,
     STOP_WORDS as _STOP_WORDS,
 )
-from app.config.settings import STORAGE_BACKEND as _STORAGE_BACKEND
-from app.memory.chroma import ChromaService
-if _STORAGE_BACKEND == "qdrant":
-    from app.memory.qdrant import QdrantService
+from app.memory.qdrant import QdrantService
 from app.llm.deepseek import LLMClient
 # Phase 3: CoOccurrenceStore/HyperEdgeStore 替代 SQLite (cooccur/entity_pair/hyperedge)
 from app.memory.qdrant_cooccur import CoOccurrenceStore
@@ -85,64 +82,39 @@ class AppContext:
 
     def __init__(self, data_dir: str):
         self.data_dir = data_dir
-        # Phase 1: STORAGE_BACKEND 切换（chromadb 默认, qdrant 可选）
-        if _STORAGE_BACKEND == "qdrant":
-            self.chroma_service = QdrantService(
-                persist_dir=f"{data_dir}/qdrant",
-                collection_name=EMBED_MODELS[DEFAULT_EMBED_MODEL]["collection"],
-            )
-            self.ai_chroma_service = QdrantService(
-                persist_dir=f"{data_dir}/ai_qdrant",
-                collection_name=AI_COLLECTION,
-            )
-        else:
-            self.chroma_service = ChromaService(
-                persist_dir=f"{data_dir}/chroma",
-            )
-            self.ai_chroma_service = ChromaService(
-                persist_dir=f"{data_dir}/ai_chroma",
-                collection_name=AI_COLLECTION,
-            )
-        self.memory_service = self.chroma_service  # 统一别名
-        self.ai_memory_service = self.ai_chroma_service
+        # Phase 5: Qdrant 是唯一存储后端（ChromaDB 已移除）
+        self.memory_service = QdrantService(
+            persist_dir=f"{data_dir}/qdrant",
+            collection_name=MEMORIES_COLLECTION,
+        )
+        self.ai_memory_service = QdrantService(
+            persist_dir=f"{data_dir}/ai_qdrant",
+            collection_name=AI_COLLECTION,
+        )
         self.llm_client = LLMClient()
         self.storage_executor = ThreadPoolExecutor(max_workers=5)
         self.retrieval_executor = ThreadPoolExecutor(max_workers=3)
         import atexit
         atexit.register(self._cleanup_executors)
-        # Phase 3: CoOccurrenceStore/HyperEdgeStore 替代 SQLite 表
-        if _STORAGE_BACKEND == "qdrant":
-            _qs_client = self.chroma_service.client
-            _embed_getter = lambda mid: self.chroma_service._get_embedding_cached(mid)
-            from app.llm.embed import local_embed_batch
-            self.co_tracker = CoOccurrenceStore(
-                _qs_client, "co_occurrence", embed_getter=_embed_getter,
-            )
-            self.ai_co_tracker = CoOccurrenceStore(
-                _qs_client, "ai_co_occurrence", embed_getter=_embed_getter,
-            )
-            self.hyperedge_index = HyperEdgeStore(
-                _qs_client, "hyper_edges", embed_batch_fn=local_embed_batch,
-            )
-        else:
-            # ChromaDB 回退：新建本地 Qdrant 客户端给新 stores
-            from qdrant_client import QdrantClient
-            _qs_client = QdrantClient(location=":memory:")
-            self.co_tracker = CoOccurrenceStore(
-                _qs_client, "co_occurrence",
-            )
-            self.ai_co_tracker = CoOccurrenceStore(
-                _qs_client, "ai_co_occurrence",
-            )
-            self.hyperedge_index = HyperEdgeStore(
-                _qs_client, "hyper_edges",
-            )
+        # CoOccurrenceStore / HyperEdgeStore 共享主库 Qdrant 客户端
+        _qs_client = self.memory_service.client
+        _embed_getter = lambda mid: self.memory_service._get_embedding_cached(mid)
+        from app.llm.embed import local_embed_batch
+        self.co_tracker = CoOccurrenceStore(
+            _qs_client, "co_occurrence", embed_getter=_embed_getter,
+        )
+        self.ai_co_tracker = CoOccurrenceStore(
+            _qs_client, "ai_co_occurrence", embed_getter=_embed_getter,
+        )
+        self.hyperedge_index = HyperEdgeStore(
+            _qs_client, "hyper_edges", embed_batch_fn=local_embed_batch,
+        )
         # entity_pair_tracker 升级为 entity_co_counts payload 字段
         self.entity_pair_tracker = None
         self.chat_history = ChatHistory(path=f"{data_dir}/chat_history.jsonl", max_memory=CHAT_HISTORY_MAX_MEMORY)
         self.inverted_index = InvertedIndex()
         try:
-            _all = self.chroma_service.list_all()
+            _all = self.memory_service.list_all()
             _tag_entries = [(m['id'], (m.get('metadata') or {}).get('tags', '') or '') for m in _all]
             self.inverted_index.build_tags(_tag_entries)
             logger.info('标签索引构建完成: %d 个标签', len(self.inverted_index._tag_index))
@@ -163,7 +135,7 @@ class AppContext:
         self.temporal_pattern_index = TemporalPatternIndex(data_dir=data_dir)
         from app.background.consolidation import ConsolidationEngine
         self.dmn = ConsolidationEngine(
-            chroma_service=self.chroma_service,
+            memory_service=self.memory_service,
             chat_history=self.chat_history,
             co_tracker=self.co_tracker,
             state_path=f"{data_dir}/dmn_state.json",
@@ -174,7 +146,7 @@ class AppContext:
         )
         # Phase 0b: AI 完整 ConsolidationEngine — 与用户侧完全镜像
         self.ai_dmn = ConsolidationEngine(
-            chroma_service=self.ai_chroma_service,
+            memory_service=self.ai_memory_service,
             chat_history=self.chat_history,
             co_tracker=self.ai_co_tracker,
             state_path=f"{data_dir}/ai_dmn_state.json",
@@ -328,7 +300,7 @@ class AppContext:
         """启动用户专属冲动源泊松线程。"""
         if self.impulse_scheduler:
             self.impulse_scheduler.start_source_workers(
-                chroma_service=self.chroma_service,
+                memory_service=self.memory_service,
                 chat_history=self.chat_history,
             )
             self._start_impulse_consumer()
@@ -542,14 +514,14 @@ class AppContext:
                             break
                         except (ValueError, OSError):
                             continue
-                memory_id = self.chroma_service.add_memory(
+                memory_id = self.memory_service.add_memory(
                     user_message=user_message, ai_message=ai_message,
                     summary=summary, tags=tags, embedding=embedding,
                     date_tag=date_tag,
                     source="user",
                 )
                 # 覆盖 timestamp 为原始日期
-                self.chroma_service._collection.update(
+                self.memory_service._collection.update(
                     ids=[memory_id],
                     metadatas=[{"timestamp": ts_float}],
                 )
@@ -632,7 +604,7 @@ class AppContext:
                                 v2_meta["session_continued"] = True
                 except (ValueError, OSError):
                     pass
-                memory_id = self.chroma_service.add_memory(
+                memory_id = self.memory_service.add_memory(
                     user_message=user_message,
                     ai_message=ai_message,
                     summary=summary,
@@ -647,7 +619,7 @@ class AppContext:
                     try:
                         # Phase 3: entity_co_counts 替代 EntityPairTracker
                         # 入库时预计算 entity_co_counts，存入 payload
-                        self.chroma_service.update_entity_co_counts(memory_id, entities)
+                        self.memory_service.update_entity_co_counts(memory_id, entities)
                     except Exception:
                         pass
                     try:
@@ -655,16 +627,16 @@ class AppContext:
                     except Exception:
                         pass
 
-                # AI 侧入库与用户侧并行（不同 ChromaDB，无竞态）
+                # AI 侧入库与用户侧并行（独立 Qdrant collection，无竞态）
                 ai_future = self.storage_executor.submit(
                     self._store_ai_side, user_message, ai_message, timestamp,
                     valence, arousal, emo_category,
                 )
 
-                self.chat_history.update_chroma_id(timestamp, memory_id)
+                self.chat_history.update_memory_id(timestamp, memory_id)
                 try:
                     if embedding is not None and tags:
-                        similar = self.chroma_service._collection.query(
+                        similar = self.memory_service._collection.query(
                             query_embeddings=[embedding], n_results=5,
                             include=["metadatas", "distances"],
                         )
@@ -690,7 +662,7 @@ class AppContext:
                                         new_entity_names = {e.get("text", "") for e in (entities or []) if isinstance(e, dict)}
                                         has_entity_overlap = bool(old_entity_names & new_entity_names)
                                     if has_tag_overlap or has_entity_overlap:
-                                        self.chroma_service._collection.update(
+                                        self.memory_service._collection.update(
                                             ids=[sim_id],
                                             metadatas=[{"stale": True, "superseded_by": memory_id}],
                                         )
@@ -705,7 +677,7 @@ class AppContext:
                         for t in tags[:3]:
                             if len(t) < 2:
                                 continue
-                            prev = self.chroma_service._collection.get(
+                            prev = self.memory_service._collection.get(
                                 where={"tags": {"$contains": t}},
                                 include=["metadatas"],
                                 limit=10,
@@ -752,7 +724,7 @@ class AppContext:
                     except (ValueError, OSError) as exc:
                         logger.debug("DMN 触发检查跳过: %s", exc)
                 try:
-                    self.chroma_service.mark_storage_complete(memory_id)
+                    self.memory_service.mark_storage_complete(memory_id)
                 except Exception:
                     pass
                 try:
@@ -760,7 +732,7 @@ class AppContext:
                     tags_str = ",".join(tags) if tags else ""
                     self.inverted_index.add_tags(memory_id, tags_str)
                     if embedding is not None:
-                        self.chroma_service._emb_cache_put(memory_id, embedding)
+                        self.memory_service._emb_cache_put(memory_id, embedding)
                 except Exception:
                     pass
                 # AI 侧入库 fire-and-forget：done callback 记录结果，不阻塞 queue worker
@@ -802,7 +774,7 @@ class AppContext:
                        valence: float, arousal: float, emo_category: str):
         """AI 侧记忆入库（独立于用户侧，与用户侧并行执行）。
 
-        操作独立的 ai_chroma_service，不与用户侧 ChromaDB 竞争。
+        操作独立的 ai_memory_service，不与用户侧记忆库竞争。
         失败不影响用户侧，由上层 try/except 捕获。
         """
         from app.llm.embed import local_embed
@@ -860,7 +832,7 @@ class AppContext:
                         ai_time_features["session_continued"] = True
         except (ValueError, OSError):
             pass
-        self.ai_chroma_service.add_memory(
+        self.ai_memory_service.add_memory(
             user_message="[AI]", ai_message=ai_message,
             summary=ai_summary, tags=ai_tags, embedding=ai_embedding,
             entities=ai_entities, date_tag=ai_date_tag,
@@ -874,13 +846,13 @@ class AppContext:
         try:
             self.co_tracker._invalidate_cache()
             self.co_tracker._load()
-            _ = self.chroma_service.count()
-            self.chroma_service._build_embedding_cache()
-            self.ai_chroma_service._build_embedding_cache()
+            _ = self.memory_service.count()
+            self.memory_service._build_embedding_cache()
+            self.ai_memory_service._build_embedding_cache()
             # Phase 4: 构建本地 payload 索引（本地模式补偿）
-            self.chroma_service._local_index_build()
-            self.ai_chroma_service._local_index_build()
-            logger.info("检索预热完成：共现缓存+ChromaDB+embedding缓存+本地索引")
+            self.memory_service._local_index_build()
+            self.ai_memory_service._local_index_build()
+            logger.info("检索预热完成：共现缓存+Qdrant+embedding缓存+本地索引")
         except Exception as exc:
             logger.debug("检索预热跳过: %s", exc)
 
@@ -916,7 +888,7 @@ class AppContext:
                 self._stop_event.wait(60)
             while not self._stop_event.is_set():
                 try:
-                    self.ai_chroma_service._apply_emotional_desensitization()
+                    self.ai_memory_service._apply_emotional_desensitization()
                 except Exception as exc:
                     logger.debug("AI 情绪淡化跳过: %s", exc)
                 self._stop_event.wait(3600)
@@ -926,7 +898,7 @@ class AppContext:
     def _record_ai_co_occurrence(self):
         """AI 蒸馏后记录 AI 表达共现，积累 AI 人格数据。"""
         try:
-            all_data = self.ai_chroma_service._collection.get(
+            all_data = self.ai_memory_service._collection.get(
                 include=["metadatas"], limit=100,
             )
             ids = all_data.get("ids", [])
@@ -993,8 +965,8 @@ class AppContext:
         # Phase 3: SQLite 连接已迁 Qdrant，不再需要 close_all
         # 关闭 Qdrant 客户端
         try:
-            self.chroma_service.close()
-            self.ai_chroma_service.close()
+            self.memory_service.close()
+            self.ai_memory_service.close()
         except Exception:
             pass
 

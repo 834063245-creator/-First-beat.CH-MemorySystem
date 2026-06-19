@@ -107,7 +107,7 @@ print("\n[3] Python 依赖")
 core_deps = {
     "fastapi": ("Web 框架", "pip install fastapi"),
     "uvicorn": ("ASGI 服务器", "pip install uvicorn[standard]"),
-    "chromadb": ("向量数据库", "pip install chromadb"),
+    "qdrant_client": ("向量数据库", "pip install qdrant-client"),
     "httpx": ("HTTP 客户端", "pip install httpx"),
     "numpy": ("数值计算", "pip install numpy"),
     "jieba": ("中文分词 (降级兜底)", "pip install jieba"),

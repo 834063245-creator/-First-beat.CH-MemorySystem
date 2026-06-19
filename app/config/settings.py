@@ -105,15 +105,11 @@ if _OLLAMA_MODELS:
     os.environ["OLLAMA_MODELS"] = _OLLAMA_MODELS
 
 # ============================================================
-# 存储后端切换（Phase 0-5 过渡期）
+# Qdrant 向量数据库 — 唯一存储后端（Phase 5：ChromaDB 已移除）
 # ============================================================
-STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "chromadb")  # "qdrant" 启用新后端, "chromadb" 回退
-TEST_BACKEND = os.getenv("TEST_BACKEND", STORAGE_BACKEND)   # 测试中动态选择后端
-
-# ============================================================
-# Qdrant 向量数据库 — 替代 ChromaDB (Phase 1+)
-# ============================================================
-QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
+# QDRANT_URL 为空 → 本地嵌入式文件模式（persist_dir）；
+# 设为 http(s):// → 连接 Qdrant 服务器（docker-compose 显式注入）。
+QDRANT_URL = os.getenv("QDRANT_URL", "")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", None)  # None = 本地开发无认证
 QDRANT_GRPC_PORT = int(os.getenv("QDRANT_GRPC_PORT", "6334"))
 
@@ -132,10 +128,10 @@ QDRANT_EMB_CACHE_MAX = int(os.getenv("QDRANT_EMB_CACHE_MAX", "20000"))  # LRU �
 QDRANT_EMB_CACHE_BATCH = int(os.getenv("QDRANT_EMB_CACHE_BATCH", "500"))  # 分批 scroll 大小
 
 # ============================================================
-# ChromaDB 持久化（回退保留）
+# Qdrant 本地持久化目录（QDRANT_URL 为空时使用）
 # ============================================================
-CHROMA_PERSIST_DIR = os.path.join(DATA_DIR, "chroma")
-CHROMA_COLLECTION_NAME = "memories"
+QDRANT_PERSIST_DIR = os.path.join(DATA_DIR, "qdrant")
+MEMORIES_COLLECTION = "memories"
 
 # ============================================================
 # 检索 & 存储参数
@@ -206,7 +202,7 @@ EMBED_BACKFILL_MARKER = os.path.join(DATA_DIR, ".embed_model_backfill_done")
 # ============================================================
 # AI 人格系统 (画像基础设施)
 # ============================================================
-AI_CHROMA_DIR = os.path.join(DATA_DIR, "ai_chroma")
+AI_QDRANT_DIR = os.path.join(DATA_DIR, "ai_qdrant")
 AI_COLLECTION = "ai_memories"
 
 # ============================================================

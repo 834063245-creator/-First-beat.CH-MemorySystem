@@ -29,7 +29,7 @@ from app.config.settings import BENCHMARK_MODE as _BM
 # ═══════════════════════════════════════════════════════════════════
 
 def _store_turn(ctx, user_msg: str, ai_msg: str, ts: str):
-    """写入一轮对话到 ChromaDB + chat_history，模拟 /chat 的存储路径。"""
+    """写入一轮对话到 Qdrant + chat_history，模拟 /chat 的存储路径。"""
     ctx._store_conversation(user_msg, ai_msg, ts)
     ctx.chat_history.append(user_msg, ai_msg, ts)
 
@@ -42,7 +42,7 @@ def _warm_embedding_cache(ctx):
     user_message + ai_message 拼接完整文本做 embedding。
     """
     from app.llm.embed import local_embed
-    all_mems = ctx.chroma_service.list_all()
+    all_mems = ctx.memory_service.list_all()
     for m in all_mems:
         meta = m.get("metadata", {}) or {}
         user_msg = meta.get("user_message", "")
@@ -50,8 +50,8 @@ def _warm_embedding_cache(ctx):
         full_text = f"用户：{user_msg}\nAI：{ai_msg}" if user_msg else ""
         if full_text:
             emb = local_embed(full_text)
-            with ctx.chroma_service._emb_cache_lock:
-                ctx.chroma_service._emb_cache[m["id"]] = emb
+            with ctx.memory_service._emb_cache_lock:
+                ctx.memory_service._emb_cache[m["id"]] = emb
 
 
 def _run_pipeline(ctx, query: str):
@@ -61,7 +61,7 @@ def _run_pipeline(ctx, query: str):
         query, q_emb, ctx, intent=None
     )
     orch = CircuitOrchestrator(
-        ctx.chroma_service, ctx.impulse_scheduler,
+        ctx.memory_service, ctx.impulse_scheduler,
         ctx.dmn, ctx.chat_history, ctx.co_tracker,
         mirror_neuron=ctx.mirror_neuron,
     )
@@ -78,7 +78,7 @@ def _run_pipeline(ctx, query: str):
 def _get_mem_meta(ctx, mid: str) -> dict:
     """获取记忆的 metadata 字典。"""
     try:
-        result = ctx.chroma_service._collection.get(
+        result = ctx.memory_service._collection.get(
             ids=[mid], include=["metadatas", "documents"],
         )
         if result["ids"]:
@@ -90,7 +90,7 @@ def _get_mem_meta(ctx, mid: str) -> dict:
 
 def _find_memories_containing(ctx, keyword: str) -> list[dict]:
     """查找包含指定关键词的记忆列表。"""
-    all_mems = ctx.chroma_service.list_all()
+    all_mems = ctx.memory_service.list_all()
     hits = []
     for m in all_mems:
         doc = m.get("document", "") or ""
@@ -177,11 +177,11 @@ def test_X2_long_span(isolated_env):
 
     # 确保入库（BM 模式下可能偶有单条失败，至少 6 条即够用）
     for _ in range(20):
-        if ctx.chroma_service.count() >= 6:
+        if ctx.memory_service.count() >= 6:
             break
         time.sleep(0.3)
-    assert ctx.chroma_service.count() >= 6, (
-        f"应有至少 6 条记忆已入库，实际 {ctx.chroma_service.count()}"
+    assert ctx.memory_service.count() >= 6, (
+        f"应有至少 6 条记忆已入库，实际 {ctx.memory_service.count()}"
     )
 
     # 定位第 1 轮的记忆 ID
@@ -456,7 +456,7 @@ def test_X6_emotion_flip(isolated_env):
     if not reversal_found:
         meta = _get_mem_meta(ctx, run_id)
         if not meta.get("stale", False):
-            ctx.chroma_service._collection.update(
+            ctx.memory_service._collection.update(
                 ids=[run_id],
                 metadatas=[{"stale": True, "supersede_reason": "情绪反转：喜欢→崩溃"}],
             )
@@ -690,7 +690,7 @@ def test_X9_conflict_correction(isolated_env):
     # ── 手动执行 supersede（BM 模式跳过自动冲突检测）──
     meta_after = _get_mem_meta(ctx, zhangsan_id)
     if not meta_after.get("stale", False):
-        ctx.chroma_service.supersede_memory(
+        ctx.memory_service.supersede_memory(
             zhangsan_id, lisi_id, "用户纠正：张三→李四，北京→上海"
         )
         time.sleep(0.1)
@@ -793,7 +793,7 @@ def test_cross_turn_end_to_end(isolated_env):
         zhaoliu_id = zhaoliu_mems[0]["id"]
         meta = _get_mem_meta(ctx, wangwu_id)
         if not meta.get("stale", False):
-            ctx.chroma_service.supersede_memory(wangwu_id, zhaoliu_id, "用户纠正名字")
+            ctx.memory_service.supersede_memory(wangwu_id, zhaoliu_id, "用户纠正名字")
             time.sleep(0.1)
 
         # 再次检索验证 stale 标记生效

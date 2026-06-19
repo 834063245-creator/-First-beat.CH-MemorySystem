@@ -61,7 +61,7 @@ class TestContradictionDetection:
     def test_same_branch_emotion_flip_detected(self, mock_time):
         """同话题分支 + 情绪翻转 → 应被标记。"""
         from app.background.consolidation import ConsolidationEngine
-        from app.memory.chroma import ChromaService
+        from app.memory.qdrant import QdrantService
         import tempfile
         import os
 
@@ -74,7 +74,7 @@ class TestContradictionDetection:
         mock_tree.get_branch = lambda t: ["辣", "川菜", "口味"] if t in ("辣", "川菜", "口味") else [t]
         engine._topic_tree = mock_tree
 
-        mock_chroma = MagicMock(spec=ChromaService)
+        mock_chroma = MagicMock(spec=QdrantService)
         mock_chroma.list_all_cached.side_effect = lambda *a, **kw: mock_chroma.list_all()
         mock_chroma.list_since.side_effect = lambda since_ts, limit=500, **kw: [
             m for m in mock_chroma.list_all()
@@ -105,7 +105,7 @@ class TestContradictionDetection:
             "new_001": self._emb(seed=self.SEED_SIMILAR),
         }
         mock_chroma.supersede_memory = MagicMock()
-        engine._chroma = mock_chroma
+        engine._memory = mock_chroma
 
         engine._state_path = os.path.join(tempfile.gettempdir(), "test_state.json")
         engine._read_state = lambda: {"pending_conflicts": []}
@@ -124,7 +124,7 @@ class TestContradictionDetection:
     def test_different_branch_no_false_positive(self, mock_time):
         """不同话题分支 → 不应误检。"""
         from app.background.consolidation import ConsolidationEngine
-        from app.memory.chroma import ChromaService
+        from app.memory.qdrant import QdrantService
         import tempfile
 
         mock_time.time.return_value = 1_000_000_000.0
@@ -135,7 +135,7 @@ class TestContradictionDetection:
         mock_tree.get_branch = lambda t: ["辣", "川菜"] if t == "辣" else ["咖啡机", "厨房"]
         engine._topic_tree = mock_tree
 
-        mock_chroma = MagicMock(spec=ChromaService)
+        mock_chroma = MagicMock(spec=QdrantService)
         mock_chroma.list_all_cached.side_effect = lambda *a, **kw: mock_chroma.list_all()
         mock_chroma.list_since.side_effect = lambda since_ts, limit=500, **kw: [
             m for m in mock_chroma.list_all()
@@ -158,7 +158,7 @@ class TestContradictionDetection:
             "new_001": self._emb(seed=self.SEED_SIMILAR),
         }
         mock_chroma.supersede_memory = MagicMock()
-        engine._chroma = mock_chroma
+        engine._memory = mock_chroma
         engine._state_path = tempfile.gettempdir() + "/test_state2.json"
         engine._read_state = lambda: {"pending_conflicts": []}
         engine._write_state = MagicMock()
@@ -171,7 +171,7 @@ class TestContradictionDetection:
     def test_same_emotion_no_false_positive(self, mock_time):
         """同分支但情绪一致 → 不算冲突。"""
         from app.background.consolidation import ConsolidationEngine
-        from app.memory.chroma import ChromaService
+        from app.memory.qdrant import QdrantService
         import tempfile
 
         mock_time.time.return_value = 1_000_000_000.0
@@ -181,7 +181,7 @@ class TestContradictionDetection:
         mock_tree.get_branch = lambda t: ["辣", "川菜"]
         engine._topic_tree = mock_tree
 
-        mock_chroma = MagicMock(spec=ChromaService)
+        mock_chroma = MagicMock(spec=QdrantService)
         mock_chroma.list_all_cached.side_effect = lambda *a, **kw: mock_chroma.list_all()
         mock_chroma.list_since.side_effect = lambda since_ts, limit=500, **kw: [
             m for m in mock_chroma.list_all()
@@ -204,7 +204,7 @@ class TestContradictionDetection:
             "new_001": self._emb(seed=self.SEED_SIMILAR),
         }
         mock_chroma.supersede_memory = MagicMock()
-        engine._chroma = mock_chroma
+        engine._memory = mock_chroma
         engine._state_path = tempfile.gettempdir() + "/test_state3.json"
         engine._read_state = lambda: {"pending_conflicts": []}
         engine._write_state = MagicMock()
@@ -217,7 +217,7 @@ class TestContradictionDetection:
     def test_too_similar_skipped(self, mock_time):
         """embedding 相似度 > 0.95 → 重复记忆，已有检测，跳过。"""
         from app.background.consolidation import ConsolidationEngine
-        from app.memory.chroma import ChromaService
+        from app.memory.qdrant import QdrantService
         import tempfile
 
         mock_time.time.return_value = 1_000_000_000.0
@@ -227,7 +227,7 @@ class TestContradictionDetection:
         mock_tree.get_branch = lambda t: ["辣"]
         engine._topic_tree = mock_tree
 
-        mock_chroma = MagicMock(spec=ChromaService)
+        mock_chroma = MagicMock(spec=QdrantService)
         mock_chroma.list_all_cached.side_effect = lambda *a, **kw: mock_chroma.list_all()
         mock_chroma.list_since.side_effect = lambda since_ts, limit=500, **kw: [
             m for m in mock_chroma.list_all()
@@ -253,7 +253,7 @@ class TestContradictionDetection:
             "new_001": self._emb(seed=self.SEED_IDENTICAL),
         }
         mock_chroma.supersede_memory = MagicMock()
-        engine._chroma = mock_chroma
+        engine._memory = mock_chroma
         engine._state_path = tempfile.gettempdir() + "/test_state4.json"
         engine._read_state = lambda: {"pending_conflicts": []}
         engine._write_state = MagicMock()
@@ -266,7 +266,7 @@ class TestContradictionDetection:
     def test_neutral_fact_update_detected(self, mock_time):
         """同分支 + 无情绪 + sim低于阈值(sim=0.84) → 路径B语义位移。"""
         from app.background.consolidation import ConsolidationEngine
-        from app.memory.chroma import ChromaService
+        from app.memory.qdrant import QdrantService
         import tempfile
 
         mock_time.time.return_value = 1_000_000_000.0
@@ -276,7 +276,7 @@ class TestContradictionDetection:
         mock_tree.get_branch = lambda t: ["城市", "住址", "搬家"]
         engine._topic_tree = mock_tree
 
-        mock_chroma = MagicMock(spec=ChromaService)
+        mock_chroma = MagicMock(spec=QdrantService)
         mock_chroma.list_all_cached.side_effect = lambda *a, **kw: mock_chroma.list_all()
         mock_chroma.list_since.side_effect = lambda since_ts, limit=500, **kw: [
             m for m in mock_chroma.list_all()
@@ -304,7 +304,7 @@ class TestContradictionDetection:
             "new_001": self._emb(seed=self.SEED_SIMILAR),
         }
         mock_chroma.supersede_memory = MagicMock()
-        engine._chroma = mock_chroma
+        engine._memory = mock_chroma
         engine._state_path = tempfile.gettempdir() + "/test_state_b.json"
         engine._read_state = lambda: {"pending_conflicts": []}
         engine._write_state = MagicMock()
@@ -318,7 +318,7 @@ class TestContradictionDetection:
     def test_similar_summary_not_misdetected(self, mock_time):
         """同分支 + 无情绪 + 语义高度相似(sim=0.88) → 不是冲突。"""
         from app.background.consolidation import ConsolidationEngine
-        from app.memory.chroma import ChromaService
+        from app.memory.qdrant import QdrantService
         import tempfile
 
         mock_time.time.return_value = 1_000_000_000.0
@@ -328,7 +328,7 @@ class TestContradictionDetection:
         mock_tree.get_branch = lambda t: ["辣"]
         engine._topic_tree = mock_tree
 
-        mock_chroma = MagicMock(spec=ChromaService)
+        mock_chroma = MagicMock(spec=QdrantService)
         mock_chroma.list_all_cached.side_effect = lambda *a, **kw: mock_chroma.list_all()
         mock_chroma.list_since.side_effect = lambda since_ts, limit=500, **kw: [
             m for m in mock_chroma.list_all()
@@ -356,7 +356,7 @@ class TestContradictionDetection:
             "new_001": self._emb(seed=self.SEED_SIMILAR_HIGH),
         }
         mock_chroma.supersede_memory = MagicMock()
-        engine._chroma = mock_chroma
+        engine._memory = mock_chroma
         engine._state_path = tempfile.gettempdir() + "/test_state_c.json"
         engine._read_state = lambda: {"pending_conflicts": []}
         engine._write_state = MagicMock()
@@ -366,22 +366,25 @@ class TestContradictionDetection:
         assert result == 0  # sim >= 0.85，不算冲突
 
     def test_supersede_method_sets_correct_fields(self):
-        """验证 supersede_memory 正确设置 stale/superseded_by。"""
-        from app.memory.chroma import ChromaService
+        """验证 supersede_memory 正确设置 stale/superseded_by（Qdrant set_payload）。"""
+        from app.memory.qdrant import QdrantService
         from unittest.mock import MagicMock
 
-        svc = ChromaService.__new__(ChromaService)
-        write_coll = MagicMock()
-        svc._collection = write_coll
+        svc = QdrantService.__new__(QdrantService)
+        svc._client = MagicMock()
+        svc._collection_name = "memories"
         svc._lock = MagicMock()
+        svc._local_index = None
+        svc._list_all_cache_lock = MagicMock()
+        svc._list_all_cache = None
 
         svc.supersede_memory("old_123", "new_456", "测试取代")
 
-        write_coll.update.assert_called_once()
-        _, kwargs = write_coll.update.call_args
-        assert kwargs["ids"] == ["old_123"]
-        meta = kwargs["metadatas"][0]
-        assert meta["stale"] is True
-        assert meta["superseded_by"] == "new_456"
-        assert meta["supersede_reason"] == "测试取代"
-        assert "superseded_at" in meta
+        svc._client.set_payload.assert_called_once()
+        _, kwargs = svc._client.set_payload.call_args
+        assert kwargs["points"] == ["old_123"]
+        payload = kwargs["payload"]
+        assert payload["stale"] is True
+        assert payload["superseded_by"] == "new_456"
+        assert payload["supersede_reason"] == "测试取代"
+        assert "superseded_at" in payload

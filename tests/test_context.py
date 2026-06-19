@@ -27,7 +27,7 @@ def _make_mocks():
 
     # 模块级服务
     for target, factory in [
-        ('app.core.context.ChromaService', _make_chroma_mock),
+        ('app.core.context.QdrantService', _make_chroma_mock),
         ('app.core.context.LLMClient', MagicMock),
         ('app.core.context.CoOccurrenceStore', MagicMock),
         ('app.core.context.HyperEdgeStore', MagicMock),
@@ -147,7 +147,7 @@ class TestGetLocalLLM:
 class TestAppContextConstruction:
     def test_constructs_without_crash(self, ctx):
         assert ctx.data_dir is not None
-        assert ctx.chroma_service is not None
+        assert ctx.memory_service is not None
         assert ctx.portrait is not None
 
     def test_topic_tree_property(self, ctx):
@@ -220,10 +220,10 @@ class TestCleanupExecutors:
 class TestPrewarmRetrieval:
     def test_prewarm_calls_build_cache(self, ctx):
         ctx._prewarm_retrieval()
-        ctx.chroma_service._build_embedding_cache.assert_called()
+        ctx.memory_service._build_embedding_cache.assert_called()
 
     def test_prewarm_handles_exception(self, ctx):
-        ctx.chroma_service.count.side_effect = RuntimeError("fail")
+        ctx.memory_service.count.side_effect = RuntimeError("fail")
         ctx._prewarm_retrieval()  # 不抛异常
 
 
@@ -233,21 +233,21 @@ class TestPrewarmRetrieval:
 
 class TestRecordAiCoOccurrence:
     def test_records_with_enough_ids(self, ctx):
-        ctx.ai_chroma_service._collection.get.return_value = {
+        ctx.ai_memory_service._collection.get.return_value = {
             "ids": ["a1", "a2", "a3"], "metadatas": [{}, {}, {}],
         }
         ctx._record_ai_co_occurrence()
         ctx.ai_co_tracker.record.assert_called()
 
     def test_skips_with_one_id(self, ctx):
-        ctx.ai_chroma_service._collection.get.return_value = {
+        ctx.ai_memory_service._collection.get.return_value = {
             "ids": ["a1"], "metadatas": [{}],
         }
         ctx._record_ai_co_occurrence()
         ctx.ai_co_tracker.record.assert_not_called()
 
     def test_handles_empty(self, ctx):
-        ctx.ai_chroma_service._collection.get.return_value = {
+        ctx.ai_memory_service._collection.get.return_value = {
             "ids": [], "metadatas": [],
         }
         ctx._record_ai_co_occurrence()  # 不抛异常
@@ -264,12 +264,12 @@ class TestRecordAiCoOccurrence:
 class TestStoreConversation:
     """测试 _store_conversation 入库管线（Benchmark 路径）。"""
 
-    def test_store_and_retrieve_from_chromadb(self, isolated_env):
-        """写入后 ChromaDB 可见。"""
+    def test_store_and_retrieve_from_qdrant(self, isolated_env):
+        """写入后 Qdrant 可见。"""
         ctx = isolated_env
         ctx._store_conversation("你好", "你好！有什么可以帮你的？", "2026-06-15 10:00:00")
         import time; time.sleep(0.3)
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         assert len(all_mems) >= 1, "写入后应该有至少一条记忆"
 
     def test_stored_memory_has_summary(self, isolated_env):
@@ -277,7 +277,7 @@ class TestStoreConversation:
         ctx = isolated_env
         ctx._store_conversation("我喜欢吃火锅", "火锅确实很美味！", "2026-06-15 10:00:00")
         import time; time.sleep(0.3)
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         assert len(all_mems) >= 1
         meta = all_mems[0].get("metadata", {})
         assert "summary" in meta or all_mems[0].get("document"), "应有摘要或文档内容"
@@ -287,7 +287,7 @@ class TestStoreConversation:
         ctx = isolated_env
         ctx._store_conversation("今天学习了Python", "Python是一门很好的语言", "2026-06-15 10:00:00")
         import time; time.sleep(0.3)
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         assert len(all_mems) >= 1
         meta = all_mems[0].get("metadata", {})
         tags = meta.get("tags", "")
@@ -299,7 +299,7 @@ class TestStoreConversation:
         for i in range(3):
             ctx._store_conversation(f"消息{i}", f"回复{i}", f"2026-06-15 1{i}:00:00")
         import time; time.sleep(0.5)
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         assert len(all_mems) >= 3
 
     def test_store_with_special_characters(self, isolated_env):
@@ -307,7 +307,7 @@ class TestStoreConversation:
         ctx = isolated_env
         ctx._store_conversation("emoji测试 😊🎉", "回复有emoji ❤️", "2026-06-15 10:00:00")
         import time; time.sleep(0.3)
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         assert len(all_mems) >= 1
 
     def test_store_updates_inverted_index(self, isolated_env):
@@ -324,7 +324,7 @@ class TestStoreConversation:
         ctx = isolated_env
         ctx._store_conversation("", "系统回复", "2026-06-15 10:00:00")
         import time; time.sleep(0.3)
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         assert len(all_mems) >= 1
 
 
@@ -349,7 +349,7 @@ class TestQueueWorker:
         ctx._stop_event.clear()
         ctx._start_queue_worker()
         import time; time.sleep(1.5)
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         assert len(all_mems) >= 1, "worker应从文件恢复并入库"
 
     def test_worker_consumes_from_memory_queue(self, isolated_env):
@@ -357,7 +357,7 @@ class TestQueueWorker:
         ctx = isolated_env
         ctx._enqueue_store_task("内存队列测试", "AI回复", "2026-06-15 10:00:00")
         import time; time.sleep(1.5)
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         assert len(all_mems) >= 1
 
     def test_queue_file_persistence(self, isolated_env):

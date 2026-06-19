@@ -1,0 +1,50 @@
+---
+description: 初痕 Python 编码约定与常见低级错误
+globs: app/**/*.py
+alwaysApply: false
+---
+
+# 编码约定
+
+## 必须
+
+- 新存储逻辑走 Qdrant（`QdrantService`, `CoOccurrenceStore`, `HyperEdgeStore`）
+- 异常至少 `except Exception:`，禁止裸 `except:`
+- 共享状态用 `threading.Lock()`；文件写用 `atomic_write()`；JSONL 追加用 `atomic_append()`
+- 配置从 `app.config.settings` 导入，不在业务代码硬编码模型名/路径
+- `os.getenv()` 在非 settings 模块须有默认值（check_conventions 会查）
+
+## 禁止
+
+- `sqlite3.connect()` 直连（SQLite 已退役）
+- 跨模块共享 JSON 做结构化存储（各模块缓存 JSON 仅限模块内部）
+- pickle
+- 在 embedding 缓存逻辑外加锁
+- 批量替换 `except Exception`（约 278 处多为后台线程防御性捕获，有意为之）
+- 主动修 `dispatch.py:695` 裸 `except: continue`（已知问题，除非用户要求）
+
+## 对话数据流（改代码前先定位你在哪一步）
+
+```
+POST /chat → ChatCircuit.run() → 画像实时更新 → run_chat_retrieval() 9路并行
+→ CognitiveState 组装 → deepseek.generate() 10段消息 → 后处理入库/冲动/DMN
+```
+
+关键文件：`api/chat.py`, `core/circuit.py`, `retrieval/pipeline.py`, `core/state.py`, `llm/deepseek.py`, `core/context.py`
+
+## 检索评分（画像唯一接触点）
+
+精排 boost：`hot +0.2`, `warm/关注焦点 +0.1`, 负向触发 `-0.2`
+
+`final_score = cosine×0.5 + hit_conf×0.2 + source_weight×0.2 + portrait_boost×0.1`
+
+## 画像四态（引擎删，LLM 写）
+
+`pending → active → cooling → decayed(删除)`；pending/cooling 不注入 prompt；confidence < 0.40 过滤。
+
+## 改动后自检
+
+```bash
+python scripts/check_conventions.py --quick
+python -m pytest tests/ -q --tb=short -k "相关模块"
+```

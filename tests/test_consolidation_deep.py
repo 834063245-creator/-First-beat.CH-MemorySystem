@@ -86,7 +86,7 @@ class TestReviewToday:
     def test_empty_memories(self):
         with tempfile.TemporaryDirectory() as td:
             eng = _make_engine(td)
-            eng._chroma.list_all.return_value = []
+            eng._memory.list_all.return_value = []
             review = eng._review_today()
             assert review["total"] == 0
 
@@ -94,7 +94,7 @@ class TestReviewToday:
         with tempfile.TemporaryDirectory() as td:
             eng = _make_engine(td)
             now_ts = datetime.now().timestamp()
-            eng._chroma.list_all.return_value = [
+            eng._memory.list_all.return_value = [
                 {"id": "m1", "metadata": {
                     "timestamp": now_ts, "summary": "学习了Rust编程",
                     "user_message": "我今天学了Rust", "emotional_intensity": 3,
@@ -115,7 +115,7 @@ class TestReviewToday:
                 mems.append({"id": f"n{i}", "metadata": {"timestamp": now_ts, "summary": "x", "emotional_intensity": 0}})
             mems.append({"id": "e1", "metadata": {"timestamp": now_ts, "summary": "y", "emotional_intensity": 3}})
             mems.append({"id": "e2", "metadata": {"timestamp": now_ts, "summary": "z", "emotional_intensity": 2}})
-            eng._chroma.list_all.return_value = mems
+            eng._memory.list_all.return_value = mems
             review = eng._review_today()
             assert review["total"] == 10
             assert review["mood_warning"] is False  # 2/10 = 0.2 < 0.3
@@ -132,7 +132,7 @@ class TestCheckConflicts:
         with tempfile.TemporaryDirectory() as td:
             eng = _make_engine(td)
             now_ts = datetime.now().timestamp()
-            eng._chroma.list_all.return_value = [
+            eng._memory.list_all.return_value = [
                 {"id": "m1", "metadata": {"timestamp": now_ts, "tags": "咖啡, 生活"}},
             ]
             conflicts = eng._check_conflicts()
@@ -143,7 +143,7 @@ class TestCheckConflicts:
             eng = _make_engine(td)
             now_ts = datetime.now().timestamp()
             old_ts = now_ts - 86400 * 10  # 10 天前
-            eng._chroma.list_all.return_value = [
+            eng._memory.list_all.return_value = [
                 {"id": "m1", "metadata": {"timestamp": now_ts, "tags": "咖啡, 工作", "summary": "喜欢喝咖啡"}},
                 {"id": "m2", "metadata": {"timestamp": old_ts, "tags": "咖啡, 零食", "summary": "咖啡戒了"}},
             ]
@@ -243,7 +243,7 @@ class TestAssessArchival:
             eng = _make_engine(td)
             now_ts = time.time()
             old_ts = now_ts - 86400 * 50  # 超过归档阈值
-            eng._chroma.list_all.return_value = [
+            eng._memory.list_all.return_value = [
                 {"id": "m1", "metadata": {"tags": "罕见话题", "timestamp": old_ts, "last_hit_time": old_ts}},
                 {"id": "m2", "metadata": {"tags": "罕见话题", "timestamp": old_ts, "last_hit_time": old_ts}},
             ]

@@ -24,13 +24,13 @@ def _make_chat_ctx():
     # 把 run_in_executor 换成同步版避免线程问题
     ctx._real_run = _run_in_executor
 
-    # chroma_service
-    ctx.chroma_service.clear_all = MagicMock()
-    ctx.chroma_service._collection = MagicMock()
-    ctx.chroma_service._collection.name = "test_collection"
+    # memory_service
+    ctx.memory_service.clear_all = MagicMock()
+    ctx.memory_service._collection = MagicMock()
+    ctx.memory_service._collection.name = "test_collection"
 
-    # ai_chroma_service
-    ctx.ai_chroma_service.clear_all = MagicMock()
+    # ai_memory_service
+    ctx.ai_memory_service.clear_all = MagicMock()
 
     # chat_history
     ctx.chat_history.append = MagicMock()
@@ -107,8 +107,8 @@ class TestAdminReset:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
-        ctx.chroma_service.clear_all.assert_called_once()
-        ctx.ai_chroma_service.clear_all.assert_called_once()
+        ctx.memory_service.clear_all.assert_called_once()
+        ctx.ai_memory_service.clear_all.assert_called_once()
         ctx.chat_history.clear.assert_called_once()
         ctx.inverted_index.clear.assert_called_once()
         ctx.co_tracker.clear.assert_called_once()

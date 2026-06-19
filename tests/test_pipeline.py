@@ -187,8 +187,8 @@ def _make_chroma_mock():
 def _make_ctx_mock():
     ctx = MagicMock()
     ctx.data_dir = "/tmp/test"
-    ctx.chroma_service = _make_chroma_mock()
-    ctx.ai_chroma_service = _make_chroma_mock()
+    ctx.memory_service = _make_chroma_mock()
+    ctx.ai_memory_service = _make_chroma_mock()
     ctx.chat_history = MagicMock()
     ctx.chat_history.get_recent.return_value = []
     ctx.chat_history.get_records_snapshot.return_value = []
@@ -224,7 +224,7 @@ class TestRunChatRetrieval:
     def test_empty_db_returns_empty_memories(self):
         from app.retrieval.pipeline import run_chat_retrieval
         ctx = _make_ctx_mock()
-        ctx.chroma_service.count.return_value = 0
+        ctx.memory_service.count.return_value = 0
         emb = [0.1] * 1024
         _, _, _, memories = run_chat_retrieval("测试消息", emb, ctx)
         assert isinstance(memories, list)
@@ -248,14 +248,14 @@ class TestRunChatRetrieval:
         from app.retrieval.pipeline import run_chat_retrieval
         ctx = _make_ctx_mock()
         # mock 返回一条记忆
-        ctx.chroma_service._collection.query.return_value = {
+        ctx.memory_service._collection.query.return_value = {
             "ids": [["m1"]],
             "metadatas": [[{"summary": "test"}]],
             "distances": [[0.3]],
             "documents": [["测试文档"]],
         }
-        ctx.chroma_service.count.return_value = 1
-        ctx.chroma_service._collection.get.return_value = {
+        ctx.memory_service.count.return_value = 1
+        ctx.memory_service._collection.get.return_value = {
             "ids": ["m1"],
             "metadatas": [{"summary": "test"}],
             "documents": ["测试文档"],
@@ -289,8 +289,8 @@ class TestRunChatRetrieval:
         """所有检索为空时触发兜底。"""
         from app.retrieval.pipeline import run_chat_retrieval
         ctx = _make_ctx_mock()
-        ctx.chroma_service.count.return_value = 0
-        ctx.chroma_service._collection.query.return_value = {
+        ctx.memory_service.count.return_value = 0
+        ctx.memory_service._collection.query.return_value = {
             "ids": [[]], "metadatas": [[]], "distances": [[]], "documents": [[]],
         }
         ctx.chat_history.get_recent.return_value = [
@@ -318,7 +318,7 @@ class TestRetrieveAll:
     def test_empty_db_returns_empty(self):
         from app.retrieval.pipeline import retrieve_all
         ctx = _make_ctx_mock()
-        ctx.chroma_service.count.return_value = 0
+        ctx.memory_service.count.return_value = 0
         emb = [0.1] * 1024
         result = retrieve_all("测试", emb, ctx)
         assert result == []
@@ -329,8 +329,8 @@ class TestRetrieveAll:
         from app.retrieval.pipeline import retrieve_all
         ctx = _make_ctx_mock()
         # 模拟 benchmark 全量兜底
-        ctx.chroma_service.count.return_value = 5
-        ctx.chroma_service._collection.get.return_value = {
+        ctx.memory_service.count.return_value = 5
+        ctx.memory_service._collection.get.return_value = {
             "ids": ["a", "b", "c", "d", "e"],
             "metadatas": [{}, {}, {}, {}, {}],
             "documents": ["a", "b", "c", "d", "e"],

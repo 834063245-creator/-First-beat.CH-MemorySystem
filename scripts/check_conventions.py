@@ -120,7 +120,7 @@ def _detect_type_checking_block(lines: list[str], line_idx: int) -> bool:
 def _extract_import_target(import_line: str) -> str | None:
     """从 import 语句提取目标 app 子模块名。
 
-    'from app.memory.chroma import X' → 'memory'
+    'from app.memory.qdrant import X' → 'memory'
     'from app.core.db import X' → None (db 是基础设施)
     'from app.core import bottleneck' → None (bottleneck 是基础设施)
     'from app.core.context import X' → 'core'
@@ -353,7 +353,7 @@ def check_phase4_retirement():
 
 
 # ═══════════════════════════════════════════════════════════════
-# 检查 6：ChromaDB metadata schema 哨兵（红线 2 覆盖）
+# 检查 6：Qdrant payload schema 哨兵（红线 2 覆盖）
 # ═══════════════════════════════════════════════════════════════
 
 REQUIRED_META_KEYS = [
@@ -365,56 +365,46 @@ OPTIONAL_META_KEYS = ["entities", "date_tag"]
 
 
 def check_chroma_metadata_schema():
-    """AST 解析 chroma.py add_memory() 的 metadata dict，确保字段完整。"""
-    chroma_path = os.path.join(APP_DIR, "memory", "chroma.py")
-    if not os.path.exists(chroma_path):
-        check("ChromaDB metadata schema: 字段完整", False, "chroma.py 不存在")
+    """AST 解析 qdrant.py add_memory() 的 payload，确保红线 2 字段完整。"""
+    qdrant_path = os.path.join(APP_DIR, "memory", "qdrant.py")
+    if not os.path.exists(qdrant_path):
+        check("Qdrant payload schema: 字段完整", False, "qdrant.py 不存在")
         return
 
+    src = Path(qdrant_path).read_text(encoding="utf-8")
     try:
-        tree = ast.parse(Path(chroma_path).read_text(encoding="utf-8"))
+        tree = ast.parse(src)
     except SyntaxError as e:
-        check("ChromaDB metadata schema: 字段完整", False, f"AST 解析失败: {e}")
+        check("Qdrant payload schema: 字段完整", False, f"AST 解析失败: {e}")
         return
 
-    # 找到 add_memory 方法内的 meta 字典
-    meta_keys_found: set[str] = set()
-    in_add_memory = False
-    in_meta_dict = False
-
+    # 收集 add_memory 方法体内出现的所有字符串常量（payload 键以 update({...}) 形式写入）
+    keys_found: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name == "add_memory":
-            in_add_memory = True
-            # 在函数体内查找 meta = {...} 赋值
-            for stmt in ast.walk(node):
-                if isinstance(stmt, ast.Assign):
-                    for target in stmt.targets:
-                        if isinstance(target, ast.Name) and target.id == "meta":
-                            if isinstance(stmt.value, ast.Dict):
-                                for key in stmt.value.keys:
-                                    if isinstance(key, ast.Constant) and isinstance(key.value, str):
-                                        meta_keys_found.add(key.value)
-                            break
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+                    keys_found.add(sub.value)
 
-    missing_required = [k for k in REQUIRED_META_KEYS if k not in meta_keys_found]
-    missing_optional = [k for k in OPTIONAL_META_KEYS if k not in meta_keys_found]
+    missing_required = [k for k in REQUIRED_META_KEYS if k not in keys_found]
+    missing_optional = [k for k in OPTIONAL_META_KEYS if k not in keys_found]
 
     if missing_required:
         check(
-            "ChromaDB metadata schema: 必填字段完整",
+            "Qdrant payload schema: 必填字段完整",
             False,
             f"缺少必填字段: {', '.join(missing_required)}",
             severity="error",
         )
     elif missing_optional:
         check(
-            "ChromaDB metadata schema: 字段完整",
+            "Qdrant payload schema: 字段完整",
             True,
             f"可选字段缺失（可接受）: {', '.join(missing_optional)}",
         )
     else:
         check(
-            "ChromaDB metadata schema: 字段完整",
+            "Qdrant payload schema: 字段完整",
             True,
             f"全部 {len(REQUIRED_META_KEYS)}+{len(OPTIONAL_META_KEYS)} 字段完整",
         )
@@ -425,16 +415,16 @@ def check_chroma_metadata_schema():
 # ═══════════════════════════════════════════════════════════════
 
 def check_storage_complete_flag():
-    """验证 storage_complete 标记在 chroma.py 和 context.py 中都被正确使用。"""
-    chroma_path = os.path.join(APP_DIR, "memory", "chroma.py")
+    """验证 storage_complete 标记在 qdrant.py 和 context.py 中都被正确使用。"""
+    qdrant_path = os.path.join(APP_DIR, "memory", "qdrant.py")
     ctx_path = os.path.join(APP_DIR, "core", "context.py")
 
-    chroma_ok = False
+    store_ok = False
     ctx_ok = False
 
-    if os.path.exists(chroma_path):
-        chroma_content = _read_file(chroma_path)
-        chroma_ok = "mark_storage_complete" in chroma_content
+    if os.path.exists(qdrant_path):
+        qdrant_content = _read_file(qdrant_path)
+        store_ok = "mark_storage_complete" in qdrant_content
 
     if os.path.exists(ctx_path):
         ctx_content = _read_file(ctx_path)
@@ -443,8 +433,8 @@ def check_storage_complete_flag():
 
     check(
         "storage_complete 状态机: write → mark_storage_complete 链路完整",
-        chroma_ok and ctx_ok,
-        f"chroma.py={'✓' if chroma_ok else '✗'} context.py={'✓' if ctx_ok else '✗'}",
+        store_ok and ctx_ok,
+        f"qdrant.py={'✓' if store_ok else '✗'} context.py={'✓' if ctx_ok else '✗'}",
         severity="warning",
     )
 
@@ -521,7 +511,7 @@ def check_background_threads():
 LOAD_BEARING_SETTINGS = {
     "LLM_BASE_URL": ("https://api.deepseek.com", "LLM API 地址"),
     "OLLAMA_EMBED_MODEL": ("bge-m3", "Embedding 模型名"),
-    "CHROMA_COLLECTION_NAME": ("memories", "ChromaDB collection 名"),
+    "MEMORIES_COLLECTION": ("memories", "Qdrant 主记忆 collection 名"),
     "DATA_DIR": (None, "数据根目录", "exists"),  # 只检查存在
     "WORK_MEMORY_TOKEN_BUDGET": (200000, "工作记忆 token 预算"),
     "DEFAULT_EMBED_MODEL": ("bge-m3", "默认 embedding 模型"),
@@ -612,16 +602,16 @@ def check_memories_collection_consistency():
     dispatch_content = _read_file(dispatch_path)
     settings_content = _read_file(settings_path)
 
-    # 从 settings 提取 CHROMA_COLLECTION_NAME
+    # 从 settings 提取 MEMORIES_COLLECTION
     settings_match = re.search(
-        r'CHROMA_COLLECTION_NAME\s*=\s*["\']([^"\']+)["\']',
+        r'MEMORIES_COLLECTION\s*=\s*["\']([^"\']+)["\']',
         settings_content
     )
     expected_name = settings_match.group(1) if settings_match else "memories"
 
-    # 从 dispatch 提取硬编码 collection 名（排除函数参数默认值）
+    # 从 dispatch 提取硬编码 collection 名（_get_memory_collection 第二参数）
     hardcoded_matches = re.findall(
-        r'get_or_create_collection\(["\']([^"\']+)["\']',
+        r'_get_memory_collection\([^,]+,\s*["\']([^"\']+)["\']',
         dispatch_content
     )
 

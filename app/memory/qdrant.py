@@ -1,6 +1,7 @@
-"""记忆层 — Qdrant 存储/检索 + 上下文包裹管理 (替代 chroma.py).
+"""记忆层 — Qdrant 存储/检索 + 上下文包裹管理（唯一向量存储后端）。
 
 Phase 4: 百万级硬骨头 — 量化 + payload 索引 + embedding 缓存 LRU。
+Phase 5: ChromaDB 已移除，Qdrant 为唯一后端。
 """
 import json
 import logging
@@ -275,7 +276,7 @@ def _build_quantization_config() -> models.QuantizationConfig | None:
 # ===================================================================
 
 def _build_items_from_points(points: list) -> list[dict]:
-    """Qdrant scroll/retrieve 结果 → 统一 item 格式（兼容 ChromaService._build_items）。"""
+    """Qdrant scroll/retrieve 结果 → 统一 item 格式。"""
     items = []
     for pt in points:
         payload = pt.payload or {}
@@ -288,7 +289,7 @@ def _build_items_from_points(points: list) -> list[dict]:
 
 
 # ===================================================================
-# ChromaDB where → Qdrant Filter 翻译层 (Phase 2)
+# 旧 ChromaDB where 格式 → Qdrant Filter 翻译层 (Phase 2 遗留兼容)
 # ===================================================================
 
 def _build_condition(key: str, value) -> models.FieldCondition | models.Filter:
@@ -320,7 +321,7 @@ def _build_condition(key: str, value) -> models.FieldCondition | models.Filter:
 
 
 def _translate_filter(chroma_where: dict) -> models.Filter:
-    """ChromaDB where dict → Qdrant Filter。
+    """旧 ChromaDB where dict 格式 → Qdrant Filter。
 
     支持的运算符: $gte, $lte, $gt, $lt, $eq, $ne, $in, $contains, $and, $or
     """
@@ -361,23 +362,23 @@ def _translate_filter(chroma_where: dict) -> models.Filter:
 
 
 # ===================================================================
-# Qdrant → ChromaDB Collection API 兼容适配器 (Phase 2)
+# 集合操作适配器 — 统一的 collection API
 # ===================================================================
 
 class _QdrantCollectionCompat:
-    """使 QdrantService._collection 表现如 chromadb Collection。
+    """QdrantService._collection 暴露的集合操作接口。
 
-    所有 ChromaDB collection API (query/get/update/count) 翻译为 Qdrant API。
-    pipeline.py / context.py / dispatch.py 通过此适配器无需改动即可使用 Qdrant。
+    提供 query/get/update/count 等集合级 API（翻译为底层 Qdrant 调用），
+    供 pipeline.py / context.py / dispatch.py 统一使用。
     """
 
     def __init__(self, service: 'QdrantService'):
         self._svc = service
 
     def query(self, query_embeddings, n_results, where=None, include=None):
-        """ChromaDB col.query() → Qdrant search() (本地索引加速)。
+        """旧 ChromaDB col.query() → Qdrant search()（本地索引加速）。
 
-        返回格式（兼容 ChromaDB）:
+        返回格式（兼容 ChromaDB 旧代码）:
           {"ids": [[id1,id2,...]], "documents": [["doc1","doc2",...]],
            "metadatas": [[{...},{...},...]], "distances": [[0.1,0.2,...]]}
         """
@@ -419,9 +420,9 @@ class _QdrantCollectionCompat:
         }
 
     def get(self, ids=None, where=None, include=None, limit=None):
-        """ChromaDB col.get() → Qdrant retrieve()/scroll()。
+        """旧 ChromaDB col.get() → Qdrant retrieve()/scroll()。
 
-        返回格式（兼容 ChromaDB）:
+        返回格式（兼容 ChromaDB 旧代码）:
           {"ids": [...], "documents": [...], "metadatas": [...]}
         """
         include_docs = include is None or "documents" in include
@@ -456,7 +457,7 @@ class _QdrantCollectionCompat:
         }
 
     def update(self, ids, metadatas=None, documents=None, embeddings=None):
-        """ChromaDB col.update() → Qdrant set_payload() + update_vectors()。"""
+        """旧 ChromaDB col.update() 格式 → Qdrant set_payload() + update_vectors()。"""
         id_list = [ids] if isinstance(ids, str) else ids
         for mid in id_list:
             payload_updates = {}
@@ -490,7 +491,7 @@ class _QdrantCollectionCompat:
 
 
 class QdrantService:
-    """Qdrant 记忆存储与检索（API 完全兼容 ChromaService）。"""
+    """Qdrant 记忆存储与检索 — 唯一向量存储后端。"""
 
     DESENSITIZATION_CHECK_INTERVAL = 50
     DESENSITIZATION_DECAY_DAYS = 7
@@ -509,18 +510,23 @@ class QdrantService:
         self._latest_ts = None
         self._desensitization_counter = 0
 
-        url = url or QDRANT_URL
+        # 后端选择优先级：
+        #   1. 显式 url / 环境 QDRANT_URL（http(s):// → 服务器；:memory: → 内存）
+        #   2. persist_dir → 本地嵌入式文件模式
+        # Windows 路径含盘符冒号（C:\...），因此用 scheme 前缀判断，而非 ":" in url。
+        target = url or QDRANT_URL or persist_dir
         api_key = api_key or QDRANT_API_KEY
 
-        if persist_dir and not url:
-            url = persist_dir
-
-        if url and (url.startswith("/") or url.startswith("./") or ":" not in url):
-            os.makedirs(url, exist_ok=True)
-            self._client = QdrantClient(path=url)
+        if target == ":memory:":
+            self._client = QdrantClient(location=":memory:")
+        elif target and (target.startswith("http://") or target.startswith("https://")):
+            self._client = QdrantClient(url=target, api_key=api_key) if api_key else \
+                          QdrantClient(url=target)
         else:
-            self._client = QdrantClient(url=url, api_key=api_key) if api_key else \
-                          QdrantClient(url=url)
+            # 本地嵌入式文件模式
+            local_path = target or persist_dir
+            os.makedirs(local_path, exist_ok=True)
+            self._client = QdrantClient(path=local_path)
 
         self._ensure_collection()
         self._collection = _QdrantCollectionCompat(self)
@@ -554,6 +560,9 @@ class QdrantService:
             )
             logger.info("创建 Qdrant collection: %s (quantization=%s)",
                        self._collection_name, QDRANT_QUANTIZATION or "none")
+            # 本地嵌入式模式下服务端 payload 索引无效（由 _LocalPayloadIndex 补偿），跳过避免告警
+            if _is_local_client(self._client):
+                return
             for field, stype in [
                 ("timestamp", models.PayloadSchemaType.FLOAT),
                 ("hit_count", models.PayloadSchemaType.INTEGER),
@@ -573,26 +582,29 @@ class QdrantService:
                     pass
 
     def _search_with_index(self, query_vector, query_filter, limit, with_payload):
-        """Phase 4: 优先本地索引，失败回退 Qdrant API。"""
+        """Phase 4: 优先本地索引，失败回退 Qdrant API。
+
+        qdrant-client 1.10+ 用 query_points 替代 search；返回 .points（ScoredPoint 列表）。
+        """
         if self._local_index is not None:
             prefilter = self._local_index.resolve(query_filter)
             if prefilter is not None and not prefilter:
                 return []
             if prefilter is not None:
-                return self._client.search(
+                return self._client.query_points(
                     collection_name=self._collection_name,
-                    query_vector=query_vector,
+                    query=query_vector,
                     query_filter=query_filter,
                     limit=min(limit, len(prefilter)),
                     with_payload=with_payload,
-                )
-        return self._client.search(
+                ).points
+        return self._client.query_points(
             collection_name=self._collection_name,
-            query_vector=query_vector,
+            query=query_vector,
             query_filter=query_filter,
             limit=limit,
             with_payload=with_payload,
-        )
+        ).points
 
     def _scroll_with_index(self, scroll_filter, with_payload, limit, offset=None):
         """Phase 4: 优先本地索引，失败回退 Qdrant API。"""
@@ -644,21 +656,53 @@ class QdrantService:
         return mid
 
     def add_memory(self, user_message: str, ai_message: str, summary: str,
-                   tags: str = "", metadata: dict = None, embedding: list = None,
-                   id: str = None) -> str:
-        """添加完整记忆。"""
+                   tags=None, embedding: list = None, *,
+                   entities=None, date_tag: str = None, time_features: dict = None,
+                   source: str = "user", model_id: str = DEFAULT_EMBED_MODEL,
+                   metadata: dict = None, id: str = None, **extra) -> str:
+        """添加完整记忆（红线 2 metadata schema）。
+
+        tags 接受 list 或逗号字符串；entities 接受 list[dict] 或 JSON 字符串。
+        time_features / extra 中的键平铺进 payload。
+        """
         mid = id or str(uuid.uuid4())
+
+        if isinstance(tags, (list, tuple)):
+            tags_str = ",".join(str(t) for t in tags)
+        else:
+            tags_str = tags or ""
+
+        if entities is None:
+            entities_str = ""
+        elif isinstance(entities, str):
+            entities_str = entities
+        else:
+            entities_str = json.dumps(entities, ensure_ascii=False)
+
         payload = dict(metadata or {})
         payload.update({
             "user_message": user_message,
             "ai_message": ai_message,
             "summary": summary,
-            "tags": tags,
-            "document": f"[{tags}] {summary}" if tags else summary,
+            "tags": tags_str,
+            "entities": entities_str,
+            "document": f"[{tags_str}] {summary}" if tags_str else summary,
             "timestamp": time.time(),
             "hit_count": 0,
-            "embed_model": DEFAULT_EMBED_MODEL,
+            "heat": 0,
+            "embed_model": model_id,
+            "stale": False,
+            "archived": False,
+            "superseded_by": "",
+            "storage_complete": True,
+            "source": source,
+            "date_tag": date_tag or "",
         })
+        if isinstance(time_features, dict):
+            for k, v in time_features.items():
+                payload.setdefault(k, v)
+        for k, v in extra.items():
+            payload.setdefault(k, v)
 
         vec = embedding if embedding is not None else [0.0] * 1024
 
@@ -672,6 +716,68 @@ class QdrantService:
         self._emb_cache_put(mid, vec)
         self._invalidate_list_all_cache()
         return mid
+
+    def count(self) -> int:
+        """记忆总数。"""
+        return self._collection.count()
+
+    def clear_all(self):
+        """清空所有记忆（别名 clear）。"""
+        self.clear()
+
+    def update_entity_co_counts(self, memory_id: str, entities) -> None:
+        """入库时预计算实体共现对，存入该记录的 payload.entity_co_counts。
+
+        无外部读取方（CoOccurrenceStore 才是权威共现源），失败可忽略。
+        """
+        try:
+            texts = []
+            for ent in (entities or []):
+                if isinstance(ent, dict):
+                    t = ent.get("text", "")
+                else:
+                    t = str(ent)
+                if t:
+                    texts.append(t)
+            texts = sorted(set(texts))
+            pairs = {}
+            for i in range(len(texts)):
+                for j in range(i + 1, len(texts)):
+                    pairs[f"{texts[i]}|{texts[j]}"] = 1
+            if not pairs:
+                return
+            payload = {"entity_co_counts": json.dumps(pairs, ensure_ascii=False)}
+            with self._lock:
+                self._client.set_payload(
+                    collection_name=self._collection_name,
+                    payload=payload,
+                    points=[memory_id],
+                )
+        except Exception:
+            pass
+
+    def _local_index_build(self):
+        """从全量 points 重建本地 payload 索引（启动预热用）。"""
+        if self._local_index is None:
+            return
+        try:
+            points = []
+            offset = None
+            while True:
+                batch, offset = self._client.scroll(
+                    collection_name=self._collection_name,
+                    with_payload=True,
+                    with_vectors=False,
+                    limit=1000,
+                    offset=offset,
+                )
+                points.extend(batch)
+                if offset is None:
+                    break
+            with self._lock:
+                self._local_index.build(points)
+        except Exception as exc:
+            logger.warning("本地 payload 索引构建失败: %s", exc)
 
     def update_memory(self, memory_id: str, **kwargs):
         """更新记忆的指定字段。"""
@@ -760,7 +866,7 @@ class QdrantService:
     # ------------------------------------------------------------------
 
     def resolve(self, chroma_where: dict) -> list[dict]:
-        """ChromaDB where 条件 → Qdrant scroll。"""
+        """旧 ChromaDB where 条件 → Qdrant scroll。"""
         qf = _translate_filter(chroma_where)
         pts, _ = self._scroll_with_index(
             scroll_filter=qf,
@@ -833,9 +939,36 @@ class QdrantService:
         self.remove(memory_id)
 
     def clear(self):
-        """清空所有记忆。"""
-        self._client.delete_collection(self._collection_name)
-        self._ensure_collection()
+        """清空所有记忆。
+
+        本地嵌入式 Qdrant 下 delete_collection+重建不会真正清空持久化分段，
+        因此按 ID 批量删除，更可靠。
+        """
+        with self._lock:
+            try:
+                all_ids = []
+                offset = None
+                while True:
+                    batch, offset = self._client.scroll(
+                        collection_name=self._collection_name,
+                        with_payload=False, with_vectors=False,
+                        limit=1000, offset=offset,
+                    )
+                    all_ids.extend([p.id for p in batch])
+                    if offset is None:
+                        break
+                if all_ids:
+                    self._client.delete(
+                        collection_name=self._collection_name,
+                        points_selector=models.PointIdsList(points=all_ids),
+                    )
+            except Exception:
+                # 回退：删除并重建 collection
+                try:
+                    self._client.delete_collection(self._collection_name)
+                except Exception:
+                    pass
+                self._ensure_collection()
         with self._emb_cache_lock:
             self._emb_cache = OrderedDict()
         self._emb_cache_build_done = False
@@ -843,9 +976,22 @@ class QdrantService:
             self._local_index = _LocalPayloadIndex()
         self._invalidate_list_all_cache()
 
-    def mark_storage_complete(self):
-        """标记存储就绪，启动 embedding 缓存后台构建。"""
+    def mark_storage_complete(self, memory_id: str = None):
+        """标记某条记录入库完成（storage_complete=True，红线 2）。"""
         self._emb_cache_build_done = True
+        if not memory_id:
+            return
+        try:
+            with self._lock:
+                self._client.set_payload(
+                    collection_name=self._collection_name,
+                    payload={"storage_complete": True},
+                    points=[memory_id],
+                )
+                if self._local_index is not None:
+                    self._local_index.update(memory_id, {"storage_complete": True})
+        except Exception:
+            pass
 
     def _apply_emotional_desensitization(self):
         """情绪淡化：周期性衰减情绪强度。"""
@@ -1305,15 +1451,15 @@ class QdrantService:
             self._emb_cache[memory_id] = embedding
 
     # ------------------------------------------------------------------
-    # ChromaDB Collection API 兼容 (Phase 2: delegate to _collection adapter)
+    # 旧 ChromaDB Collection API 兼容层 (Phase 2: delegate to _collection adapter)
     # ------------------------------------------------------------------
 
     def get(self, ids=None, where=None, include=None, limit=None):
-        """ChromaDB col.get() 兼容 — delegate to _collection adapter。"""
+        """旧 ChromaDB col.get() 兼容 — delegate to _collection adapter。"""
         return self._collection.get(ids=ids, where=where, include=include, limit=limit)
 
     def query(self, query_embeddings, n_results, where=None, include=None):
-        """ChromaDB col.query() 兼容 — delegate to _collection adapter。"""
+        """旧 ChromaDB col.query() 兼容 — delegate to _collection adapter。"""
         return self._collection.query(
             query_embeddings=query_embeddings, n_results=n_results,
             where=where, include=include,

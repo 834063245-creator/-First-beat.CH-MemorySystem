@@ -29,7 +29,7 @@ def api_memories(
     ctx: AppContext = Depends(get_user_context),
 ):
     """返回当前用户的记忆列表，支持语义搜索、排序筛选和分页。"""
-    client = ctx.chroma_service
+    client = ctx.memory_service
 
     if search:
         from app.llm.embed import local_embed
@@ -70,17 +70,17 @@ def api_memories(
 @router.get("/stats")
 def api_memories_stats(ctx: AppContext = Depends(get_user_context)):
     """记忆统计。"""
-    return ctx.chroma_service.stats()
+    return ctx.memory_service.stats()
 
 
 @router.get("/{memory_id}")
 def api_memories_detail(memory_id: str, ctx: AppContext = Depends(get_user_context)):
     """单条记忆详情。"""
-    client = ctx.chroma_service
+    client = ctx.memory_service
     detail = client.get_memory_detail(memory_id)
     if detail is None:
         raise HTTPException(status_code=404, detail="记忆未找到")
-    detail_ctx = ctx.chat_history.get_context_by_chroma_id(memory_id, before=CONTEXT_ROUNDS, after=CONTEXT_ROUNDS)
+    detail_ctx = ctx.chat_history.get_context_by_memory_id(memory_id, before=CONTEXT_ROUNDS, after=CONTEXT_ROUNDS)
     detail["context_before"] = detail_ctx.get("context_before", [])
     detail["context_after"] = detail_ctx.get("context_after", [])
     return detail
@@ -98,7 +98,7 @@ def api_memories_correct(memory_id: str, body: dict, ctx: AppContext = Depends(g
     if embedding is None:
         raise HTTPException(status_code=500, detail="Embedding 失败")
 
-    client = ctx.chroma_service
+    client = ctx.memory_service
     tags = extract_tags(corrected, topk=5)
     old_detail = client.get_memory_detail(memory_id)
     old_tags = old_detail.get("tags", []) if old_detail else []
@@ -126,11 +126,11 @@ def api_memories_correct(memory_id: str, body: dict, ctx: AppContext = Depends(g
 @router.delete("/{memory_id}")
 def api_memories_delete(memory_id: str, ctx: AppContext = Depends(get_user_context)):
     """删除单条记忆。"""
-    client = ctx.chroma_service
+    client = ctx.memory_service
     client.delete_memory(memory_id)
     ctx.co_tracker.remove(memory_id)
     ctx.inverted_index.remove(memory_id)
-    ctx.chat_history.delete_by_chroma_id(memory_id)
+    ctx.chat_history.delete_by_memory_id(memory_id)
     return {"status": "ok", "id": memory_id}
 
 

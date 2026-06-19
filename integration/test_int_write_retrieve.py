@@ -1,8 +1,8 @@
 """链路 1：写入→检索闭环集成测试。
 
 验证：对话写入后，能通过各检索通路找回来。
-使用真实 ChromaDB + 真实 embedding（Ollama bge-m3），仅 mock extract_tags。
-BENCHMARK_MODE=true 路径：embed + 标签 + ChromaDB + 倒排索引。
+使用真实 Qdrant + 真实 embedding（Ollama bge-m3），仅 mock extract_tags。
+BENCHMARK_MODE=true 路径：embed + 标签 + Qdrant + 倒排索引。
 """
 import time
 import pytest
@@ -51,16 +51,16 @@ def _mock_tags():
 class TestIntWriteRetrieve:
     """验证：对话写入后，能通过各检索通路找回来。"""
 
-    def test_write_increments_chroma_count(self, isolated_env, _mock_tags):
-        """写入 1 条对话 → chroma_service.count() +1。"""
+    def test_write_increments_count(self, isolated_env, _mock_tags):
+        """写入 1 条对话 → memory_service.count() +1。"""
         ctx = isolated_env
-        before = ctx.chroma_service.count()
+        before = ctx.memory_service.count()
         ctx._store_conversation(
             "我在学习 Rust 编程", "Rust 的所有权系统很棒",
             "2026-06-01 10:00:00"
         )
         time.sleep(0.5)
-        assert ctx.chroma_service.count() == before + 1
+        assert ctx.memory_service.count() == before + 1
 
     def test_write_populates_inverted_index(self, isolated_env, _mock_tags):
         """写入含"Rust"的对话 → 倒排索引按关键词能查到。"""
@@ -85,14 +85,14 @@ class TestIntWriteRetrieve:
         assert len(tag_results) >= 1, "标签索引应能按 '编程' 找到写入的记忆"
 
     def test_write_stores_correct_metadata(self, isolated_env, _mock_tags):
-        """写入对话 → ChromaDB 记录的 metadata 含 tags 和 summary。"""
+        """写入对话 → Qdrant 记录的 metadata 含 tags 和 summary。"""
         ctx = isolated_env
         ctx._store_conversation(
             "我在学习 Rust 编程", "Rust 的所有权系统很棒",
             "2026-06-01 10:00:00"
         )
         time.sleep(0.5)
-        all_memories = ctx.chroma_service.list_all()
+        all_memories = ctx.memory_service.list_all()
         assert len(all_memories) >= 1, "应至少有 1 条记忆"
         latest = all_memories[-1]
         meta = latest.get("metadata", {})
@@ -115,7 +115,7 @@ class TestIntWriteRetrieve:
         query_emb = local_embed("猫咪生病了怎么办")
         assert query_emb is not None, "embedding 不应为 None"
 
-        results = ctx.chroma_service._collection.query(
+        results = ctx.memory_service._collection.query(
             query_embeddings=[query_emb], n_results=5
         )
         docs = results.get("documents", [[]])[0]

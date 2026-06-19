@@ -4,7 +4,7 @@
 
 设计原则：
 - 不等待真实定时器（10min/30min/4h/24h 等），改为手动调用冲动源检查方法或推进模拟时钟。
-- 使用真实组件（ChromaDB、ImpulseScheduler、ConsolidationEngine 等）。
+- 使用真实组件（Qdrant、ImpulseScheduler、ConsolidationEngine 等）。
 - 测试独立隔离，不影响生产后台线程。
 - 每个子项一个测试函数，命名遵循 test_B{N}_{描述}。
 """
@@ -48,11 +48,11 @@ class TestImpulseSources:
         from app.background.impulse import source_emotion_trend
 
         # 获取今天的记忆（种子记忆时间戳在今天附近）
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         assert len(all_mems) >= 5, f"种子记忆不足，实际 {len(all_mems)}"
 
         # 直接调用冲动源
-        result = source_emotion_trend(ctx.chroma_service, all_mems=all_mems)
+        result = source_emotion_trend(ctx.memory_service, all_mems=all_mems)
 
         # 根据情绪比率，可能返回信号或 None
         if result is not None:
@@ -85,9 +85,9 @@ class TestImpulseSources:
 
         from app.background.impulse import source_time_rhythm
 
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         result = source_time_rhythm(
-            ctx.chroma_service,
+            ctx.memory_service,
             temporal_pattern_index=ctx.temporal_pattern_index,
             all_mems=all_mems,
         )
@@ -120,10 +120,10 @@ class TestImpulseSources:
         ctx, mem_ids = seeded_env_background
         from app.background.impulse import source_random_roam
 
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         assert len(all_mems) >= 5
 
-        result = source_random_roam(ctx.chroma_service, all_mems=all_mems)
+        result = source_random_roam(ctx.memory_service, all_mems=all_mems)
 
         assert result is not None, (
             f"随机漫游应产出信号（{len(all_mems)} 条记忆，"
@@ -147,7 +147,7 @@ class TestImpulseSources:
         ctx, mem_ids = seeded_env_background
         from app.background.impulse import source_curiosity
 
-        all_mems = ctx.chroma_service.list_all()
+        all_mems = ctx.memory_service.list_all()
         assert len(all_mems) >= 5
 
         # 验证有低 hit_count 的候选
@@ -158,7 +158,7 @@ class TestImpulseSources:
         ]
         assert len(low_hit) >= 2, f"低命中候选记忆不足: {len(low_hit)}"
 
-        result = source_curiosity(ctx.chroma_service, all_mems=all_mems)
+        result = source_curiosity(ctx.memory_service, all_mems=all_mems)
 
         assert result is not None, f"好奇心源应产出信号（{len(low_hit)} 条低命中候选）"
         content, priority = result
@@ -598,7 +598,7 @@ class TestBackgroundWorkers:
 
         # 手动执行一次 AI 巩固的核心操作（情绪淡化）
         try:
-            ctx.ai_chroma_service._apply_emotional_desensitization()
+            ctx.ai_memory_service._apply_emotional_desensitization()
         except Exception as e:
             pytest.fail(f"AI 情绪淡化抛出异常: {e}")
 

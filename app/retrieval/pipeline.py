@@ -25,7 +25,7 @@ from app.analysis.entity import extract_entities
 logger = logging.getLogger(__name__)
 
 # ── 检索门控：意图 → 各路配额 ────────────────────────────────
-# 配额含义是 ChromaDB query 的 n_results（不是截断上限）。
+# 配额含义是 Qdrant query 的 n_results（不是截断上限）。
 # 截断由引擎 weave_context 统一决策（不再有硬 K）。
 _INTENT_ROUTES = {
     "casual":             {"semantic": 50, "tag": 20, "entity": 10, "time_expand": 5},
@@ -240,7 +240,7 @@ def run_chat_retrieval(
                 weights = [decay ** (n - 1 - i) for i in range(n)]
                 center = np.average(msg_embs, axis=0, weights=weights).tolist()
                 for mem in memories:
-                    mem_emb = ctx_obj.chroma_service._get_embedding_cached(mem.get("id", ""))
+                    mem_emb = ctx_obj.memory_service._get_embedding_cached(mem.get("id", ""))
                     if mem_emb:
                         dot = sum(a * b for a, b in zip(center, mem_emb))
                         n1 = math.sqrt(sum(a * a for a in center))
@@ -306,7 +306,7 @@ def run_chat_retrieval(
         except Exception as exc:
             logger.warning("工作记忆兜底也失败了: %s", exc)
 
-    # ── 命中计数（批量，一次 ChromaDB 往返）──
+    # ── 命中计数（批量，一次 Qdrant 往返）──
     try:
         ids_and_deltas = []
         for mem in memories:
@@ -320,7 +320,7 @@ def run_chat_retrieval(
             ) else 1
             ids_and_deltas.append((mid, d))
         if ids_and_deltas:
-            ctx_obj.chroma_service.batch_increment_hit_count(ids_and_deltas)
+            ctx_obj.memory_service.batch_increment_hit_count(ids_and_deltas)
     except Exception:
         pass
 
@@ -381,7 +381,7 @@ def retrieve_all(
             pool_results.append(results)
 
     def _make_mem(mid, meta, doc, dist, source):
-        # ChromaDB 存 entities 为 JSON 字符串，统一反序列化
+        # Qdrant 存 entities 为 JSON 字符串（向后兼容），统一反序列化
         if meta and isinstance(meta.get("entities"), str):
             try:
                 meta = dict(meta)
@@ -401,7 +401,7 @@ def retrieve_all(
         if not (query_embedding and sem_n > 0):
             return
         try:
-            col = ctx_obj.chroma_service._collection
+            col = ctx_obj.memory_service._collection
             local = []
             # hot（v2.1: 移除 archived 硬过滤 — 旧记忆只降权不屏蔽）
             hot = col.query(query_embeddings=[query_embedding], n_results=min(sem_n, 200),
@@ -447,7 +447,7 @@ def retrieve_all(
             if not kw_ids:
                 return
             kw_ids = kw_ids[:100] if _BM else kw_ids[:20]
-            dr = ctx_obj.chroma_service._collection.get(ids=kw_ids, include=["documents", "metadatas"])
+            dr = ctx_obj.memory_service._collection.get(ids=kw_ids, include=["documents", "metadatas"])
             local = []
             for i, mid in enumerate(dr.get("ids", [])):
                 meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
@@ -467,7 +467,7 @@ def retrieve_all(
             tag_ids = tag_ids[:100] if _BM else tag_ids[:20]
             if not tag_ids:
                 return
-            dr = ctx_obj.chroma_service._collection.get(ids=tag_ids, include=["documents", "metadatas"])
+            dr = ctx_obj.memory_service._collection.get(ids=tag_ids, include=["documents", "metadatas"])
             local = []
             for i, mid in enumerate(dr.get("ids", [])):
                 meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
@@ -497,7 +497,7 @@ def retrieve_all(
             if not all_eids:
                 return
             eid_limit = 100 if _BM else 20
-            dr = ctx_obj.chroma_service._collection.get(
+            dr = ctx_obj.memory_service._collection.get(
                 ids=list(all_eids)[:eid_limit], include=["documents", "metadatas"])
             local = []
             for i, mid in enumerate(dr.get("ids", [])):
@@ -522,7 +522,7 @@ def retrieve_all(
             tp_ids = list(tp_ids)[:50] if _BM else list(tp_ids)[:10]
             if not tp_ids:
                 return
-            dr = ctx_obj.chroma_service._collection.get(ids=tp_ids, include=["documents", "metadatas"])
+            dr = ctx_obj.memory_service._collection.get(ids=tp_ids, include=["documents", "metadatas"])
             local = []
             for i, mid in enumerate(dr.get("ids", [])):
                 meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
@@ -545,7 +545,7 @@ def retrieve_all(
             topic_ids = list(topic_ids)[:50] if _BM else list(topic_ids)[:10]
             if not topic_ids:
                 return
-            dr = ctx_obj.chroma_service._collection.get(ids=topic_ids, include=["documents", "metadatas"])
+            dr = ctx_obj.memory_service._collection.get(ids=topic_ids, include=["documents", "metadatas"])
             local = []
             for i, mid in enumerate(dr.get("ids", [])):
                 meta = dict(dr["metadatas"][i]) if dr.get("metadatas") else {}
@@ -580,7 +580,7 @@ def retrieve_all(
             n = len(msg_embs)
             weights = [decay ** (n - 1 - i) for i in range(n)]
             center = np.average(msg_embs, axis=0, weights=weights).tolist()
-            results = ctx_obj.chroma_service._collection.query(
+            results = ctx_obj.memory_service._collection.query(
                 query_embeddings=[center], n_results=50 if _BM else 10,
                 include=["documents", "metadatas", "distances"])
             local = []
@@ -601,8 +601,8 @@ def retrieve_all(
         try:
             # 使用 Qdrant MatchText 做全文搜索（需 text index on document 字段）
             from qdrant_client import models as qm
-            pts, _ = ctx_obj.chroma_service._client.scroll(
-                collection_name=ctx_obj.chroma_service._collection_name,
+            pts, _ = ctx_obj.memory_service._client.scroll(
+                collection_name=ctx_obj.memory_service._collection_name,
                 scroll_filter=qm.Filter(must=[
                     qm.FieldCondition(key="document", match=qm.MatchText(text=user_message)),
                 ]),
@@ -621,10 +621,10 @@ def retrieve_all(
 
     def _path_ai_memory():
         """⑩ AI 表达记忆检索 — 语义相似的 AI 历史表达。"""
-        if not (query_embedding and hasattr(ctx_obj, 'ai_chroma_service')):
+        if not (query_embedding and hasattr(ctx_obj, 'ai_memory_service')):
             return
         try:
-            ai_col = ctx_obj.ai_chroma_service._collection
+            ai_col = ctx_obj.ai_memory_service._collection
             ai_results = ai_col.query(
                 query_embeddings=[query_embedding], n_results=20 if _BM else 5,
                 include=["documents", "metadatas", "distances"])
@@ -673,7 +673,7 @@ def retrieve_all(
                 cooc_ids = [c["id"] for c in cooc if c["id"] not in seen_ids]
                 cooc_ids = cooc_ids[:50] if _BM else cooc_ids[:10]
                 if cooc_ids:
-                    dr = ctx_obj.chroma_service._collection.get(
+                    dr = ctx_obj.memory_service._collection.get(
                         ids=cooc_ids, include=["documents", "metadatas"])
                     for i, mid in enumerate(dr.get("ids", [])):
                         if not mid or mid in seen_ids:
@@ -689,9 +689,9 @@ def retrieve_all(
     # ── Benchmark 兜底：小数据集直接全量返回，零遗漏 ──
     if _BM:
         try:
-            total = ctx_obj.chroma_service.count()
+            total = ctx_obj.memory_service.count()
             if total > 0 and total <= 200:
-                all_items = ctx_obj.chroma_service._collection.get(
+                all_items = ctx_obj.memory_service._collection.get(
                     include=["documents", "metadatas"])
                 for i, mid in enumerate(all_items.get("ids", [])):
                     if mid not in seen_ids:

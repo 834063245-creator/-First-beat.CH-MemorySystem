@@ -1,6 +1,6 @@
 """测试 app/tools/dispatch.py 纯函数 — 提行覆盖。
 
-覆盖：_parse_natural_date 全部分支 / count_memories / _get_chroma_collection。
+覆盖：_parse_natural_date 全部分支 / count_memories / _get_memory_collection。
 """
 import pytest
 from datetime import datetime
@@ -88,15 +88,11 @@ class TestCountMemories:
         assert isinstance(result, dict)
 
 
-class TestGetChromaCollection:
-    def test_returns_collection(self):
-        import chromadb
-        from app.tools.dispatch import _get_chroma_collection
-        with patch("chromadb.PersistentClient") as mock_client:
-            mock_col = MagicMock()
-            mock_client.return_value.get_or_create_collection.return_value = mock_col
-            result = _get_chroma_collection("/tmp/test")
-            assert result is not None
+class TestGetMemoryCollection:
+    def test_returns_collection(self, tmp_path):
+        from app.tools.dispatch import _get_memory_collection
+        result = _get_memory_collection(str(tmp_path))
+        assert result is not None
 
 
 class TestQueryMemory:

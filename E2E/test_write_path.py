@@ -1,6 +1,6 @@
 """链路一：写入链路 Benchmark 测试（W1~W12）。
 
-每个节点独立测试，使用真实 ChromaDB + bge-m3 + 本地 LLM，固定 seed。
+每个节点独立测试，使用真实 Qdrant + bge-m3 + 本地 LLM，固定 seed。
 断言直接引用 BENCHMARK_SPEC.md 中的「验证方法」。
 """
 import json
@@ -269,13 +269,13 @@ class TestW6TimeFeatures:
 
 
 # ═══════════════════════════════════════════════════════════════
-# W7: ChromaDB 存储
+# W7: Qdrant 存储
 # ═══════════════════════════════════════════════════════════════
 
-class TestW7ChromaDBStorage:
-    """W7 — ChromaDB 存储完整性。"""
+class TestW7QdrantStorage:
+    """W7 — Qdrant 存储完整性。"""
 
-    def test_store_and_retrieve_memory(self, isolated_chroma_service):
+    def test_store_and_retrieve_memory(self, isolated_memory_service):
         """验证：1 条新记录，id 非空，metadata 完整。"""
         from app.llm.embed import local_embed
         from app.analysis.emotion import analyze_emotion_2d
@@ -323,7 +323,7 @@ class TestW7ChromaDBStorage:
             "timestamp": dt.timestamp(),
         }
 
-        memory_id = isolated_chroma_service.add_memory(
+        memory_id = isolated_memory_service.add_memory(
             user_message=_TEST_USER_MESSAGE,
             ai_message=_TEST_AI_REPLY,
             summary="用Python写爬虫脚本的对话",
@@ -340,7 +340,7 @@ class TestW7ChromaDBStorage:
         assert len(memory_id) > 0, "记忆 ID 不应为空字符串"
 
         # 验证可检索
-        result = isolated_chroma_service._collection.get(
+        result = isolated_memory_service._collection.get(
             ids=[memory_id],
             include=["documents", "metadatas"],
         )
@@ -474,7 +474,7 @@ class TestW10EntityPairStorage:
 class TestW11AIMemoryStorage:
     """W11 — AI 自我表达记忆存储。"""
 
-    def test_ai_memory_store_and_retrieve(self, isolated_ai_chroma_service):
+    def test_ai_memory_store_and_retrieve(self, isolated_ai_memory_service):
         """验证：ai_memories 集合新增 1 条记录，metadata 含 summary/tags/emotion。"""
         from app.llm.embed import local_embed
         from app.analysis.emotion import analyze_emotion_2d
@@ -493,7 +493,7 @@ class TestW11AIMemoryStorage:
             "timestamp": datetime.now().timestamp(),
         }
 
-        ai_mid = isolated_ai_chroma_service.add_memory(
+        ai_mid = isolated_ai_memory_service.add_memory(
             user_message="[AI]",
             ai_message=ai_message,
             summary="AI 表达对写代码成就感的共鸣",
@@ -506,7 +506,7 @@ class TestW11AIMemoryStorage:
         assert ai_mid, "AI 记忆 ID 不应为空"
 
         # 验证可检索
-        result = isolated_ai_chroma_service._collection.get(
+        result = isolated_ai_memory_service._collection.get(
             ids=[ai_mid],
             include=["metadatas"],
         )

@@ -75,9 +75,9 @@ class TestChatHistory:
         records = history.get_records_snapshot()
         assert isinstance(records, list)
 
-    def test_get_context_by_chroma_id(self, history):
+    def test_get_context_by_memory_id(self, history):
         history.append("user msg", "ai reply", "2025-06-01 10:00:00")
-        # 按 chroma_id 检索上下文
-        result = history.get_context_by_chroma_id("nonexistent_id")
+        # 按 memory_id 检索上下文
+        result = history.get_context_by_memory_id("nonexistent_id")
         assert isinstance(result, dict)
         assert "context_before" in result or isinstance(result.get("context_before", []), list)

@@ -373,8 +373,8 @@ def _make_mock_ctx():
     """构造最小 mock ctx_obj。"""
     ctx = MagicMock()
     ctx.portrait_renderer = None
-    ctx.chroma_service = MagicMock()
-    ctx.ai_chroma_service = MagicMock()
+    ctx.memory_service = MagicMock()
+    ctx.ai_memory_service = MagicMock()
     ctx.temporal_pattern_index = None
     ctx.mirror_neuron = None
     ctx.co_tracker = None

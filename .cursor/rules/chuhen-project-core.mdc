@@ -1,0 +1,58 @@
+---
+description: 初痕 CH Memory System 项目核心上下文与架构铁律
+alwaysApply: true
+---
+
+# 初痕 (First Beat) CH Memory System
+
+## 文档权威
+
+- `CLAUDE.md` 是唯一权威文档；代码与文档冲突时以文档为准（改红线前先跟用户确认）
+- 修改代码后同步更新 `CLAUDE.md`（用户未要求时不要改其他 .md）
+
+## 这是什么
+
+本地优先的 AI Agent **记忆引擎**（非通用聊天框架）：
+
+- FastAPI 单用户单实例 · `data/users/{name}/` 隔离
+- DeepSeek API 主 LLM · Ollama/vLLM 本地 embedding (`bge-m3`) + 实体抽取 (`qwen2.5`)
+- 核心能力：存对话 → 多路检索 → 12 维画像 → 后台巩固/冲动
+
+## 依赖方向（不可逆向）
+
+```
+api → core → memory → retrieval/analysis/portrait → background → llm
+brain/, tools/, config/, models/ — 基础设施，任意层可 import
+core/helpers, bottleneck, heartbeat, db — core 内基础设施例外
+```
+
+违反依赖方向 = 架构 bug。改 import 前跑 `python scripts/check_conventions.py`。
+
+## 核心设计决策
+
+| 原则 | 含义 |
+|------|------|
+| 引擎决策 → LLM 执行 | LLM 不调内部记忆检索；引擎决定检索/入库/巩固 |
+| 原文永不压缩 | 向量库存原文，摘要做索引；prompt 传原文 |
+| 时间不做衰减 | 用 `hit_count` 权重，不用时间衰减函数 |
+| 无 pickle | 任何场景禁止 |
+
+## 存储现状（Phase 5 完成：ChromaDB 已移除）
+
+- **唯一后端**：Qdrant（`app/memory/qdrant.py` 的 `QdrantService`）— 量化 + payload 索引 + LRU embedding 缓存
+- `QDRANT_URL` 留空 → 本地嵌入式文件模式（`data/qdrant`）；设 `http(s)://` → 连服务器（docker 注入）
+- 无 `STORAGE_BACKEND` 开关、无 ChromaDB 回退、`chromadb` 依赖已删（requirements 用 `qdrant-client`）
+- CoOccurrence / HyperEdge → 独立 Qdrant collection（`qdrant_cooccur.py`, `qdrant_hyperedge.py`）
+- SQLite 已退役；`app/core/db.py` 仅为 `close_all()` 兼容桩
+- 追加流：JSONL（对话历史、错误报告）；模块私有缓存：各自 JSON
+- AppContext 存储属性为 `memory_service` / `ai_memory_service`（旧名 `chroma_service` 已废）
+
+## 常用命令
+
+```bash
+python run.py
+python -m pytest tests/ -q
+python -m pytest E2E/ -v
+python scripts/check_conventions.py
+python scripts/audit.py --quick
+```

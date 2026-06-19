@@ -56,7 +56,7 @@ def _save_state(state: dict, state_path: str):
 
 # ── 冲动源 ──────────────────────────────────────────────────
 
-def source_time_rhythm(chroma_service=None, temporal_pattern_index=None, all_mems=None) -> tuple | None:
+def source_time_rhythm(memory_service=None, temporal_pattern_index=None, all_mems=None) -> tuple | None:
     """检查当前时间段是否有话题模式——上线就能触发。
 
     不再扫描全库查日期，而是查 TemporalPatternIndex。
@@ -75,9 +75,9 @@ def source_time_rhythm(chroma_service=None, temporal_pattern_index=None, all_mem
         tag, priority, gran = patterns[0]
 
         # 用 tag 找一条具体记忆，产出实际内容
-        if chroma_service or all_mems:
+        if memory_service or all_mems:
             try:
-                mems = all_mems if all_mems is not None else chroma_service.list_all()
+                mems = all_mems if all_mems is not None else memory_service.list_all()
                 tagged = [
                     m for m in mems
                     if tag in ((m.get("metadata") or {}).get("tags", "") or "")
@@ -106,11 +106,11 @@ def source_time_rhythm(chroma_service=None, temporal_pattern_index=None, all_mem
     return None
 
 
-def source_emotion_trend(chroma_service, all_mems=None) -> tuple | None:
+def source_emotion_trend(memory_service, all_mems=None) -> tuple | None:
     """检查今天情绪强度波动。产出具体情绪相关的内容片段。"""
     try:
         today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-        mem_pool = all_mems if all_mems is not None else chroma_service.list_all()
+        mem_pool = all_mems if all_mems is not None else memory_service.list_all()
         if not mem_pool:
             logger.info("  emotion_trend 跳过: 记忆库为空")
             return None
@@ -158,10 +158,10 @@ def source_emotion_trend(chroma_service, all_mems=None) -> tuple | None:
     return None
 
 
-def source_random_roam(chroma_service, all_mems=None) -> tuple | None:
+def source_random_roam(memory_service, all_mems=None) -> tuple | None:
     """翻一条有情绪或有实体的旧记忆，产出具体记忆内容。"""
     try:
-        mem_pool = all_mems if all_mems is not None else chroma_service.list_all()
+        mem_pool = all_mems if all_mems is not None else memory_service.list_all()
         if not mem_pool:
             logger.info("  random_roam 跳过: 记忆库为空")
             return None
@@ -216,7 +216,7 @@ def source_random_roam(chroma_service, all_mems=None) -> tuple | None:
     return None
 
 
-def source_curiosity(chroma_service, all_mems=None) -> tuple | None:
+def source_curiosity(memory_service, all_mems=None) -> tuple | None:
     """好奇心源：翻出几乎从未被提起过的记忆。
 
     选择 hit_count <= 2 且超过 1 小时前的记忆，
@@ -224,7 +224,7 @@ def source_curiosity(chroma_service, all_mems=None) -> tuple | None:
     产出具体记忆内容，去掉元描述前缀。
     """
     try:
-        mem_pool = all_mems if all_mems is not None else chroma_service.list_all()
+        mem_pool = all_mems if all_mems is not None else memory_service.list_all()
         if not mem_pool:
             return None
 
@@ -308,9 +308,9 @@ class ImpulseScheduler:
         self._ALL_MEMS_CACHE_TTL = 60
         self._load_state()
 
-    def _get_all_mems(self, chroma_service):
-        """各冲动源共享的全量记忆缓存，委托给 ChromaService 统一缓存。"""
-        return chroma_service.list_all_cached()
+    def _get_all_mems(self, memory_service):
+        """各冲动源共享的全量记忆缓存，委托给记忆存储层统一缓存。"""
+        return memory_service.list_all_cached()
 
     def _load_state(self):
         state = _load_state(self._state_path)
@@ -440,16 +440,16 @@ class ImpulseScheduler:
 
     # ── 泊松调度 ──────────────────────────────────────────
 
-    def start_source_workers(self, chroma_service=None, chat_history=None):
+    def start_source_workers(self, memory_service=None, chat_history=None):
         """为每个冲动源启动独立泊松线程。"""
         self._stop_event.clear()
         self._workers.clear()
 
         kwargs_map = {
-            "情绪趋势": {"chroma_service": chroma_service},
-            "时间节律": {"chroma_service": chroma_service, "temporal_pattern_index": self._temporal_index},
-            "随机漫游": {"chroma_service": chroma_service},
-            "好奇心": {"chroma_service": chroma_service},
+            "情绪趋势": {"memory_service": memory_service},
+            "时间节律": {"memory_service": memory_service, "temporal_pattern_index": self._temporal_index},
+            "随机漫游": {"memory_service": memory_service},
+            "好奇心": {"memory_service": memory_service},
         }
 
         for name, source_fn, avg_interval in self.SOURCE_CONFIG:
@@ -488,8 +488,8 @@ class ImpulseScheduler:
             try:
                 # 注入共享的全量记忆缓存，避免各源重复 list_all
                 loop_kwargs = dict(kwargs)
-                if "chroma_service" in loop_kwargs and loop_kwargs["chroma_service"] is not None:
-                    loop_kwargs["all_mems"] = self._get_all_mems(loop_kwargs["chroma_service"])
+                if "memory_service" in loop_kwargs and loop_kwargs["memory_service"] is not None:
+                    loop_kwargs["all_mems"] = self._get_all_mems(loop_kwargs["memory_service"])
                 # 只传非 None 的参数
                 clean_kwargs = {k: v for k, v in loop_kwargs.items() if v is not None}
                 result = source_fn(**clean_kwargs)

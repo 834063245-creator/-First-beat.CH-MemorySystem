@@ -20,8 +20,9 @@ class ChatHistory:
         self.max_memory = max_memory
         self.records = []
         self._lock = threading.Lock()
-        # 内存映射：timestamp → chroma_id，不动 JSONL
-        self._chroma_map: dict[str, str] = {}
+        # 内存映射：timestamp → memory_id（Qdrant point ID）
+        # 向后兼容：JSONL 中 chroma_id 和 memory_id 字段均可读取
+        self._memory_map: dict[str, str] = {}
         self._load()
 
     def _load(self):
@@ -73,14 +74,15 @@ class ChatHistory:
                 self.records = self.records[-self.max_memory:]
         atomic_append(self.path, json.dumps(record, ensure_ascii=False))
 
-    def update_chroma_id(self, timestamp: str, chroma_id: str):
-        """异步入库完成后回写 chroma_id 到 JSONL 文件和内存映射。"""
+    def update_memory_id(self, timestamp: str, memory_id: str):
+        """异步入库完成后回写 memory_id 到 JSONL 文件和内存映射。"""
         with self._lock:
-            self._chroma_map[timestamp] = chroma_id
-            # 同步更新内存记录，保证 get_context_by_chroma_id / V2 上下文注入能立即找到
+            self._memory_map[timestamp] = memory_id
             for rec in self.records:
                 if rec.get("timestamp") == timestamp:
-                    rec["chroma_id"] = chroma_id
+                    # 新字段名；同时保留 chroma_id 向后兼容旧 JSONL 读取逻辑
+                    rec["memory_id"] = memory_id
+                    rec["chroma_id"] = memory_id
                     break
 
     def delete_by_timestamp(self, timestamp: str) -> bool:
@@ -90,7 +92,7 @@ class ChatHistory:
             self.records = [r for r in self.records if r.get("timestamp") != timestamp]
             if len(self.records) == before:
                 return False
-            self._chroma_map.pop(timestamp, None)
+            self._memory_map.pop(timestamp, None)
             # 追加逻辑删除标记（不重写文件）
             try:
                 atomic_append(self.path, json.dumps(
@@ -102,29 +104,29 @@ class ChatHistory:
                 return False
         return True
 
-    def delete_by_chroma_id(self, chroma_id: str) -> bool:
-        """按 chroma_id 逻辑删除对话记录。"""
+    def delete_by_memory_id(self, memory_id: str) -> bool:
+        """按 memory_id 逻辑删除对话记录。"""
         with self._lock:
-            # 找到对应 timestamp
+            # 向后兼容：同时匹配 memory_id 和 chroma_id 字段
             target_ts = None
             for r in self.records:
-                if r.get("chroma_id") == chroma_id:
+                if r.get("memory_id") == memory_id or r.get("chroma_id") == memory_id:
                     target_ts = r.get("timestamp", "")
                     break
             if not target_ts:
                 return False
             before = len(self.records)
-            self.records = [r for r in self.records if r.get("chroma_id") != chroma_id]
+            self.records = [r for r in self.records
+                            if r.get("memory_id") != memory_id and r.get("chroma_id") != memory_id]
             if len(self.records) == before:
                 return False
-            # 追加逻辑删除标记
             try:
                 atomic_append(self.path, json.dumps(
                     {"action": "delete", "target_timestamp": target_ts},
                     ensure_ascii=False,
                 ))
             except Exception as e:
-                logger.error("逻辑删除标记写入失败（chroma_id）: %s", e)
+                logger.error("逻辑删除标记写入失败（memory_id）: %s", e)
                 return False
         return True
 
@@ -154,11 +156,11 @@ class ChatHistory:
                 ctx_after.append({"user": r.get("user_message", ""), "ai": r.get("llm_reply", "")})
             return {"context_before": ctx_before, "context_after": ctx_after}
 
-    def get_context_by_chroma_id(self, chroma_id: str, before: int = 3, after: int = 3) -> dict:
-        """通过 chroma_id 查找上下文。"""
+    def get_context_by_memory_id(self, memory_id: str, before: int = 3, after: int = 3) -> dict:
+        """通过 memory_id 查找上下文。向后兼容 chroma_id 字段。"""
         with self._lock:
             for i, rec in enumerate(self.records):
-                if rec.get("chroma_id") == chroma_id:
+                if rec.get("memory_id") == memory_id or rec.get("chroma_id") == memory_id:
                     start = max(0, i - before)
                     end = min(len(self.records), i + after + 1)
                     ctx_before = []
@@ -203,11 +205,11 @@ class ChatHistory:
             result = [dict(self.records[-1])]
         # 按时间正序返回
         result.reverse()
-        # 合并 chroma_id
+        # 合并 memory_id（向后兼容 chroma_id）
         for rec in result:
-            cid = self._chroma_map.get(rec["timestamp"]) or rec.get("chroma_id")
+            cid = self._memory_map.get(rec["timestamp"]) or rec.get("memory_id") or rec.get("chroma_id")
             if cid:
-                rec["chroma_id"] = cid
+                rec["memory_id"] = cid
         return result
 
     def get_records_snapshot(self) -> list[dict]:
@@ -223,15 +225,14 @@ class ChatHistory:
         """
         if token_budget is not None:
             return self._get_recent_by_token_budget(token_budget)
-        # 原有按条数逻辑
         with self._lock:
             recent = self.records[-n:]
             merged = []
             for r in recent:
                 rec = dict(r)
-                cid = self._chroma_map.get(rec["timestamp"]) or rec.get("chroma_id")
+                cid = self._memory_map.get(rec["timestamp"]) or rec.get("memory_id") or rec.get("chroma_id")
                 if cid:
-                    rec["chroma_id"] = cid
+                    rec["memory_id"] = cid
                 merged.append(rec)
         return merged
 
@@ -242,21 +243,17 @@ class ChatHistory:
         返回逐行字符串列表，可直接拼入 prompt 的【最近发生了什么】区。
         """
         lines = []
-        # 一次提取整段对话的话题关键词（替代逐块 N 次调用）
         all_text = " ".join(r.get("user_message", "") for r in records)
         all_keywords = extract_tags(all_text, topk=10) if all_text.strip() else []
         filtered_all = [kw for kw in all_keywords if len(kw) > 1 and kw not in
                         ("的", "了", "是", "我", "你", "他", "她", "它", "们", "在", "有", "和", "就", "不", "也", "这", "那", "都", "要")]
 
-        # 从后往前分组，仅第一组（最近）插入话题标签
         for chunk_start in range(len(records), 0, -chunk_size):
             chunk = records[max(0, chunk_start - chunk_size):chunk_start]
             if not chunk:
                 continue
-            # 只在最近一组插入话题标签
             if chunk_start == len(records) and len(filtered_all) >= 3:
                 lines.append(f"[话题：{', '.join(filtered_all[:3])}]")
-            # 组内记录按原始顺序（时间正序）输出
             for rec in chunk:
                 ts = rec.get("timestamp", "")
                 if len(ts) >= 16:

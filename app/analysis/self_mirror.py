@@ -3,7 +3,7 @@
 纯读操作, 零 LLM 调用, 不落盘。
 
 管线:
-  当前用户情绪 → 查 AI ChromaDB (按 valence 范围) → 取用户下一轮反应
+  当前用户情绪 → 查 AI 记忆库 (按 valence 范围) → 取用户下一轮反应
   → analyze_emotion_2d() 标记有效性 → 分散采样 → 渲染为 prompt 段
 """
 import logging
@@ -29,7 +29,7 @@ class SelfMirror:
     def build_mirror(
         self,
         user_emotion: dict,
-        ai_chroma,
+        ai_memory,
         chat_history,
         *,
         limit: int = 3,
@@ -38,29 +38,29 @@ class SelfMirror:
 
         Args:
             user_emotion: {"valence": float, "arousal": float, "category": str}
-            ai_chroma: ChromaService (AI 记忆库)
+            ai_memory: QdrantService (AI 记忆库)
             chat_history: ChatHistory 实例
             limit: 最多几条
 
         Returns:
             格式化的自我镜像字符串, 或 ""
         """
-        if not ai_chroma or not chat_history:
+        if not ai_memory or not chat_history:
             return ""
 
         valence = user_emotion.get("valence", 0)
 
-        # 1. 从 AI ChromaDB 中按情绪 valence 范围筛选
+        # 1. 从 AI 记忆库中按情绪 valence 范围筛选
         try:
-            all_ai = ai_chroma.list_all()
+            all_ai = ai_memory.list_all()
         except Exception as exc:
-            logger.debug("SelfMirror: AI ChromaDB 读取失败: %s", exc)
+            logger.debug("SelfMirror: AI 记忆库读取失败: %s", exc)
             return ""
 
         if not all_ai:
             return ""
 
-        # Python 侧按 valence 接近度排序 (AI 记忆量小, 无需 ChromaDB where)
+        # Python 侧按 valence 接近度排序 (AI 记忆量小, 无需后端 where)
         valence_range = 0.3
         candidates = []
         for mem in all_ai:

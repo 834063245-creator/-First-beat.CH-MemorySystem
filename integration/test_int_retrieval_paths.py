@@ -1,7 +1,7 @@
 """链路 2：检索通路验证集成测试。
 
 验证：retrieve_all 各检索路径在真实数据下能返回结果。
-使用真实 ChromaDB + 真实 embedding，仅 mock extract_tags。
+使用真实 Qdrant + 真实 embedding，仅 mock extract_tags。
 """
 import time
 import pytest

@@ -2,7 +2,7 @@
 
 包含：
   - sys.path 注入（原逻辑）
-  - isolated_env fixture：临时隔离 ChromaDB 环境
+  - isolated_env fixture：临时隔离 Qdrant 环境
   - seeded_env fixture：预写入 12+ 条标准记忆的隔离环境
   - seed_memories() 辅助函数
   - 各组件级隔离 fixture（链路一用）
@@ -58,11 +58,11 @@ def temp_data_dir():
 
 
 @pytest.fixture
-def isolated_chroma_service(temp_data_dir):
-    """隔离的 ChromaService 实例，使用临时目录。"""
-    from app.memory.chroma import ChromaService
-    svc = ChromaService(
-        persist_dir=os.path.join(temp_data_dir, "chroma"),
+def isolated_memory_service(temp_data_dir):
+    """隔离的记忆存储（QdrantService）实例，使用临时目录。"""
+    from app.memory.qdrant import QdrantService
+    svc = QdrantService(
+        persist_dir=os.path.join(temp_data_dir, "qdrant"),
         collection_name=f"test_memories_{random.randint(0, 99999)}",
     )
     yield svc
@@ -73,11 +73,11 @@ def isolated_chroma_service(temp_data_dir):
 
 
 @pytest.fixture
-def isolated_ai_chroma_service(temp_data_dir):
-    """隔离的 AI ChromaService 实例。"""
-    from app.memory.chroma import ChromaService
-    svc = ChromaService(
-        persist_dir=os.path.join(temp_data_dir, "ai_chroma"),
+def isolated_ai_memory_service(temp_data_dir):
+    """隔离的 AI 记忆存储（QdrantService）实例。"""
+    from app.memory.qdrant import QdrantService
+    svc = QdrantService(
+        persist_dir=os.path.join(temp_data_dir, "ai_qdrant"),
         collection_name=f"test_ai_memories_{random.randint(0, 99999)}",
     )
     yield svc
@@ -222,7 +222,7 @@ def server_alive():
 
 @pytest.fixture
 def isolated_env():
-    """临时隔离环境 — 独立的 ChromaDB + 数据目录 + 完整 AppContext。
+    """临时隔离环境 — 独立的 Qdrant + 数据目录 + 完整 AppContext。
 
     每个测试获得全新的空数据库，测试结束后自动清理。
     默认启用 BENCHMARK_MODE（快速入库，跳过 LLM 摘要）。
@@ -322,15 +322,15 @@ def _wait_store_queue(ctx, timeout: float = 2.0):
 
 
 def get_all_memory_ids(ctx) -> list[str]:
-    """获取 ChromaDB 中所有记忆 ID。"""
-    all_mems = ctx.chroma_service.list_all()
+    """获取 Qdrant 中所有记忆 ID。"""
+    all_mems = ctx.memory_service.list_all()
     return [m["id"] for m in all_mems]
 
 
 def get_memory_by_id(ctx, mid: str) -> dict | None:
     """按 ID 获取完整记忆记录。"""
     try:
-        result = ctx.chroma_service._collection.get(
+        result = ctx.memory_service._collection.get(
             ids=[mid],
             include=["documents", "metadatas", "embeddings"],
         )
@@ -527,7 +527,7 @@ def seeded_env_evolution(isolated_env):
 # ═══════════════════════════════════════════════════════════════════
 
 def write_memories_with_topics(ctx, memories: list[dict], topic_label: str = ""):
-    """写入一批记忆到 ChromaDB 并等待入库完成。
+    """写入一批记忆到 Qdrant 并等待入库完成。
 
     Args:
         ctx: AppContext 实例
@@ -559,7 +559,7 @@ def get_memory_doc_hash(ctx, mid: str) -> str:
     """获取记忆 document 字段的 MD5 哈希。"""
     import hashlib
     try:
-        result = ctx.chroma_service._collection.get(
+        result = ctx.memory_service._collection.get(
             ids=[mid], include=["documents"],
         )
         if result["ids"] and result.get("documents"):
@@ -573,7 +573,7 @@ def get_memory_doc_hash(ctx, mid: str) -> str:
 def get_memory_meta(ctx, mid: str) -> dict:
     """获取记忆的完整 metadata 字典。"""
     try:
-        result = ctx.chroma_service._collection.get(
+        result = ctx.memory_service._collection.get(
             ids=[mid], include=["metadatas"],
         )
         if result["ids"]:
@@ -701,7 +701,7 @@ def seeded_env_background(isolated_env_background):
             # 过去 N 天
             past_ts = now_ts - 86400 * ((i - 4) * 2 + 1)
         try:
-            ctx.chroma_service._collection.update(
+            ctx.memory_service._collection.update(
                 ids=[mid],
                 metadatas=[{"timestamp": past_ts}],
             )

@@ -1,6 +1,6 @@
 """全管线审计 — 覆盖现有单元测试够不到的集成层。
 
-测试前提：ChromaDB + Ollama embedding 可用（与 test_audit_adversarial 相同）。
+测试前提：Qdrant + Ollama embedding 可用（与 test_audit_adversarial 相同）。
 测试数据主题匹配真实记忆库的高频话题：前辈/版本、格式测试、记忆系统、生物钟。
 """
 
@@ -18,7 +18,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from app.memory.chroma import ChromaService
+from app.memory.qdrant import QdrantService
 from app.memory.inverted import InvertedIndex
 from app.config.settings import EMBED_MODELS, DEFAULT_EMBED_MODEL
 
@@ -190,9 +190,9 @@ class _EmptyChatHistory:
 class _TestPipelineContext:
     """替代 AppContext 的测试用上下文。提供 pipeline 所需的最少功能。"""
 
-    def __init__(self, data_dir, chroma_service, inverted_index, chat_history=None):
+    def __init__(self, data_dir, memory_service, inverted_index, chat_history=None):
         self.data_dir = data_dir
-        self.chroma_service = chroma_service
+        self.memory_service = memory_service
         self.inverted_index = inverted_index
         self.chat_history = chat_history or _EmptyChatHistory()
         self.personality_store = MagicMock()
@@ -223,18 +223,18 @@ def _ollama_available():
 
 @pytest.fixture(scope="module")
 def pipeline_ctx():
-    """创建测试环境：临时 ChromaDB + 测试数据 + InvertedIndex + ChatHistory。"""
+    """创建测试环境：临时 Qdrant + 测试数据 + InvertedIndex + ChatHistory。"""
     if not _ollama_available():
         pytest.skip("Ollama 未运行，跳过全管线测试。启动 Ollama 后再试。")
 
     from app.llm.embed import local_embed, local_embed_batch
-    from app.memory.chroma import ChromaService
+    from app.memory.qdrant import QdrantService
 
     tmp_dir = tempfile.mkdtemp(prefix="audit_pipeline_")
-    chroma_dir = os.path.join(tmp_dir, "chroma")
+    chroma_dir = os.path.join(tmp_dir, "qdrant")
     os.makedirs(chroma_dir, exist_ok=True)
 
-    cs = ChromaService(persist_dir=chroma_dir)
+    cs = QdrantService(persist_dir=chroma_dir)
 
     memory_ids = []
     chat_records = []
@@ -289,7 +289,7 @@ def pipeline_ctx():
 
     ctx = _TestPipelineContext(
         data_dir=tmp_dir,
-        chroma_service=cs,
+        memory_service=cs,
         inverted_index=inv_idx,
         chat_history=chat_hist,
     )
@@ -435,7 +435,7 @@ class TestCognitiveStateOutput:
         from app.retrieval.pipeline import run_chat_retrieval
 
         orch = CircuitOrchestrator(
-            chroma_service=pipeline_ctx.chroma_service,
+            memory_service=pipeline_ctx.memory_service,
             impulse_scheduler=MagicMock(),
             dmn_engine=MagicMock(),
             chat_history=pipeline_ctx.chat_history,
@@ -496,7 +496,7 @@ class TestTimePatternRecall:
         from app.memory.temporal import TemporalPatternIndex
 
         tpi = TemporalPatternIndex(data_dir=pipeline_ctx.data_dir)
-        all_mems = pipeline_ctx.chroma_service.list_all()
+        all_mems = pipeline_ctx.memory_service.list_all()
         tpi.update(all_mems)
 
         patterns = tpi.query()

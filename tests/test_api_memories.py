@@ -18,19 +18,19 @@ def _make_fake_ctx():
     ctx = MagicMock()
     ctx.data_dir = "/tmp/test_data"
 
-    # chroma_service
-    ctx.chroma_service.stats.return_value = {"total": 42, "by_source": {"chat": 40, "benchmark": 2}}
-    ctx.chroma_service.list_memories.return_value = {
+    # memory_service
+    ctx.memory_service.stats.return_value = {"total": 42, "by_source": {"chat": 40, "benchmark": 2}}
+    ctx.memory_service.list_memories.return_value = {
         "items": [{"id": "m1", "title": "记忆1", "hit_count": 5}],
         "total": 1, "page": 1, "per_page": 20,
     }
-    ctx.chroma_service.get_memory_detail.return_value = {
+    ctx.memory_service.get_memory_detail.return_value = {
         "id": "m1", "summary": "测试摘要", "document": "完整文档", "tags": ["测试"],
         "hit_count": 3, "emotion": "neutral",
     }
-    ctx.chroma_service.delete_memory = MagicMock()
-    ctx.chroma_service.update_memory = MagicMock()
-    ctx.chroma_service._collection.query.return_value = {
+    ctx.memory_service.delete_memory = MagicMock()
+    ctx.memory_service.update_memory = MagicMock()
+    ctx.memory_service._collection.query.return_value = {
         "ids": [["m1"]],
         "documents": [["完整文档"]],
         "metadatas": [[{"summary": "测试", "tags": "测试, memory", "emotion": "neutral",
@@ -39,14 +39,14 @@ def _make_fake_ctx():
     }
 
     # chat_history
-    ctx.chat_history.get_context_by_chroma_id.return_value = {
+    ctx.chat_history.get_context_by_memory_id.return_value = {
         "context_before": [], "context_after": [],
     }
 
     # co_tracker / inverted_index
     ctx.co_tracker.remove = MagicMock()
     ctx.inverted_index.remove = MagicMock()
-    ctx.chat_history.delete_by_chroma_id = MagicMock()
+    ctx.chat_history.delete_by_memory_id = MagicMock()
 
     return ctx
 
@@ -105,7 +105,7 @@ class TestMemoriesDetail:
         from app.api.app import app
         from app.api.deps import get_user_context
         fake = _make_fake_ctx()
-        fake.chroma_service.get_memory_detail.return_value = None
+        fake.memory_service.get_memory_detail.return_value = None
         app.dependency_overrides[get_user_context] = lambda: fake
         resp = client.get("/api/memories/nonexistent")
         assert resp.status_code == 404

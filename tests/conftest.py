@@ -2,7 +2,7 @@
 
 包含：
   - sys.path 注入（原逻辑）
-  - isolated_env fixture：临时隔离 ChromaDB 环境
+  - isolated_env fixture：临时隔离 Qdrant 环境
   - seeded_env fixture：预写入 12+ 条标准记忆的隔离环境
   - seed_memories() 辅助函数
 """
@@ -250,7 +250,7 @@ SUPPRESSED_SEED = [
 def seed_memories(ctx, memories: list[dict], timestamp_base: str = "2026-06-01 10:00"):
     """向 AppContext 写入一批标准记忆。
 
-    每条记忆走完整的 _store_conversation 管线（embed → tag → ChromaDB → 倒排索引）。
+    每条记忆走完整的 _store_conversation 管线（embed → tag → Qdrant → 倒排索引）。
 
     Args:
         ctx: AppContext 实例
@@ -268,7 +268,7 @@ def seed_memories(ctx, memories: list[dict], timestamp_base: str = "2026-06-01 1
         # 在线程池外执行，确保入库完成
         ctx._store_conversation(mem["user"], mem["ai"], ts_str)
         ids.append(None)  # _store_conversation 不返回 id，通过检索回查
-        time.sleep(0.05)  # 微延迟避免 ChromaDB 写入竞态
+        time.sleep(0.05)  # 微延迟避免 Qdrant 写入竞态
     # 等待队列 worker 处理完
     time.sleep(0.3)
     return ids
@@ -286,15 +286,15 @@ def _wait_store_queue(ctx, timeout: float = 2.0):
 
 
 def get_all_memory_ids(ctx) -> list[str]:
-    """获取 ChromaDB 中所有记忆 ID。"""
-    all_mems = ctx.chroma_service.list_all()
+    """获取 Qdrant 中所有记忆 ID。"""
+    all_mems = ctx.memory_service.list_all()
     return [m["id"] for m in all_mems]
 
 
 def get_memory_by_id(ctx, mid: str) -> dict | None:
     """按 ID 获取完整记忆记录。"""
     try:
-        result = ctx.chroma_service._collection.get(
+        result = ctx.memory_service._collection.get(
             ids=[mid],
             include=["documents", "metadatas", "embeddings"],
         )
@@ -315,7 +315,7 @@ def get_memory_by_id(ctx, mid: str) -> dict | None:
 
 @pytest.fixture
 def isolated_env():
-    """临时隔离环境 — 独立的 ChromaDB + 数据目录。
+    """临时隔离环境 — 独立的 Qdrant + 数据目录。
 
     每个测试获得全新的空数据库，测试结束后自动清理。
     """
