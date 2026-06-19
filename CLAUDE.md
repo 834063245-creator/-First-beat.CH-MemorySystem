@@ -1,7 +1,7 @@
 # 初痕 (First Beat) CH Memory System
 
 > **这是项目的唯一权威文档。** 其他所有 .md 都以此文档为准。Agent 启动时自动加载。
-> 修改代码后必须同步更新本文档。最后修订 2026-06-19 (Phase 5 完成：ChromaDB 移除，Qdrant 唯一后端)。
+> 修改代码后必须同步更新本文档。最后修订 2026-06-20 (认知五连线落地 + 认知追踪器)。
 
 ---
 
@@ -112,7 +112,7 @@ d:\First Beat CH Memory System\
 │   │
 │   ├── background/                 # 后台节律系统
 │   │   ├── consolidation.py        #   ★ ConsolidationEngine：空闲+4h/24h 周期认知巩固 (1071行)
-│   │   ├── impulse.py              #   ★ ImpulseScheduler：4源泊松冲动信号→LLM内心独白 (565行)
+│   │   ├── impulse.py              #   ★ ImpulseScheduler：5源泊松冲动信号→LLM内心独白 [连线⑤]
 │   │   └── lifecycle.py            #   后台线程生命周期管理：统一启停+崩溃重启 (115行)
 │   │
 │   ├── analysis/                   # 分析层：零 LLM 统计推断
@@ -182,6 +182,8 @@ d:\First Beat CH Memory System\
 │   ├── verify_infra.py             #   Phase 0: Qdrant+vLLM 连通性验证 (270行)
 │   │                               #   (migrate_to_qdrant.py / phase0_5_verify.py 已随 Phase 5 删除)
     ├── stress_test_1m.py            #   Phase 4: 百万级压力测试 性能基准
+│   ├── verify_cognitive_wiring.py  #   认知五连线 smoke 验证 (20 项检查)
+│   ├── cognitive_trace.py          #   认知追踪器：场景推演+冲突检测+LLM 影响估算
 │   └── pre-push                    #   pre-push hook 备份：push 前跑 pytest tests/
 │
 ├── .claude/                        # ========== Claude Code 配置 ==========
@@ -229,12 +231,16 @@ d:\First Beat CH Memory System\
 │   ├─ intent = classify_intent(user_msg)           # 7类意图分类，~50μs
 │   ├─ emotion = analyze_emotion(user_msg)           # Russell 2D valence+arousal
 │   ├─ entities = extract_entities(user_msg)         # Ollama qwen2.5:3b + 正则
-│   └─ gate = basal_ganglia_gate(intent, emotion)    # 门控：决定回应模式
+│   └─ basal_ganglia_gate(...)                       # [连线②] 画像情绪→语气收敛
+│                                                   # [连线④] 行为预测→响应模式预调
 │
 ├─ 3. 实时画像更新 [app/portrait/writer.py]
-│   └─ realtime_update()                             # <100ms, 无LLM, 更新dim2/4
+│   ├─ realtime_update()                             # <100ms, 无LLM, 更新dim2/4
+│   └─ [连线①] 消费 error_reports → 关联条目降 confidence   # 2026-06-20
 │
 ├─ 4. 检索 [app/retrieval/pipeline.py]
+│   ├─ [连线④] BehaviorPredictor.predict() → mirror_prediction  # 缓存供门控用
+│   ├─ [连线③] compute_portrait_boost_map() → weave_context 阈值放宽
 │   ├─ run_chat_retrieval()
 │   │   ├─ 加载 DMN 预热缓存
 │   │   ├─ retrieve_all() ─── 9路并行检索 ──────┐
@@ -281,7 +287,7 @@ d:\First Beat CH Memory System\
 │   ├─ 流式返回给用户
 │   └─ 触发生命周期钩子:
 │       ├─ _store_conversation() → Qdrant 入库 (异步队列)
-│       ├─ pulse() → 冲动信号检查
+│       ├─ pulse() → 冲动信号检查 [连线⑤ 画像探索冲动参与]
 │       ├─ sync_turn() → 对话历史追加
 │       └─ DMN ticker → 空闲检测→巩固调度
 │
@@ -449,7 +455,7 @@ message[last]: user         ← 当前消息
 | `impulse_consumer_{dir}` | context.py | 引擎不再主动开口 |
 | `dmn_ticker_{dir}` | context.py | 巩固+画像更新全部停止 |
 | `ai_desensitize_{dir}` | context.py | AI 情绪淡化停止 |
-| 4个冲动源泊松线程 | impulse.py | 冲动信号不再产生 |
+| 5个冲动源泊松线程 | impulse.py | 冲动信号不再产生 [连线⑤] |
 
 **不能动**: daemon=True 属性、`_stop_event` 检查逻辑、DMN ticker 合并逻辑。
 
@@ -524,6 +530,8 @@ python scripts/verify_infra.py         # Phase 0: Qdrant+vLLM 连通性验证
 python scripts/verify_infra.py --quick #   仅快速验证
 python scripts/stress_test_1m.py           # Phase 4: 百万级压力测试 (默认 10K)
 python scripts/stress_test_1m.py --count 100000 --server http://localhost:6333  # 10万条服务器模式
+python scripts/verify_cognitive_wiring.py   # 认知五连线 smoke 验证 (20 项，改完连线就跑)
+python scripts/cognitive_trace.py            # 认知追踪器：造场景→推演→冲突检测→估算 LLM 影响
 BENCHMARK_MODE=true python run.py      # Benchmark 模式
 ```
 
@@ -546,6 +554,19 @@ cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 ---
 
 ## 8. 当前状态
+
+### 最近完成 (2026-06-20)
+
+- ✅ **认知层五条连线落地** — 画像·反馈·预测·门控·冲动不再孤立运行：
+  - **连线① Feedback→Portrait**: 用户纠错("你记错了")→ `feedback.py:get_recent_corrected_ids()` → `PortraitWriter.realtime_update()` 降关联条目 confidence + 标 PENDING
+  - **连线② Portrait→Gate**: 画像 usr6 情绪趋势 → `basal_ganglia_gate()` 收敛语气 (warm→soft) + 拉高 formality
+  - **连线③ Portrait→weave_context**: 画像热度 tag → `compute_portrait_boost_map()` → `weave_context()` 分层阈值乘 tag_multiplier → 热点记忆更容易进 fact 层
+  - **连线④ Predictor→Gate**: `BehaviorPredictor` 预测 → `basal_ganglia_gate(mirror_prediction=)` 预调 response_mode
+  - **连线⑤ Portrait→Impulse**: 新增第 5 泊松冲动源 `source_portrait_curiosity()` — 画像 usr2/usr5/usr6 → 定向探索冲动
+  - 改动 ~150 行，5 文件 (feedback.py / writer.py / circuit.py / impulse.py / context.py)，165 已有测试全绿
+  - **冲突分析**：② 和 ④ 都修改 tone，但②先执行收敛后④的 caring 分支(需 tone==warm)不再触发 — 合理，长期低落时不应强行 caring
+  - **认知追踪器** `scripts/cognitive_trace.py`：造假用户→逐线推演→冲突检测→估算 LLM prompt 变化。以后改阈值/关键词/boost 值前先跑一把看效果。
+  - **Smoke 验证** `scripts/verify_cognitive_wiring.py`：20 项端到端检查，改完连线就跑。
 
 ### 最近完成 (2026-06-19)
 
@@ -602,6 +623,79 @@ cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 
 - ✅ co_occurrence 路径不一致 → CoOccurrenceTracker.export_for_symmetry()
 - ✅ PersonaSymmetry 直接读文件 → 改用 from_dicts=True
+
+---
+
+## 9. 认知层五连线 — 架构说明
+
+> **五条连线让画像系统从"只记录不参与"变成引擎决策的活跃参与者。**
+
+### 9.1 连线总览
+
+```
+用户纠错 ──①──→ 画像 confidence ↓
+画像情绪 ──②──→ 门控语气收敛
+画像热度 ──③──→ 检索阈值放宽
+行为预测 ──④──→ 响应模式预调
+画像标签 ──⑤──→ 定向探索冲动
+```
+
+| 连线 | 数据源 | 目标 | 触发频率 | 文件 |
+|------|--------|------|---------|------|
+| ① Feedback→Portrait | `error_reports.jsonl` | `PortraitEntry.confidence` | 每轮对话 | feedback.py, writer.py |
+| ② Portrait→Gate | `usr6` 情绪条目 | `GatingDecision.tone` | 每轮对话 | circuit.py |
+| ③ Portrait→weave | `compute_portrait_boost_map()` | 检索分层阈值 | 每轮对话 | circuit.py |
+| ④ Predictor→Gate | `BehaviorPredictor` | `GatingDecision.response_mode` | 每轮对话 | circuit.py |
+| ⑤ Portrait→Impulse | usr2/usr5/usr6 标签 | 泊松冲动(λ=900s) | 后台线程 | impulse.py, context.py |
+
+### 9.2 执行顺序与冲突
+
+五条连线在 `ChatCircuit.process()` 中的执行顺序：
+
+```
+process():
+  ① realtime_update() 消费反馈 → 调整画像条目
+  ④ mirror_prediction = BehaviorPredictor.predict() → 缓存结果
+  ③ compute_portrait_boost_map() → 传入 weave_context()
+  ② basal_ganglia_gate(ctx_obj=..., mirror_prediction=...) → 门控
+  ⑤ 后台线程独立运行，不参与 process()
+```
+
+**已知冲突与化解**：
+- **② vs ④ tone 冲突**：②先执行，从 usr6 收敛 tone=soft；④的 caring 分支检查 `tone=="warm"` 才触发 → ②收敛后④自然跳过。结论：**长期低落时不会强行 caring，行为正确。**
+- **③ boost vs ① 降权**：①把条目标 PENDING 后，③的 boost map 仍按原值 boost（未实时同步 confidence 下降）。**暂未出问题，但改 boost 计算时需注意。**
+
+### 9.3 认知追踪器 (`scripts/cognitive_trace.py`)
+
+**用途**：改任何认知层参数前，先跑一把看效果。
+
+**原理**：
+1. 造假用户（画像条目 + 历史记忆 + 纠错记录）
+2. 逐条连线调用真实引擎函数，记录 before/after
+3. 检测多线同时修改同一变量的冲突
+4. 估算最终 LLM prompt 的变化
+
+**用法**：
+```bash
+python scripts/cognitive_trace.py
+```
+
+输出包括：场景设定 → 五线逐条推演 → 冲突/重叠分析 → LLM prompt 影响估算表格。
+
+**什么时候跑**：
+- 改了 boost 值、负面关键词、冲动间隔等参数
+- 新增/删除连线
+- 怀疑某条连线没生效时看 trace 输出
+
+### 9.4 连线 Smoke 验证 (`scripts/verify_cognitive_wiring.py`)
+
+**用途**：改完连线代码后快速确认 20 项基础功能没断。
+
+```bash
+python scripts/verify_cognitive_wiring.py   # 预期 20/20
+```
+
+**覆盖**：纠错降权、门控收敛、阈值放宽、预测预调、冲动产出。
 
 ---
 
