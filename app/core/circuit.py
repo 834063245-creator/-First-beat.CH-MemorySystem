@@ -302,7 +302,9 @@ class CircuitOrchestrator:
         _portrait_boost = {}
         try:
             if hasattr(ctx_obj, "portrait") and ctx_obj.portrait is not None:
-                _portrait_boost = ctx_obj.portrait.compute_portrait_boost_map()
+                result = ctx_obj.portrait.compute_portrait_boost_map()
+                if isinstance(result, dict):
+                    _portrait_boost = result
         except Exception:
             pass
 
@@ -730,7 +732,7 @@ class CircuitOrchestrator:
         MIN_FACT_DIST = 0.30  # 语义距离阈值
 
         # ── 画像 boost 预计算：tag → 调制系数 ──
-        _pboost = portrait_boost or {}
+        _pboost = portrait_boost if isinstance(portrait_boost, dict) else {}
 
         for m in active:
             mid = m.get("id", "")
@@ -742,7 +744,10 @@ class CircuitOrchestrator:
             tag_multiplier = 1.0
             if _pboost:
                 for tag in m.get("_tags", []):
-                    tag_multiplier = max(tag_multiplier, 1.0 + _pboost.get(tag, 0.0))
+                    try:
+                        tag_multiplier = max(tag_multiplier, 1.0 + float(_pboost.get(tag, 0.0)))
+                    except (TypeError, ValueError):
+                        pass
 
             # story line 里的：非 stale → fact，stale → stale_context
             if mid in used_in_narrative:
