@@ -460,9 +460,12 @@ MODULE_DIRECT_CONFIG: list[ModuleSteeringConfig] = [
         name="self_mirror",         layer_start=20, layer_end=27,  shape="late",
         alpha=0.05, extractor="mirror"),
 
-    # ═══ 近输出层: 门控+预测 (L24-28) ═══
+    # ═══ 中深层→输出层: 门控语气 (L16-28, gradient_up) ═══
+    # Calibrated 2026-06-21: gradient_up produces strongest empathetic opening
+    # ("不要怀疑自己") vs late ("加油!" closing). Broader range lets tone
+    # influence emotional framing earlier while strengthening at output layers.
     ModuleSteeringConfig(
-        name="gate_tone",           layer_start=24, layer_end=28,  shape="late",
+        name="gate_tone",           layer_start=16, layer_end=28,  shape="gradient_up",
         alpha=0.12, extractor="tone"),
     ModuleSteeringConfig(
         name="behavior_predictor",  layer_start=24, layer_end=28,  shape="late",
