@@ -29,6 +29,7 @@ import numpy as np
 from app.config.settings import (
     QWEN_GGUF_PATH,
     STEERING_ENABLED,
+    STEERING_DIRECT,
     STEERING_STRENGTH,
     MINGW_BIN_DIR,
 )
@@ -318,10 +319,15 @@ class SteeringInjector:
             return {"content": "[错误：本地模型未加载，请检查 QWEN_GGUF_PATH 配置]", "tool_calls": []}
 
         if STEERING_ENABLED:
-            segments = build_steering_segments(utterance_spec)
-            active = sum(1 for v in segments.values() if v and v.strip())
-            logger.debug("steering segments: %d/%d active", active, len(segments))
-            content = self._generate_with_cvec(user_message, segments, max_tokens, temperature)
+            if STEERING_DIRECT:
+                content = self._generate_with_cvec_direct(
+                    user_message, utterance_spec, max_tokens, temperature)
+            else:
+                segments = build_steering_segments(utterance_spec)
+                active = sum(1 for v in segments.values() if v and v.strip())
+                logger.debug("steering segments: %d/%d active", active, len(segments))
+                content = self._generate_with_cvec(
+                    user_message, segments, max_tokens, temperature)
         else:
             content = self._generate_plain(user_message, max_tokens, temperature)
 
@@ -339,9 +345,13 @@ class SteeringInjector:
             return
 
         if STEERING_ENABLED:
-            segments = build_steering_segments(utterance_spec)
-            yield from self._generate_with_cvec_stream(
-                user_message, segments, max_tokens, temperature)
+            if STEERING_DIRECT:
+                yield from self._generate_with_cvec_direct_stream(
+                    user_message, utterance_spec, max_tokens, temperature)
+            else:
+                segments = build_steering_segments(utterance_spec)
+                yield from self._generate_with_cvec_stream(
+                    user_message, segments, max_tokens, temperature)
         else:
             yield from self._generate_plain_stream(
                 user_message, max_tokens, temperature)
@@ -399,6 +409,79 @@ class SteeringInjector:
         from llama_cpp import llama_cpp as llc
         llc.llama_set_adapter_cvec(
             self._model.ctx, None, 0, self._n_embd, 0, 0)
+
+    # ── 直接向量注入 (STEERING_DIRECT=true) ────────────────
+
+    def _setup_cvec_direct(self, utterance_spec) -> bool:
+        """直接向量注入 — 绕过文本中转。
+
+        16 模块各从结构化数据产出 d_model 向量 → TrajectoryShaper 展开
+        → 累加 → 展平 → llama_set_adapter_cvec。
+
+        Returns:
+            True if CVEC was set successfully.
+        """
+        from app.llm.steering_direct import (
+            build_steering_trajectory, trajectory_to_cvec_buffer,
+        )
+        from llama_cpp import llama_cpp as llc
+
+        try:
+            trajectory = build_steering_trajectory(
+                utterance_spec,
+                n_layer=self._n_layer,
+                n_embd=self._n_embd,
+                global_strength=STEERING_STRENGTH,
+            )
+        except Exception:
+            logger.warning("build_steering_trajectory failed", exc_info=True)
+            return False
+
+        # 检查是否有非零 steering
+        if not np.any(trajectory):
+            logger.debug("_setup_cvec_direct: zero trajectory, skipping")
+            return False
+
+        buf = trajectory_to_cvec_buffer(trajectory)
+        n_total = self._n_layer * self._n_embd
+        data = (ctypes.c_float * n_total)(*buf.tolist())
+        ret = llc.llama_set_adapter_cvec(
+            self._model.ctx, data, n_total, self._n_embd, 1, self._n_layer)
+
+        if ret != 0:
+            logger.warning("llama_set_adapter_cvec returned %d (direct mode)", ret)
+        return ret == 0
+
+    def _generate_with_cvec_direct(self, user_message: str, utterance_spec,
+                                   max_tokens: int, temperature: float) -> str:
+        prompt = f"用户消息: {user_message}\n回复:"
+        with self._generate_lock:
+            cvec_ok = self._setup_cvec_direct(utterance_spec)
+            try:
+                result = self._model.create_completion(
+                    prompt, max_tokens=max_tokens, temperature=temperature,
+                    echo=False, stream=False)
+            finally:
+                if cvec_ok:
+                    self._clear_cvec()
+        return result["choices"][0].get("text", "")
+
+    def _generate_with_cvec_direct_stream(self, user_message: str, utterance_spec,
+                                          max_tokens: int, temperature: float):
+        prompt = f"用户消息: {user_message}\n回复:"
+        with self._generate_lock:
+            cvec_ok = self._setup_cvec_direct(utterance_spec)
+            try:
+                stream = self._model.create_completion(
+                    prompt, max_tokens=max_tokens, temperature=temperature,
+                    echo=False, stream=True)
+                for chunk in stream:
+                    token = chunk["choices"][0].get("text", "")
+                    if token:
+                        yield ("content", token)
+            finally:
+                if cvec_ok:
+                    self._clear_cvec()
 
     # ── 生成（内部）───────────────────────────────────────
 

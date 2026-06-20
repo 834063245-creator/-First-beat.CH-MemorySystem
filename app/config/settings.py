@@ -121,6 +121,12 @@ STEERING_STRENGTH = float(os.getenv("STEERING_STRENGTH", "1.0"))
 # MinGW DLL 目录（Windows llama-cpp-python 运行时依赖）
 MINGW_BIN_DIR = os.getenv("MINGW_BIN_DIR", "D:/mingw64/bin")
 
+# 直接向量注入模式 — 绕过文本中转，模块结构化数值直出残差向量
+# STEERING_DIRECT=true 时走 app/llm/steering_direct.py 的 build_steering_trajectory()
+# STEERING_DIRECT=false 时走原有的 build_steering_segments() 文本路径
+# 默认关闭（实验特性），开启需同时 LOCAL_LLM_MODE=true + STEERING_ENABLED=true
+STEERING_DIRECT = os.getenv("STEERING_DIRECT", "false").lower() == "true"
+
 # 注：OLLAMA_MODELS 环境变量仅在 Ollama 服务端进程生效，
 # Python 端设置无效。保留此变量供子进程 spawn 时继承。
 _OLLAMA_MODELS = os.getenv("OLLAMA_MODELS")

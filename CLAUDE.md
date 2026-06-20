@@ -101,8 +101,9 @@ d:\First Beat CH Memory System\
 │   │
 │   ├── llm/                        # LLM 适配层
 │   │   ├── deepseek.py             #   ★ LLMClient：主 LLM 调用，10段消息结构，前缀缓存优化 (1051行)
-│   │   ├── steering.py             #   ★ SteeringInjector：本地 CVEC 残差注入引擎 (310行，NEW 2026-06-21)
-│   │   ├── embed.py                #   ★ 嵌入层：local_embed()，两级缓存，qwen_embed 3584维 (190行，v3: 切自 bge-m3)
+│   │   ├── steering.py             #   ★ SteeringInjector：本地 CVEC 残差注入引擎 (文本路径, 528行)
+│   │   ├── steering_direct.py       #   ★★ SteeringDirect：绕过文本中转，结构化数值直出残差向量 (530行, NEW 2026-06-21)
+│   │   ├── embed.py                #   ★ 嵌入层：local_embed()，两级缓存，qwen_embed 3584维 (193行，v3: 切自 bge-m3)
 │   │   ├── qwen_embed.py           #   ★ qwen2.5 独立嵌入模型，查表 351x 加速，检索/入库/注入统一后端 (221行)
 │   │   └── local.py                #   本地 LLM 封装 (qwen2.5:7b)，用于摘要生成 (118行)
 │   │
@@ -192,6 +193,7 @@ d:\First Beat CH Memory System\
 │   ├── steering_phase7_layer2_cvec.py  # ★ Phase 7: 残差分层注入（llama_set_adapter_cvec）
 │   ├── steering_phase7_debug.py        # Phase 7: 调试/扫参（α + 层号）
 │   ├── steering_phase8_layered.py      # ★★ Phase 8: 16 模块分层注入（15 向量 → L3-26）
+│   ├── verify_steering_direct.py   # ★ SteeringDirect smoke 验证：7 项检测，概念向量语义+trajectory
 │   └── pre-push                    #   pre-push hook 备份：push 前跑 pytest tests/
 │
 ├── .claude/                        # ========== Claude Code 配置 ==========
@@ -546,6 +548,11 @@ python scripts/stress_test_1m.py           # Phase 4: 百万级压力测试 (默
 python scripts/stress_test_1m.py --count 100000 --server http://localhost:6333  # 10万条服务器模式
 python scripts/verify_cognitive_wiring.py   # 认知五连线 smoke 验证 (20 项，改完连线就跑)
 python scripts/cognitive_trace.py            # 认知追踪器：造场景→推演→冲突检测→估算 LLM 影响
+python scripts/verify_steering_direct.py       # SteeringDirect smoke 验证 (7项)
+python scripts/calibrate_trajectory.py --module gate_tone        # Trajectory 标定: dry-run 单模块
+python scripts/calibrate_trajectory.py --priority high --dry-run   # Trajectory 标定: 高优先级 6 模块
+python scripts/calibrate_trajectory.py --module gate_tone --scan-alpha  # Trajectory 标定: 扫 alpha
+python scripts/calibrate_trajectory.py --module gate_tone --live      # Trajectory 标定: live 实际生成
 BENCHMARK_MODE=true python run.py      # Benchmark 模式
 ```
 
@@ -568,6 +575,29 @@ cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 ---
 
 ## 8. 当前状态
+
+### 最近完成 (2026-06-21) — 直接向量注入引擎落地 ⭐⭐
+
+- ✅ **`app/llm/steering_direct.py` 落地** — 530 行，绕过文本中转，模块结构化数值直出残差向量
+  - **ConceptVectorBuilder** — 4 种零训练向量构造方法：
+    - 方法一：锚点插值 (标量 → 向量, emotion/trust/formality)
+    - 方法二：概念方向 (变化量 → 向量, drift/predictor)
+    - 方法三：类别查表 (离散值 → 向量, tone/mode/intent)
+    - 方法四：Tag 混合 (标签列表 → 向量, portrait/interest/impulse)
+  - **TrajectoryShaper** — 5 种 shape 函数展开基向量到 28 层 (uniform/gradient/early/late/peak)
+  - **16 ModuleSteeringConfig** — 每模块独立配置 (层范围 + shape + α)
+  - **16 提取器** — 各从 UtteranceSpec 提取结构化值，零文本产出
+  - 初始化 1147ms 预计算 ~100 token 嵌入，运行时 19.9ms 构建全 trajectory
+- ✅ **`app/llm/steering.py` 集成** — 新增 `_setup_cvec_direct()` / `_generate_with_cvec_direct()`，双模式分支
+- ✅ **`app/config/settings.py`** — 新增 `STEERING_DIRECT` 配置开关（默认关闭，实验特性）
+- ✅ **`scripts/verify_steering_direct.py`** — 7 项 smoke 验证全通过：
+  - 情绪 valence 方向分离度 0.50，arousal 分离度 0.53
+  - Trust 锚点插值完美对称
+  - 5 种 tone 类别语义结构合理
+  - 7 种 trajectory shape 验证通过
+  - 端到端：26/28 层活跃，19.9ms 构建
+  - Direct vs Text 向量相似度分析完成
+- ✅ **1007 tests passed, 0 failed** — 零回归
 
 ### 最近完成 (2026-06-21) — Embedding 统一切换 bge-m3→qwen_embed ⭐
 
