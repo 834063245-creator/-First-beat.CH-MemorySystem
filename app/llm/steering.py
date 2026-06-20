@@ -410,6 +410,26 @@ class SteeringInjector:
         llc.llama_set_adapter_cvec(
             self._model.ctx, None, 0, self._n_embd, 0, 0)
 
+    # ── Prompt 构建 ────────────────────────────────────────
+
+    @staticmethod
+    def _build_prompt(user_message: str) -> str:
+        """ChatML 格式（Qwen2.5 Instruct 训练格式）。
+
+        用模型原生格式避免多轮对话循环和标签污染。
+        """
+        return (
+            "<|im_start|>system\n"
+            "You are Qwen, created by Alibaba Cloud. You are a helpful assistant.\n"
+            "<|im_end|>\n"
+            "<|im_start|>user\n"
+            f"{user_message}\n"
+            "<|im_end|>\n"
+            "<|im_start|>assistant\n"
+        )
+
+    _STOP_TOKENS = ["<|im_end|>", "<|im_start|>"]
+
     # ── 直接向量注入 (STEERING_DIRECT=true) ────────────────
 
     def _setup_cvec_direct(self, utterance_spec) -> bool:
@@ -454,13 +474,13 @@ class SteeringInjector:
 
     def _generate_with_cvec_direct(self, user_message: str, utterance_spec,
                                    max_tokens: int, temperature: float) -> str:
-        prompt = f"用户消息: {user_message}\n回复:"
+        prompt = self._build_prompt(user_message)
         with self._generate_lock:
             cvec_ok = self._setup_cvec_direct(utterance_spec)
             try:
                 result = self._model.create_completion(
                     prompt, max_tokens=max_tokens, temperature=temperature,
-                    echo=False, stream=False)
+                    echo=False, stream=False, stop=self._STOP_TOKENS)
             finally:
                 if cvec_ok:
                     self._clear_cvec()
@@ -468,13 +488,13 @@ class SteeringInjector:
 
     def _generate_with_cvec_direct_stream(self, user_message: str, utterance_spec,
                                           max_tokens: int, temperature: float):
-        prompt = f"用户消息: {user_message}\n回复:"
+        prompt = self._build_prompt(user_message)
         with self._generate_lock:
             cvec_ok = self._setup_cvec_direct(utterance_spec)
             try:
                 stream = self._model.create_completion(
                     prompt, max_tokens=max_tokens, temperature=temperature,
-                    echo=False, stream=True)
+                    echo=False, stream=True, stop=self._STOP_TOKENS)
                 for chunk in stream:
                     token = chunk["choices"][0].get("text", "")
                     if token:
@@ -487,13 +507,13 @@ class SteeringInjector:
 
     def _generate_with_cvec(self, user_message: str, segments: dict,
                             max_tokens: int, temperature: float) -> str:
-        prompt = f"用户消息: {user_message}\n回复:"
+        prompt = self._build_prompt(user_message)
         with self._generate_lock:
             cvec_ok = self._setup_cvec(segments)
             try:
                 result = self._model.create_completion(
                     prompt, max_tokens=max_tokens, temperature=temperature,
-                    echo=False, stream=False)
+                    echo=False, stream=False, stop=self._STOP_TOKENS)
             finally:
                 if cvec_ok:
                     self._clear_cvec()
@@ -501,22 +521,22 @@ class SteeringInjector:
 
     def _generate_plain(self, user_message: str,
                         max_tokens: int, temperature: float) -> str:
-        prompt = f"用户消息: {user_message}\n回复:"
+        prompt = self._build_prompt(user_message)
         with self._generate_lock:
             result = self._model.create_completion(
                 prompt, max_tokens=max_tokens, temperature=temperature,
-                echo=False, stream=False)
+                echo=False, stream=False, stop=self._STOP_TOKENS)
         return result["choices"][0].get("text", "")
 
     def _generate_with_cvec_stream(self, user_message: str, segments: dict,
                                    max_tokens: int, temperature: float):
-        prompt = f"用户消息: {user_message}\n回复:"
+        prompt = self._build_prompt(user_message)
         with self._generate_lock:
             cvec_ok = self._setup_cvec(segments)
             try:
                 stream = self._model.create_completion(
                     prompt, max_tokens=max_tokens, temperature=temperature,
-                    echo=False, stream=True)
+                    echo=False, stream=True, stop=self._STOP_TOKENS)
                 for chunk in stream:
                     token = chunk["choices"][0].get("text", "")
                     if token:
@@ -527,11 +547,11 @@ class SteeringInjector:
 
     def _generate_plain_stream(self, user_message: str,
                                max_tokens: int, temperature: float):
-        prompt = f"用户消息: {user_message}\n回复:"
+        prompt = self._build_prompt(user_message)
         with self._generate_lock:
             stream = self._model.create_completion(
                 prompt, max_tokens=max_tokens, temperature=temperature,
-                echo=False, stream=True)
+                echo=False, stream=True, stop=self._STOP_TOKENS)
             for chunk in stream:
                 token = chunk["choices"][0].get("text", "")
                 if token:
