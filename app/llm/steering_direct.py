@@ -453,8 +453,11 @@ MODULE_DIRECT_CONFIG: list[ModuleSteeringConfig] = [
         alpha=0.07, extractor="interest"),
 
     # ═══ 深层: 关系+镜像 (L18-27) ═══
+    # Calibrated 2026-06-21: gradient_down produces best empathy ("不要怀疑自己")
+    # for relationship — trust/closeness encoding benefits from stronger shallow
+    # presence in this layer range, unlike tone which needs deep-layer gradient_up.
     ModuleSteeringConfig(
-        name="relationship_state",  layer_start=18, layer_end=27,  shape="gradient_up",
+        name="relationship_state",  layer_start=18, layer_end=27,  shape="gradient_down",
         alpha=0.08, extractor="relationship"),
     ModuleSteeringConfig(
         name="self_mirror",         layer_start=20, layer_end=27,  shape="late",
