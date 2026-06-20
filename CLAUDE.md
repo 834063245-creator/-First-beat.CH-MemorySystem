@@ -715,7 +715,7 @@ cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 ### 计划中
 
 - ⏳ **Trajectory 标定继续** — 首轮完成高优先级 3 模块(gate_tone/portrait_emotion/relationship_state)，剩余 12 模块待标定。每模块需 ~10 分钟 live sweep（GTX 1060 6GB, 8 tok/s）。
-- ⏳ **本地模式工具调用** — 目前 v1 纯对话（ChatML 格式），本地 qwen2.5 自带 tool call 能力待接入 `chat.py` 的 `for tool_round in range(2)` 循环
+- ❌ **工具调用不做进引擎** — 本地模式 tool call 由外部 Agent 框架（如 Claude Code）负责。引擎只做认知注入（残差向量→模型残差流），工具调度/权限/错误恢复全在外部。`chat.py` 的 `for tool_round in range(2)` 循环保留给 API 模式（DeepSeek tool call），本地模式不走这个。
 - ⏳ **asyncio 化**：Qdrant 迁移完成后独立执行。目标——`pipeline.py` 的 `ThreadPoolExecutor` 9 路并发 → `asyncio.gather()`、`embed.py` 同步 HTTP → `httpx.AsyncClient`、`context.py` 后台线程 → asyncio Task。**不在迁移 spec 范围内**，两个工作解耦。vLLM HTTP 层的 `embed.py`/`local.py` 改写优先用 `httpx.AsyncClient`（新代码不引入同步 HTTP 债务），外部暂时 `asyncio.to_thread()` 包一层
 
 ### 最近完成 (2026-06-14)
