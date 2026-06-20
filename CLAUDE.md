@@ -599,7 +599,36 @@ cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
   - Direct vs Text 向量相似度分析完成
 - ✅ **1007 tests passed, 0 failed** — 零回归
 
-### 最近完成 (2026-06-21) — Embedding 统一切换 bge-m3→qwen_embed ⭐
+### 最近完成 (2026-06-21) — ChatML 格式修复 + Trajectory 标定首轮 ⭐
+
+- ✅ **ChatML prompt 格式修复** — `steering.py` 全部 6 个 generate 方法切到 Qwen2.5 原生的 `<|im_start|>` / `<|im_end|>` 格式 + stop tokens
+  - 旧格式 `用户消息: ...\n回复:` 触发多轮对话循环（模型生成假用户消息+回复无限循环）
+  - 新格式用 ChatML system/user/assistant 角色帧定，`stop=["<|im_end|>", "<|im_start|>"]` 精确截断
+  - 三路对比验证：无steering(110s) / 文本(84s) / direct(74s) 全部干净单轮回复，零循环
+- ✅ **`scripts/calibrate_trajectory.py` 升级** — 410 行，完整 live shape sweep + alpha scan + cross-module analysis
+  - `--compare` 三路对比 (no-steering / text / direct)
+  - `--module X --live` 单模块扫 6 shapes，实际生成回复供人工对比
+  - `--cross-module` 全模块层贡献分析 + 共居冲突检测
+  - `--scan-alpha` 固定 shape 扫 α 范围
+- ✅ **gate_tone 标定完成** — 实验数据 driven：
+  - 7 shape × 1 scenario 实测对比：`gradient_up` 产生最强共情开头（"不要怀疑自己"）
+  - `late` 产生温暖结尾（"加油！"）但 gradient_up 整体更优
+  - 配置变更：shape `late` → `gradient_up`，层范围 L24-28 → L16-28
+- ✅ **relationship_state 标定完成**：
+  - 4 shape 实测对比：`gradient_down` 最优（"不要怀疑自己"）——与 gate_tone 相反
+  - 结论：关系感知在浅中层编码（gradient_down 浅强深弱），门控语气在深层编码（gradient_up 深强浅弱）
+  - 配置变更：shape `gradient_up` → `gradient_down`
+- ✅ **portrait_emotion 确认** — 当前 `peak:12:4` + L8-15 合理，中层情绪编码位置正确
+- ✅ **cross-module 层贡献分析** — 15 模块层分布健康：L1-2 空，身份 L3-5，记忆 L5-12，情绪 L8-15，关系 L18-27，门控 L16-28。**零强冲突**（所有 co-inhabiting 向量 cos < 0.2）
+- ✅ **1007 tests passed, 0 failed** — 零回归
+
+### 待标定模块 (优先级中/低)
+
+- ⏳ portrait_identity (shape=early L3-5) — 当前合理，待验证
+- ⏳ impulse_signal (shape=peak:10:3 L8-15) — 冲动激活场景少，低优先级
+- ⏳ drift_context (shape=gradient_up L15-22) — drift 只在情绪场景激活，中优先级
+- ⏳ memories 1-5 (shape=gradient_down L5-12) — 当前合理，低优先级
+- ⏳ self_mirror / behavior_predictor / portrait_interest — 低优先级
 
 - ✅ **检索管线全量切 qwen_embed** — `app/llm/embed.py` 从 Ollama HTTP (bge-m3) 切换到纯 Python+numpy qwen_embed (3584维)
   - 去掉 Ollama HTTP 客户端、请求合并器、n-gram 近似缓存（~200行删除）
@@ -685,6 +714,8 @@ cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 
 ### 计划中
 
+- ⏳ **Trajectory 标定继续** — 首轮完成高优先级 3 模块(gate_tone/portrait_emotion/relationship_state)，剩余 12 模块待标定。每模块需 ~10 分钟 live sweep（GTX 1060 6GB, 8 tok/s）。
+- ⏳ **本地模式工具调用** — 目前 v1 纯对话（ChatML 格式），本地 qwen2.5 自带 tool call 能力待接入 `chat.py` 的 `for tool_round in range(2)` 循环
 - ⏳ **asyncio 化**：Qdrant 迁移完成后独立执行。目标——`pipeline.py` 的 `ThreadPoolExecutor` 9 路并发 → `asyncio.gather()`、`embed.py` 同步 HTTP → `httpx.AsyncClient`、`context.py` 后台线程 → asyncio Task。**不在迁移 spec 范围内**，两个工作解耦。vLLM HTTP 层的 `embed.py`/`local.py` 改写优先用 `httpx.AsyncClient`（新代码不引入同步 HTTP 债务），外部暂时 `asyncio.to_thread()` 包一层
 
 ### 最近完成 (2026-06-14)
