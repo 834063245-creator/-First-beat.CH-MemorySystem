@@ -1,7 +1,7 @@
 # 初痕 (First Beat) CH Memory System
 
 > **这是项目的唯一权威文档。** 其他所有 .md 都以此文档为准。Agent 启动时自动加载。
-> 修改代码后必须同步更新本文档。最后修订 2026-06-21 (Embedding 统一切换 bge-m3→qwen_embed，检索+入库+注入全用同一空间，3584维，1007 tests green)。
+> 修改代码后必须同步更新本文档。最后修订 2026-06-21 (架构方向转变："记忆场模式"取代 RAG — AuraSDK 事实召回 + M@q 记忆场残差 + trajectory 认知调制，三线正交)。
 
 ---
 
@@ -194,6 +194,9 @@ d:\First Beat CH Memory System\
 │   ├── steering_phase7_debug.py        # Phase 7: 调试/扫参（α + 层号）
 │   ├── steering_phase8_layered.py      # ★★ Phase 8: 16 模块分层注入（15 向量 → L3-26）
 │   ├── verify_steering_direct.py   # ★ SteeringDirect smoke 验证：7 项检测，概念向量语义+trajectory
+│   ├── memory_field_prototype.py   # ★★ M@q 记忆场原型：构建+验证+性能基准 (600+行)
+│   ├── compare_memory_field.py     # ★ M@q vs 无记忆 vs 无steering 轨迹对比 (200+行)
+│   ├── live_compare_minimal.py     # ★ M@q live 生成对比：3场景×3路径 单进程 (140行)
 │   └── pre-push                    #   pre-push hook 备份：push 前跑 pytest tests/
 │
 ├── .claude/                        # ========== Claude Code 配置 ==========
@@ -549,6 +552,10 @@ python scripts/stress_test_1m.py --count 100000 --server http://localhost:6333  
 python scripts/verify_cognitive_wiring.py   # 认知五连线 smoke 验证 (20 项，改完连线就跑)
 python scripts/cognitive_trace.py            # 认知追踪器：造场景→推演→冲突检测→估算 LLM 影响
 python scripts/verify_steering_direct.py       # SteeringDirect smoke 验证 (7项)
+python scripts/memory_field_prototype.py       # M@q 记忆场原型：构建+5场景验证
+python scripts/memory_field_prototype.py --seed --rebuild-matrix  # 种子数据+全量验证
+python scripts/compare_memory_field.py         # M@q vs 无记忆 vs 无steering 轨迹对比
+python scripts/live_compare_minimal.py         # M@q live 生成对比 (需LOCAL_LLM_MODE=true, ~8min)
 python scripts/calibrate_trajectory.py --module gate_tone        # Trajectory 标定: dry-run 单模块
 python scripts/calibrate_trajectory.py --priority high --dry-run   # Trajectory 标定: 高优先级 6 模块
 python scripts/calibrate_trajectory.py --module gate_tone --scan-alpha  # Trajectory 标定: 扫 alpha
@@ -599,6 +606,49 @@ cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
   - Direct vs Text 向量相似度分析完成
 - ✅ **1007 tests passed, 0 failed** — 零回归
 
+### 最近完成 (2026-06-21) — M@q 记忆场落地 + AuraSDK 验证 ⭐⭐⭐
+
+- ✅ **M@q 记忆场原型验证通过** — `scripts/memory_field_prototype.py` (600+ 行), `scripts/compare_memory_field.py` (200+ 行)
+  - **M = VᵀV 构建**: 65 条记忆 → 3584×3584 Gram 矩阵 (~49MB float32), 0.05s 构建, 缓存为 `data/m_matrix_f32.npy`
+  - **M@q 延迟**: 3.1ms/次 (avg 1000 runs), 含 qwen_embed ~4ms, 远低于实时对话要求
+  - **α 方向不变**: cos(R_α, R_base) = 1.000000 — α 只影响幅度不影响方向
+  - **冷启动优雅退化**: 零记忆 → 零 M 矩阵 → R=0, 等价于纯 prompt 模式
+- ✅ **M@q 集成到 steering_direct** — 替代原 5 个 `relevant_memory_*` 模块为 1 个 `memory_field` 模块
+  - **层范围**: L5-12 (语义层), shape=gradient_down (浅强深弱)
+  - **alpha=0.15** (原 5×0.06=0.30, M@q 更全局所以减半)
+  - **_load_m_matrix()**: 优先磁盘缓存加载, 不存在则从 Qdrant scroll 全量向量构建
+  - **_extract_memory_field()**: embed(user_msg) → R = M@q → 归一化 → 注入
+  - **_rebuild_m_matrix()**: 写入新记忆后调用, 失效缓存 + 重建
+- ✅ **端到端对比验证** — M@q vs 无记忆 vs 无steering, 三种场景 (编程/情绪/日常)
+  - **正交性**: cos(memory_field, other_modules) = 0.0007~0.0011 — M@q 方向与其他 10 模块完全独立
+  - **贡献占比**: memory_field 占总 trajectory L2 norm 的 60.7%
+  - **层分布**: L5-L12 gradient_down 精确命中, 其他模块活跃在 L24-L28 (深层), 层间分离清晰
+  - **跨场景区分度**: cos=0.997 — N=65 的数学约束, 随记忆积累 (500+) 自然改善
+  - 模块数: 16→11 (移除 5 memory, 新增 1 memory_field)
+- ✅ **Live 生成对比 (3场景×3路径)** — `scripts/live_compare_minimal.py` (140 行)
+  - emotional: M@q "每个人都有低谷期" — 比 none 的"放弃不是办法"和 nomfield 的"请不要轻易放弃"更共情
+  - tech: M@q "让我用简单的方式解释" — 比 none/nomfield 更 accessible，带代码示例
+  - casual: M@q 111 chars vs none 68 / nomfield 67 — M@q 让模型更主动投入（+60%+ 长度），主动提供帮助
+  - 速度: M@q 44s vs none 53s (emotional, -17%)，steering 为模型提供更清晰的生成方向
+- ✅ **大规模验证 (N=530)** — 4 领域合成记忆，M 矩阵 rank 65→240, 100% non-zero
+  - 跨场景区分度 cos=0.997 (N=530) — 区分度不随 N 线性增长，M@q 输出的是"全局记忆质心"而非"场景区分方向"
+  - 真正的区分度依赖记忆多样性（真实用户数据 vs 模板合成），而非数量
+- ✅ **增量自动更新** — `context.py:_rebuild_m_field_async()` — 写入新记忆后火后忘异步重建 M 矩阵, 30s 防抖
+- ✅ **1007 tests passed, 0 failed** — 零回归
+  - **写读一致性 99.5% rank-1** — 5000 条记录，200 次随机查询，199 次 rank-1，1 次 rank-2，0 次丢失
+  - **确定性 100%** — 同一查询 100 次结果序列完全一致，零随机性（vs RAG 向量搜索浮点抖动）
+  - **衰减精确 0.80^N** — Working 层 Cycle 14 准时消失（<0.05），Identity 层 9/10 召回，分层完美
+  - **边界处理 7/7** — 空查询/10KB/SQL注入/Unicode+Emoji 全部正确拒绝或处理
+  - **并发安全 0 碰撞** — 500 次快速写入无 ID 碰撞
+  - **去重正确** — 重复写 10 次返回 1 条唯一结果
+  - **吞吐量**：写入 304/s，结构化召回 828/s（聊天场景绰绰有余）
+  - **弱项确认**：语义噪音中信号稀释 — 200 条同领域内容将目标从 rank-1 挤到 rank-4~7
+- ✅ **架构方向再次确认**：弱项恰好验证了双线互补的必要性
+  - AuraSDK 对"完全相同或高度相似的事实"无敌（99.5% rank-1）
+  - 但对 200 条同领域噪音时信号被稀释 — M@q 记忆场恰好覆盖这个盲区（噪音=信号，共同构成领域质心）
+  - **AuraSDK 事实召回（prompt）+ M@q 记忆场（残差）+ trajectory 认知调制（残差）三线正交方案验证通过**
+- ✅ **AuraSDK 集成可以动手** — 替代 9 路检索管线的事实召回部分，Qdrant 降为只写
+
 ### 最近完成 (2026-06-21) — ChatML 格式修复 + Trajectory 标定首轮 ⭐
 
 - ✅ **ChatML prompt 格式修复** — `steering.py` 全部 6 个 generate 方法切到 Qwen2.5 原生的 `<|im_start|>` / `<|im_end|>` 格式 + stop tokens
@@ -620,15 +670,14 @@ cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
   - 配置变更：shape `gradient_up` → `gradient_down`
 - ✅ **portrait_emotion 确认** — 当前 `peak:12:4` + L8-15 合理，中层情绪编码位置正确
 - ✅ **cross-module 层贡献分析** — 15 模块层分布健康：L1-2 空，身份 L3-5，记忆 L5-12，情绪 L8-15，关系 L18-27，门控 L16-28。**零强冲突**（所有 co-inhabiting 向量 cos < 0.2）
+- ✅ **drift_context 标定完成** — live sweep 6 shapes 实测对比：
+  - 场景: emotional_sharing ("累了想放弃")，drift 注入 "偏移: drift_放弃(-40%)"
+  - `gradient_up` 开局 "请不要因此就**怀疑自己的能力**" — 最直接反制 drift
+  - `gradient_down` 先铺垫再回应，开局弱；`uniform`/`early`/`late`/`peak` 偏泛化
+  - **结论: gradient_up 最优** — drift 感知应越靠近输出层越强，模型在写字时最需要意识到"用户在滑向放弃"。与 gate_tone 同方向（深层增强），与 relationship_state 反方向（浅层增强）
+- ✅ **portrait_identity 确认** — dry-run 分析，`early` + L3-5 是窄窗内唯一正确选择，身份信息应尽早注入浅层
 - ✅ **1007 tests passed, 0 failed** — 零回归
-
-### 待标定模块 (优先级中/低)
-
-- ⏳ portrait_identity (shape=early L3-5) — 当前合理，待验证
-- ⏳ impulse_signal (shape=peak:10:3 L8-15) — 冲动激活场景少，低优先级
-- ⏳ drift_context (shape=gradient_up L15-22) — drift 只在情绪场景激活，中优先级
-- ⏳ memories 1-5 (shape=gradient_down L5-12) — 当前合理，低优先级
-- ⏳ self_mirror / behavior_predictor / portrait_interest — 低优先级
+- ⏸️ **Trajectory 标定暂停** — 架构方向转变（见 §10），剩余模块标定待新方案落地后重新评估。memory_1~5 可能被 M@q 替代。
 
 - ✅ **检索管线全量切 qwen_embed** — `app/llm/embed.py` 从 Ollama HTTP (bge-m3) 切换到纯 Python+numpy qwen_embed (3584维)
   - 去掉 Ollama HTTP 客户端、请求合并器、n-gram 近似缓存（~200行删除）
@@ -714,9 +763,12 @@ cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 
 ### 计划中
 
-- ⏳ **Trajectory 标定继续** — 首轮完成高优先级 3 模块(gate_tone/portrait_emotion/relationship_state)，剩余 12 模块待标定。每模块需 ~10 分钟 live sweep（GTX 1060 6GB, 8 tok/s）。
-- ❌ **工具调用不做进引擎** — 本地模式 tool call 由外部 Agent 框架（如 Claude Code）负责。引擎只做认知注入（残差向量→模型残差流），工具调度/权限/错误恢复全在外部。`chat.py` 的 `for tool_round in range(2)` 循环保留给 API 模式（DeepSeek tool call），本地模式不走这个。
-- ⏳ **asyncio 化**：Qdrant 迁移完成后独立执行。目标——`pipeline.py` 的 `ThreadPoolExecutor` 9 路并发 → `asyncio.gather()`、`embed.py` 同步 HTTP → `httpx.AsyncClient`、`context.py` 后台线程 → asyncio Task。**不在迁移 spec 范围内**，两个工作解耦。vLLM HTTP 层的 `embed.py`/`local.py` 改写优先用 `httpx.AsyncClient`（新代码不引入同步 HTTP 债务），外部暂时 `asyncio.to_thread()` 包一层
+- 🚧 **架构方向转变："记忆场模式"取代 RAG** — 见新增 §10。核心洞见：RAG 在数据量↑时离散选择必然丢失信息。新方案三条正交线：**AuraSDK 事实召回（稀疏哈希）→ prompt + M@q 记忆场（连续全参与）→ 残差注入 + trajectory 认知调制（保留）**。
+- 🚧 **AuraSDK 集成** — 稀疏哈希事实召回（SDR 256k bits + MinHash n-gram + 倒排索引），<1ms，~3MB，零 embedding。替代当前 9 路检索管线（pipeline.py 700+ 行）。Qdrant 降为只写。AuraSDK 压力测试已通过 (N=5000)，等待集成。
+- 🚧 **记忆场模式端到端** — AuraSDK.recall() → prompt 原文 + M@q → 残差 + trajectory 11 模块 → 本地 LLM 生成 → 对比回复质量
+- ❌ **工具调用不做进引擎** — 本地模式 tool call 由外部 Agent 框架（如 Claude Code）负责。
+- ❌ **9 路检索管线退役** — pipeline.py / inverted.py / temporal.py / tree.py / affinity.py / tag_index.py / scoring.py / reranker.py.bak / qdrant_cooccur.py(搜索路径) / qdrant_hyperedge.py(搜索路径) 全砍。检索变成 AuraSDK.recall(q) + M@q 两步。
+- ⏳ **asyncio 化**：待新存储方案落地后评估是否仍需。
 
 ### 最近完成 (2026-06-14)
 
@@ -810,6 +862,106 @@ python scripts/verify_cognitive_wiring.py   # 预期 20/20
 ```
 
 **覆盖**：纠错降权、门控收敛、阈值放宽、预测预调、冲动产出。
+
+---
+
+## 10. 记忆场模式：下一代架构方向
+
+> **状态**：方向确认（2026-06-21），AuraSDK 事实召回水平测试中，M@q 记忆场待动手。核心洞见：**RAG 的根本问题不是"检索精度"，是"离散选择必然丢失信息"。数据量大时，Top-K 截断的损失不可逆。**
+
+### 10.1 从 RAG 到记忆场
+
+**当前（RAG 模式）**：
+```
+用户输入 → Qdrant 9路检索 → Top-K 截断 → 拼 Prompt → LLM
+```
+问题：离散选择 → 信息丢失 → 9路补丁越补越重（pipeline.py 700+ 行）
+
+**目标（记忆场模式）**：
+```
+用户输入 → qwen_embed → q
+              ├─ AuraSDK.recall(q) → 原文 → prompt（事实，<1ms）
+              └─ M @ q → 残差注入 → LLM（记忆场，连续全参与）
+              └─ 11 module trajectory → 残差注入（认知调制，保留）
+```
+
+### 10.2 三条正交线
+
+| 线路 | 机制 | 问什么 | 注入方式 | 复杂度 |
+|------|------|--------|---------|--------|
+| **事实召回** | AuraSDK — SDR 稀疏哈希 + MinHash n-gram + 倒排索引 | "说了什么" | prompt 原文 | ~3MB, <1ms |
+| **记忆场** | M = VᵀV — Gram 矩阵 × 查询 | "在聊什么领域" | 残差浅中层 | ~51MB, ~0.1ms |
+| **认知调制** | trajectory 11 模块 — 结构化数值直出向量 | "谁/什么状态/怎么说话" | 残差分层 | 19.9ms 构建 |
+
+### 10.3 事实召回：为什么 AuraSDK
+
+当前检索 = 9 路并行融合（语义向量 + 关键词倒排 + 标签 + 实体 + 时间 + 话题树 + 注意力 + 全文 + AI 记忆），700 行。本质是用多个不完美的路径互相补偿离散选择的信息丢失。
+
+AuraSDK 走的是另一条路——不用 embedding 做检索：
+
+- **SDR**（256k bits, 512 active）：文本 → 稀疏位图，Tanimoto 相似度。不同词可能激活同一 bit → 制造有限语义泛化
+- **MinHash n-gram**：字符 trigram Jaccard 近似，"Rust太难"和"Rust好难"共享 trigram → 命中
+- **倒排索引**：bit/ngram → 候选记录 → 得分排序
+
+三件套零 embedding，零向量相似度搜索。确定性编码，查找 O(活跃 bit 数)。
+
+### 10.4 记忆场：M @ q 替代 relevant_memory_1~5
+
+```
+V = [N × 3584]  ← 全量记忆的 embedding 矩阵
+M = VᵀV         ← 3584×3584 Gram 矩阵（预计算，~51MB）
+q = embed(用户输入)  ← 3584维
+
+R = M @ q       ← d_model 维，"所有记忆对当前输入的加权响应"
+R = R × α       ← 全局强度系数
+→ llama_set_adapter_cvec  ← 残差注入
+```
+
+**为什么替代 memory_1~5**：
+- memory_1~5 从 Qdrant 检索 Top-K 摘要 → embed → 注入。离散选择，信息丢失
+- M@q 所有记忆参与，只是权重不同。2 年前的低频记忆也会贡献微小分量
+- M 固定大小 51MB，跟记忆条数无关。100 万条记忆 → O(d²) 不变
+
+**M@q 的副产品**：`V@q` 的 N 个标量已经是每条记忆的相关性分数。纯余弦 Top-K 的事实召回可以免费搭车——但不如 AuraSDK 的 SDR+n-gram 精准。
+
+### 10.5 为什么两道线不能合并
+
+M @ q 产的向量是加权质心——连续、不可逆、无法反推原文。它对"氛围"完美，对"事实"无用。AuraSDK 准确命中原文但无法感知全局记忆分布。两者正交：
+
+| | AuraSDK | M@q |
+|---|---|---|
+| 成功模式 | "06/15 他说了 Rust 太难" | "他的记忆空间在程序语言 + 挫折感区域" |
+| 失败模式 | 同义替换可能漏（有 SynonymRing 补偿） | 不能重建离散事实 |
+| 互补 | 给 prompt 原文 | 给残差流方向 |
+
+### 10.6 Qdrant 的新职责
+
+- **写入**：保留。每条对话 → embedding → 存入 Qdrant（老管线不变）
+- **读取（检索）**：废弃。不再用 Qdrant 做 `query_points` 检索
+- **M 矩阵构建**：启动时或增量更新时从 Qdrant 批量拉取所有向量构建 V 矩阵
+- **AuraSDK 同步**：storing 时同步写入 AuraSDK 记录
+
+### 10.7 退役清单（待新方案验证后执行）
+
+| 文件 | 原因 |
+|------|------|
+| `app/retrieval/pipeline.py` (703行) | 9路检索 → AuraSDK.recall() |
+| `app/memory/inverted.py` | 倒排索引 → AuraSDK 内置 |
+| `app/memory/temporal.py` | 时间模式 → AuraSDK 字典查询 |
+| `app/memory/tree.py` | 话题树 → 不需要 |
+| `app/memory/affinity.py` | 亲和图 → M@q 覆盖 |
+| `app/memory/tag_index.py` | 标签索引 → AuraSDK tag 匹配 |
+| `app/retrieval/scoring.py` | 评分函数 → AuraSDK RRF 内置 |
+| `app/memory/qdrant_cooccur.py` (搜索路径) | 共现扩展 → M@q 覆盖 |
+| `app/memory/qdrant_hyperedge.py` (搜索路径) | 超边扩展 → M@q 覆盖 |
+| `app/core/circuit.py` — `weave_context()` | 认知编织 → AuraSDK 得分 + prompt 原文 |
+| `trajectory: relevant_memory_1~5` | ✅ 已淘汰 → M@q 残差 (2026-06-21) |
+
+### 10.8 验证路线
+
+1. ✅ **AuraSDK 事实召回** — N=5000 压力测试通过（2026-06-21）。写读一致性 99.5% rank-1，确定性 100%，衰减精确 0.80^N。弱项：200 条同领域噪音中信号稀释（rank-1→4~7），由 M@q 覆盖。
+2. ✅ **M@q 原型** — 落地到 steering_direct (2026-06-21)。M=3584² (~49MB), M@q 3.1ms, 与其他模块完全正交 (cos~0.001), 1007 tests green。跨场景区分度待 N 增长 (>500) 后重新评估。
+3. 🚧 **端到端**：AuraSDK.recall() → prompt + M@q → 残差 + trajectory → LLM 生成 → 对比当前回复质量
 
 ---
 

@@ -419,22 +419,13 @@ MODULE_DIRECT_CONFIG: list[ModuleSteeringConfig] = [
         name="portrait_identity_ai", layer_start=3, layer_end=5,   shape="early",
         alpha=0.05, extractor="ai_identity"),
 
-    # ═══ 语义层: 相关记忆 (L5-12) ═══
+    # ═══ 语义层: 记忆场 M@q — 全量记忆加权响应 (L5-12) ═══
+    # M@q = V^T V @ q 替代原 5 路 relevant_memory_* 离散 Top-K 检索
+    # gradient_down: 浅强深弱 — 记忆场在语义理解阶段注入，靠近输出层衰减
+    # alpha 0.15: 5 路合并后的等效强度 (原 5×0.06=0.30, M@q 更全局所以减半)
     ModuleSteeringConfig(
-        name="relevant_memory_1",   layer_start=5,  layer_end=12,  shape="gradient_down",
-        alpha=0.06, extractor="memory_1"),
-    ModuleSteeringConfig(
-        name="relevant_memory_2",   layer_start=5,  layer_end=12,  shape="gradient_down",
-        alpha=0.06, extractor="memory_2"),
-    ModuleSteeringConfig(
-        name="relevant_memory_3",   layer_start=5,  layer_end=12,  shape="gradient_down",
-        alpha=0.06, extractor="memory_3"),
-    ModuleSteeringConfig(
-        name="relevant_memory_4",   layer_start=5,  layer_end=12,  shape="gradient_down",
-        alpha=0.06, extractor="memory_4"),
-    ModuleSteeringConfig(
-        name="relevant_memory_5",   layer_start=5,  layer_end=12,  shape="gradient_down",
-        alpha=0.06, extractor="memory_5"),
+        name="memory_field",        layer_start=5,  layer_end=12,  shape="gradient_down",
+        alpha=0.15, extractor="memory_field"),
 
     # ═══ 中层: 情绪+冲动 (L8-15) ═══
     ModuleSteeringConfig(
@@ -688,23 +679,176 @@ def _extract_predictor(spec, cvb: ConceptVectorBuilder) -> Optional[np.ndarray]:
     return vec.astype(np.float32)
 
 
-def _extract_memory(spec, idx: int, cvb: ConceptVectorBuilder) -> Optional[np.ndarray]:
-    """相关记忆 — 摘要文本 embed。
+# ═══════════════════════════════════════════════════════════════════
+# §4b M@q 记忆场提取器 — 全量记忆加权响应替代离散 Top-K
+# ═══════════════════════════════════════════════════════════════════
 
-    TODO: 后续改为 Qdrant 直出嵌入向量（方法三）。
-    当前过渡方案: 摘要文本 → embed。
+# M 矩阵全局缓存
+_m_matrix: Optional[np.ndarray] = None
+_m_matrix_lock = __import__("threading").Lock()
+
+
+def _load_m_matrix() -> Optional[np.ndarray]:
+    """加载或构建 M = VᵀV 记忆场 Gram 矩阵。
+
+    优先从磁盘缓存加载，不存在则从 Qdrant 构建。
+    构建一次后缓存到 data/m_matrix_f32.npy (~51MB)。
+
+    Returns:
+        M: [3584, 3584] float32, 或 None (冷启动/无记忆)
     """
-    memories = getattr(spec, "memories", []) or []
-    if idx >= len(memories):
+    global _m_matrix
+    with _m_matrix_lock:
+        if _m_matrix is not None:
+            return _m_matrix
+
+    from pathlib import Path
+    import os as _os
+
+    # 确定数据目录
+    _proj_root = Path(__file__).resolve().parent.parent.parent
+    _data_dir = _proj_root / "data"
+    _matrix_path = _data_dir / "m_matrix_f32.npy"
+    _qdrant_path = _os.getenv("QDRANT_URL", "") or str(_data_dir / "qdrant")
+
+    # 尝试从缓存加载
+    if _matrix_path.exists():
+        try:
+            _m_matrix = np.load(_matrix_path).astype(np.float32)
+            logger.info("M@q: M matrix loaded from cache, shape=%s, size=%.1f MB",
+                       _m_matrix.shape, _m_matrix.nbytes / 1024 / 1024)
+            return _m_matrix
+        except Exception:
+            logger.warning("M@q: failed to load cached M matrix, rebuilding...")
+
+    # 从 Qdrant 构建
+    try:
+        from qdrant_client import QdrantClient
+        client = QdrantClient(path=_qdrant_path)
+        collection = _os.getenv("MEMORIES_COLLECTION", "memories")
+
+        # Scroll 全部向量
+        vectors_list = []
+        offset = None
+        while True:
+            pts, next_offset = client.scroll(
+                collection_name=collection,
+                with_vectors=True,
+                with_payload=False,
+                limit=1000,
+                offset=offset,
+            )
+            if not pts:
+                break
+            for pt in pts:
+                if pt.vector is not None:
+                    v = np.array(pt.vector, dtype=np.float32)
+                    norm = np.linalg.norm(v)
+                    if norm > 0:
+                        v = v / norm
+                    vectors_list.append(v)
+
+            if next_offset is None or len(pts) < 1000:
+                break
+            offset = next_offset
+
+        N = len(vectors_list)
+        if N == 0:
+            logger.info("M@q: no memories found, using zero matrix (cold start)")
+            _m_matrix = np.zeros((3584, 3584), dtype=np.float32)
+        else:
+            V = np.stack(vectors_list, axis=0)  # [N, 3584]
+            logger.info("M@q: building M = V^T V from %d memories...", N)
+            _m_matrix = (V.T @ V).astype(np.float32)
+
+        # 缓存到磁盘
+        np.save(_matrix_path, _m_matrix)
+        logger.info("M@q: M matrix built and cached, shape=%s, size=%.1f MB",
+                   _m_matrix.shape, _m_matrix.nbytes / 1024 / 1024)
+
+    except Exception as e:
+        logger.warning("M@q: failed to build M matrix: %s, using zero matrix", e)
+        _m_matrix = np.zeros((3584, 3584), dtype=np.float32)
+
+    return _m_matrix
+
+
+def _extract_memory_field(spec, cvb: ConceptVectorBuilder) -> Optional[np.ndarray]:
+    """M@q 记忆场提取器 — 全量记忆加权响应向量。
+
+    R = M @ q，其中:
+      - M = VᵀV 为预计算的记忆场 Gram 矩阵 [3584×3584]
+      - q = embed(user_message) 为当前查询的嵌入
+
+    返回归一化的 R 向量，可直接注入残差流。
+    所有记忆参与计算，无离散截断损失。
+
+    相比原 memory_1~5:
+      - 不需要等待检索管线返回摘要
+      - 全量记忆参与，2 年前的低频记忆也贡献微小分量
+      - 单次矩阵乘法 3ms，比 Qdrant 检索 + embed 摘要更快
+    """
+    M = _load_m_matrix()
+    if M is None:
         return None
-    mem = memories[idx]
-    if isinstance(mem, dict):
-        summary = mem.get("summary", "") or mem.get("document", "") or ""
-    else:
-        summary = getattr(mem, "summary", "") or getattr(mem, "document", "") or ""
-    if not summary or not str(summary).strip():
+
+    # 获取用户消息文本
+    user = getattr(spec, "user", None)
+    raw_text = getattr(user, "raw_text", "") if user else ""
+    if not raw_text:
+        # fallback: 尝试从 memories 取第一条
+        memories = getattr(spec, "memories", []) or []
+        if memories:
+            mem = memories[0]
+            raw_text = (mem.get("document", "") or mem.get("summary", "")) if isinstance(mem, dict) else ""
+    if not raw_text or not raw_text.strip():
         return None
-    return cvb.from_text(str(summary)[:150])
+
+    # Embed 查询
+    try:
+        from app.llm.embed import local_embed
+        q_vec = local_embed(raw_text[:500])
+        if q_vec is None:
+            return None
+        q = np.array(q_vec, dtype=np.float32)
+    except Exception:
+        return None
+
+    # R = M @ q — 记忆场对当前查询的集体响应
+    R = M @ q
+
+    # 归一化
+    norm = np.linalg.norm(R)
+    if norm > 0:
+        R = R / norm
+
+    return R.astype(np.float32)
+
+
+def _rebuild_m_matrix() -> bool:
+    """强制重建 M 矩阵（写入新记忆后调用）。
+
+    删除磁盘缓存 → 从 Qdrant 重新构建 → 写回缓存。
+
+    Returns:
+        True if rebuild succeeded, False otherwise.
+    """
+    global _m_matrix
+    from pathlib import Path
+
+    # 删除磁盘缓存，强制从 Qdrant 重新构建
+    _proj_root = Path(__file__).resolve().parent.parent.parent
+    _matrix_path = _proj_root / "data" / "m_matrix_f32.npy"
+    try:
+        if _matrix_path.exists():
+            _matrix_path.unlink()
+    except Exception:
+        pass
+
+    with _m_matrix_lock:
+        _m_matrix = None  # 失效内存缓存
+    M = _load_m_matrix()
+    return M is not None and np.count_nonzero(M) > 0
 
 
 # ── 提取器注册表 ────────────────────────────────────────────
@@ -720,11 +864,7 @@ _EXTRACTOR_REGISTRY: dict[str, callable] = {
     "mirror":        _extract_mirror,
     "tone":          _extract_tone,
     "predictor":     _extract_predictor,
-    "memory_1":      lambda s, c: _extract_memory(s, 0, c),
-    "memory_2":      lambda s, c: _extract_memory(s, 1, c),
-    "memory_3":      lambda s, c: _extract_memory(s, 2, c),
-    "memory_4":      lambda s, c: _extract_memory(s, 3, c),
-    "memory_5":      lambda s, c: _extract_memory(s, 4, c),
+    "memory_field":  _extract_memory_field,
 }
 
 

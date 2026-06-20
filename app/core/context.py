@@ -763,6 +763,9 @@ class AppContext:
                 except Exception:
                     pass
 
+                # M@q 记忆场: 新记忆写入后异步重建 M 矩阵
+                self._rebuild_m_field_async()
+
                 return
             except Exception as exc:
                 last_exc = exc
@@ -870,6 +873,30 @@ class AppContext:
             logger.debug("检索预热跳过: %s", exc)
 
     # ── 入队 ─────────────────────────────────────────────────
+
+    def _rebuild_m_field_async(self):
+        """火后忘：异步重建 M@q 记忆场 M 矩阵。
+
+        写入新记忆后调用，30s 冷却防抖动。
+        在后台线程执行，不阻塞存储队列。
+        """
+        now = time.time()
+        if hasattr(self, '_last_m_rebuild') and now - self._last_m_rebuild < 30:
+            return
+        self._last_m_rebuild = now
+        try:
+            self.storage_executor.submit(self._rebuild_m_field_now)
+        except Exception:
+            pass  # executor shut down, skip
+
+    @staticmethod
+    def _rebuild_m_field_now():
+        """实际重建 M 矩阵（在后台线程中执行）。"""
+        try:
+            from app.llm.steering_direct import _rebuild_m_matrix
+            _rebuild_m_matrix()
+        except Exception:
+            pass  # 静默失败，下次查询会用旧 M 矩阵
 
     def _enqueue_store_task(self, user_message: str, ai_message: str, timestamp: str):
         """写入队列（内存 Queue + 文件持久化兜底）。"""
