@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 58d422f6
+
 """Trim CoOccurrenceStore and HyperEdgeStore from qdrant.py."""
 path = r"D:\First Beat CH Memory System\app\memory\qdrant.py"
 with open(path, "r", encoding="utf-8") as f:

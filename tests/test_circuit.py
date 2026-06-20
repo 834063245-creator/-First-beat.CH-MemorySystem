@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 5d010092
+
 """回路调度 + 行为预测器 测试。"""
 import sys
 sys.path.insert(0, ".")

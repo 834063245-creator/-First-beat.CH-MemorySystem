@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 54b6c3da
+
 """排序回归测试 — 验证 certainty 公式和阈值分类。"""
 import math
 import sys

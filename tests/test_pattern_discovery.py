@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 452a7f59
+
 """测试 app/analysis/pattern_discovery.py — 模式发现层纯函数和缓存逻辑。"""
 import json
 import os

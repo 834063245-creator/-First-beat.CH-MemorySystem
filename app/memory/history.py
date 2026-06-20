@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 21d8a7e5
+
 """原始对话历史，同步写入，供时间线近端检索使用。独立于记忆系统。"""
 import json
 import logging

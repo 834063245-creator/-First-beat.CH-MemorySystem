@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 8d044655
+
 """测试 app/core/user_context.py — 用户上下文管理器。
 
 覆盖：UserContextManager 的懒创建、移除、关闭、active_users。

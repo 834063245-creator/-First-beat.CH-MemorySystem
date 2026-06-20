@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 9999d9ae
+
 """PortraitManager — PORTRAIT.md 生命周期管理。
 
 职责:

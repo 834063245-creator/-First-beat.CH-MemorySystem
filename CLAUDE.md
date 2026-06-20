@@ -1,7 +1,7 @@
 # 初痕 (First Beat) CH Memory System
 
 > **这是项目的唯一权威文档。** 其他所有 .md 都以此文档为准。Agent 启动时自动加载。
-> 修改代码后必须同步更新本文档。最后修订 2026-06-20 (认知五连线落地 + 认知追踪器)。
+> 修改代码后必须同步更新本文档。最后修订 2026-06-20 (Steering Trajectory 概念确立 — 16模块×28层=448自由度认知调制器)。
 
 ---
 
@@ -184,6 +184,11 @@ d:\First Beat CH Memory System\
     ├── stress_test_1m.py            #   Phase 4: 百万级压力测试 性能基准
 │   ├── verify_cognitive_wiring.py  #   认知五连线 smoke 验证 (20 项检查)
 │   ├── cognitive_trace.py          #   认知追踪器：场景推演+冲突检测+LLM 影响估算
+│   ├── steering_phase5_inject.py   #   Phase 5: 引擎注入闭环（文本级），build_steering_segments
+│   ├── steering_phase6_embed_inject.py # Phase 6: 嵌入层注入对比（EMBED vs TEXT，已证伪）
+│   ├── steering_phase7_layer2_cvec.py  # ★ Phase 7: 残差分层注入（llama_set_adapter_cvec）
+│   ├── steering_phase7_debug.py        # Phase 7: 调试/扫参（α + 层号）
+│   ├── steering_phase8_layered.py      # ★★ Phase 8: 16 模块分层注入（15 向量 → L3-26）
 │   └── pre-push                    #   pre-push hook 备份：push 前跑 pytest tests/
 │
 ├── .claude/                        # ========== Claude Code 配置 ==========
@@ -567,6 +572,15 @@ cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
   - **冲突分析**：② 和 ④ 都修改 tone，但②先执行收敛后④的 caring 分支(需 tone==warm)不再触发 — 合理，长期低落时不应强行 caring
   - **认知追踪器** `scripts/cognitive_trace.py`：造假用户→逐线推演→冲突检测→估算 LLM prompt 变化。以后改阈值/关键词/boost 值前先跑一把看效果。
   - **Smoke 验证** `scripts/verify_cognitive_wiring.py`：20 项端到端检查，改完连线就跑。
+
+- ✅ **残差分层注入 Phase 7/8/9 验证通过** — 引擎向量通过 `llama_set_adapter_cvec` 打入残差流，零 C++ 改动：
+  - **Phase 7** (4 场景 × 4 条件): 单向量注入，CVEC-L2 最优——回复从"去学 Rust 教程"变"换到 Python 也完全没问题"
+  - **Phase 8** (4 场景 × 2 条件): 16 模块 15 条向量分层注入 L3-26，全通
+  - **Phase 9** (全 28 层注入): 同一向量 ×28 层不会炸——LayerNorm 每层兜底。ALL×28 比 L2-only 效果**更好**
+  - **Steering Trajectory 概念**: 每个模块在 28 层上各有一个不同的向量 → 16 模块 × 28 层 = 448 个可独立调节的 steering knob
+  - **prompt vs trajectory**: prompt 是广播（全层同一方式 attend），trajectory 是精确制导（浅层植身份/中层偏语气/深层约决策/末层调措辞）
+  - **脚本**: `steering_phase7_layer2_cvec.py` / `steering_phase8_layered.py` / `steering_phase7_debug.py`
+  - **下一步**: 模块直接产出残差向量（绕过文本中转）→ 引擎结构化数值 → linear projection → d_model × 28 layers
 
 ### 最近完成 (2026-06-19)
 

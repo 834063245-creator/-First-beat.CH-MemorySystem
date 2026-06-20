@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 368da481
+
 """consolidation.py 测试 — 巩固引擎状态、预热缓存、冲突检测、话题笔记。"""
 import json
 import os

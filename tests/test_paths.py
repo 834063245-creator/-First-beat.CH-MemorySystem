@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 8aaf4819
+
 """测试 app/config/paths.py — 路径工具函数。"""
 import os
 from app.config.paths import ROOT_DIR, BACKEND_DIR, STATIC_DIR, backend_path, static_path, data_path

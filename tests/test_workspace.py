@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 4e96a2c5
+
 """测试 app/tools/workspace.py — 工作区文件操作工具。
 
 覆盖：read_file / write_file / edit_file / list_files / grep_files。

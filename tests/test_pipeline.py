@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: a85884dd
+
 """测试 app/retrieval/pipeline.py — 检索管线。
 
 覆盖：_classify_intent / _resolve_route / run_chat_retrieval / retrieve_all 核心路径。

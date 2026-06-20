@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: e64a1468
+
 """DEPRECATED (Phase 3): SQLite 连接池已退役，Qdrant 替代。
 
 保留兼容桩：close_all() 和 get_db() 供旧测试 teardown 使用。

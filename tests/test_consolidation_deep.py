@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 499f8926
+
 """测试 app/background/consolidation.py 深层分支 — 提行覆盖。
 
 覆盖：on_idle 分支 / _review_today / _check_conflicts / _assess_archival

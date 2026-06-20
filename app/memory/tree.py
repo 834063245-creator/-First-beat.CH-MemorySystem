@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 08001c22
+
 """话题树 — 从标签亲和图自动聚类，检索时沿树扩展相关标签。
 
 用法

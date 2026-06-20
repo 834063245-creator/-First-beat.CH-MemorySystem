@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 4074c9d2
+
 """初痕环境诊断脚本 — 一键检查所有依赖是否就绪。
 
 用法: python verify_env.py

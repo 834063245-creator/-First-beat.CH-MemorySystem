@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: a3fde25b
+
 """Tests for _handle_tool_call — the shared tool dispatch function."""
 import pytest
 

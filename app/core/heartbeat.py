@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 80fd47a6
+
 """用户心跳追踪 — 供后台线程和 API 层共享。
 
 心跳状态是应用级状态，放在 core/ 层以便：

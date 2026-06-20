@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 7d643ae4
+
 """测试 app/memory/working.py — 工作记忆摘要。"""
 import json
 import os

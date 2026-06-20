@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: a850744e
+
 """impulse.py 测试 — 冲动源、调度器、疲劳度衰减、速率限制。"""
 import json
 import os

@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 7bd50f7d
+
 """统一评分函数 — 替代 backend/main.py 和 app/tools/dispatch.py 中各自的内联评分。"""
 import math
 

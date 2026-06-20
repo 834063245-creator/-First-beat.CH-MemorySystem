@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 5582c306
+
 """测试 app/memory/inverted.py 的 InvertedIndex。
 
 覆盖：构建、查询、增量更新、OR退化、删除、标签索引、多线程并发。

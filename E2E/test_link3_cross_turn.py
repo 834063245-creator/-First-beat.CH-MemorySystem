@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: dec2d408
+
 """链路三：跨轮记忆链路 — 验收测试 (X1-X9)
 
 每个变体一个独立测试函数，使用真实组件模拟多轮对话。

@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: ce7539fb
+
 """测试 app/tools/search.py — 博查网页搜索。
 
 覆盖：search_web 的各种边界条件和错误处理。

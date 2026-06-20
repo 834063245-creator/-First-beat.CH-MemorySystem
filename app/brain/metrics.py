@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 3a1173ee
+
 """训练指标持久化 — 集中式 Metrics Manager.
 
 JSON 文件: app/brain/training_metrics.json（不存在就创建）

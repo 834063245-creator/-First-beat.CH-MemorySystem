@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: fc9cb468
+
 """测试 app/portrait/state.py — 画像条目状态机。
 
 纯逻辑，无 I/O 依赖。

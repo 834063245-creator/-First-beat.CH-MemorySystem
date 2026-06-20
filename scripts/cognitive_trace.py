@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: e0d48e5e
+
 """认知追踪器 — 把五条连线在黑盒里的行为全摊开。
 
 用法: python scripts/cognitive_trace.py

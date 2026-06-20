@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: f0057238
+
 """情绪分析 — Russell 二维情感环（效价+唤醒度），全本地零 LLM。
 
 v2: 从离散三类升级为连续坐标，保持向后兼容。

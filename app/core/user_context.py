@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 49294892
+
 """用户上下文管理器 — 管理每个用户的 AppContext 实例。"""
 import logging
 import threading

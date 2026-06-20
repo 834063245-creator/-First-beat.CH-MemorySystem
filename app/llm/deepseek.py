@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 6b3ed67c
+
 """LLM 调用层 — 通用文本生成 + 工具调用。"""
 import asyncio
 import json

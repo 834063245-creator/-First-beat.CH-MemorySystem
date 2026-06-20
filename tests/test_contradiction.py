@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 660c2164
+
 """事实冲突检测单元测试 — 两层漏斗逻辑验证。"""
 import json
 from unittest.mock import MagicMock, patch

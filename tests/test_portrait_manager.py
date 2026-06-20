@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: c2999fae
+
 """测试 app/portrait/manager.py — PORTRAIT.md 生命周期管理。
 
 覆盖: 加载/解析、条目 CRUD、渲染、查询接口、boost 映射。

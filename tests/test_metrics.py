@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 790eea43
+
 """测试 app/brain/metrics.py — 训练指标持久化。
 
 覆盖：record_training / record_shadow_test / record_benchmark / _load / _default。

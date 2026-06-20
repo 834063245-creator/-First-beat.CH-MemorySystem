@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 000fa38c
+
 """语义层 — 零 CNN、零 jieba 的纯语义工具集。
 
 替代：5 个 ChuchuCNN 模型 + 27 处 jieba 调用。

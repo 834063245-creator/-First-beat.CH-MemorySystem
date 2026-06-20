@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 09909a80
+
 """记忆系统内部工具集 — 引擎使用，非 LLM 工具。
 
 引擎内部使用的工具函数：

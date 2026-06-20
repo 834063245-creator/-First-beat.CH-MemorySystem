@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 72843c6f
+
 """全管线审计 — 覆盖现有单元测试够不到的集成层。
 
 测试前提：Qdrant + Ollama embedding 可用（与 test_audit_adversarial 相同）。

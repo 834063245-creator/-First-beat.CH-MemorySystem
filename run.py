@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 85e4fc64
+
 """初痕记忆引擎启动入口。"""
 import sys
 import os

@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: cef642ef
+
 """测试 app/api/memories.py — 记忆管理端点（mock AppContext）。
 
 覆盖：GET /stats / GET /{id} detail / POST /{id}/correct / DELETE /{id} / POST /feedback

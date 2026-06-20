@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 5ac5280f
+
 """测试 app/core/helpers.py — 共享辅助函数。
 
 覆盖：build_trace / build_debug_info / _load_jsonl_cached / load_recent_reversals。

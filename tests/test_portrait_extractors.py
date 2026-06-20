@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 3379a16e
+
 """测试 app/portrait/extractors.py — 画像特征提取器纯函数。
 
 所有函数无副作用，输入→输出，可独立测试。

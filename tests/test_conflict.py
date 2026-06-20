@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 932e4254
+
 """测试 app/core/conflict.py — 记忆冲突用户消解。
 
 覆盖：check_resolution 的确认信号检测、消解有效期检查、stale 标记执行。

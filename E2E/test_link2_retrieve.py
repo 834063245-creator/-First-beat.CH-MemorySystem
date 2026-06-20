@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 8f8ebc53
+
 """链路二：检索+编织+认知链路 — 验收测试 (R1-R35)
 
 每个节点一个独立测试函数，使用真实组件。

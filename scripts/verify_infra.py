@@ -1,4 +1,9 @@
 #!/usr/bin/env python
+
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 072fbc77
+
 """Phase 0 基础设施连通性验证脚本。
 
 验证项:

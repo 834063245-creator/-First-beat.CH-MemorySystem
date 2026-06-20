@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: e563db49
+
 """测试 app/api/health.py — 健康检查端点。
 
 覆盖：不依赖数据库的健康检查和就绪检查。

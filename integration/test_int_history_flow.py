@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 789a3e54
+
 """链路 3：对话历史流转集成测试。
 
 验证 ChatHistory 组件的文件 IO + 内存操作闭环。

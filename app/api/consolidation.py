@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 2f19fa75
+
 """后台巩固状态 API。"""
 import logging
 from fastapi import APIRouter, Depends

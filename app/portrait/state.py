@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: df1c02e1
+
 """画像条目状态机 — 生命周期管理。
 
 状态转换路径:

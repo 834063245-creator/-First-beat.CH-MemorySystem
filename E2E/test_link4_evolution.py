@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 9029c5dc
+
 """链路四：记忆演化链路 — 验收测试 (M1~M16)
 
 每个节点一个独立测试函数，使用真实组件验证。

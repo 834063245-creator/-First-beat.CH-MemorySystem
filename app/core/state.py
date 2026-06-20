@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 8cc74d78
+
 """认知状态层 — 引擎决策的数据结构，LLM 皮层的唯一接口。
 
 这是整场重构的基石：

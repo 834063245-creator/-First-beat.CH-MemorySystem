@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: c7228bda
+
 """OpenAI Chat Completions API 兼容层。"""
 import json
 import time

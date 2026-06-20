@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 9bdaa9f3
+
 """测试 app/core/auth.py — 用户认证提取。
 
 覆盖：get_current_user 的 Header / Cookie / 默认回退逻辑。

@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: abd28d73
+
 """集成测试 pytest 配置 — 注入项目根目录，提供 isolated_env 等共用 fixture。
 
 与 tests/conftest.py 解耦，integration/ 可单独运行。

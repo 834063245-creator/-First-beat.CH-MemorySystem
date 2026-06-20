@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 0adcb367
+
 """本地 LLM — 通过 Ollama qwen2.5:3b 做摘要，零 API 费用。
 
 已存在的 qwen2.5:3b（实体抽取用）被复用为摘要模型，

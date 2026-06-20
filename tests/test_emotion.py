@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 72d20a4c
+
 """Tests for emotion analysis — analyze_emotion function."""
 from app.analysis.emotion import analyze_emotion
 

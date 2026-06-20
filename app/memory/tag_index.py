@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 6cf8e118
+
 """标签嵌入索引 — 用 bge-m3 embedding + cosine 相似度找近邻标签。
 
 替代 TopicTree 分支扩展：不需要等共现数据累积，从第一个标签起就能做最近邻扩展。

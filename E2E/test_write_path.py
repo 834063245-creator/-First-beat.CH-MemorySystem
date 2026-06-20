@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: c9971c9c
+
 """链路一：写入链路 Benchmark 测试（W1~W12）。
 
 每个节点独立测试，使用真实 Qdrant + bge-m3 + 本地 LLM，固定 seed。

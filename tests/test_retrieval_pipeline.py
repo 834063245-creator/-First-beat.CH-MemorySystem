@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 936c9405
+
 """检索管线回归测试 — 组件级验证。
 
 注入已知测试记忆 → 验证各检索通路正确返回预期结果。

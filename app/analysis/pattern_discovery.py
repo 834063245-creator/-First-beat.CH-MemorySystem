@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: ffd96be4
+
 """模式发现层 — 从已有索引和对话历史中提取可读的模式观察。
 
 零 LLM 调用，不入库，纯缓存层。由 background worker 周期性触发。

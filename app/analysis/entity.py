@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: b072c782
+
 """实体抽取模块 — 基于 jieba 本地 POS 标注，零延迟零费用。
 
 入库时从对话文本中抽取命名实体（人名、地名、组织名）和关键词。

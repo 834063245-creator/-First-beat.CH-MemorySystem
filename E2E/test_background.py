@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 2b1f2017
+
 """后台节律验收测试 — B1-B17
 
 覆盖冲动源、疲劳度、冲动触发/TTL、巩固、模式发现、后台线程等全部 17 个子项。

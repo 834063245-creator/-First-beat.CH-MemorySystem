@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: a81124d9
+
 """工作区文件操作工具 — read_file / write_file / edit_file / list_files / grep_files。"""
 import logging
 import os

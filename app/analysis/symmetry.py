@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 9cf88385
+
 """人格对称性 — 双共现矩阵差分，发现 AI 对用户兴趣的理解盲区。
 
 从 CoOccurrenceTracker.export_for_symmetry() 获取实时共现数据（SQLite），

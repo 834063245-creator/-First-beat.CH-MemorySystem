@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 5bf49032
+
 """LLM 工具定义 — OpenAI 兼容的工具定义常量。"""
 
 # ── 工具定义（OpenAI 兼容格式） ──────────────────────────────

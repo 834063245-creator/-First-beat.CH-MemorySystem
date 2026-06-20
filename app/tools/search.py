@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 950df7d6
+
 """网页搜索 — 基于博查 Search API（bochaai.com）。"""
 import logging
 import os

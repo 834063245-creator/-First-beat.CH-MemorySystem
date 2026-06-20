@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 3b91a6ce
+
 """路径工具 — 兼容新旧路径布局。"""
 import os
 

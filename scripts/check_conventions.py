@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: fb4bafd1
+
 """
 初痕项目约定检查器 v2 — 自动化代码规范审计
 覆盖率：CLAUDE.md 全量约定 + 6 条红线哨兵

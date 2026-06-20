@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: bc0416a4
+
 """应用上下文 — AppContext 类 + ctx_manager 导出。
 
 AppContext 类在此处完整定义，所有模块从 app/ 自给自足。

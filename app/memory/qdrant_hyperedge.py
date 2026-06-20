@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: beca8317
+
 """超边索引存储 — 独立 Qdrant collection 替代 SQLite hyperedge.py。
 
 Phase 3 从 app/memory/qdrant.py 拆分。

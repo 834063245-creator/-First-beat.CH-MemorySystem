@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: d42e1bd2
+
 """Tests for work memory window — ChatHistory.get_recent with token_budget."""
 import os
 import pytest

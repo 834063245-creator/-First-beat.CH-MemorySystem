@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 60f115d6
+
 """测试 app/api/chat.py 纯端点 + 工具调度函数。
 
 覆盖：/v1/models /chat/stream 空消息 / _handle_tool_call 工具路由。

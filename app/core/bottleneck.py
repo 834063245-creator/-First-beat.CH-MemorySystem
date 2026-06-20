@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 392a5b58
+
 """全链路耗时监控 — 自动捕获卡顿现场。"""
 import logging
 import os

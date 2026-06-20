@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: c2d37667
+
 """测试 app/memory/history.py 深层方法 — 提行覆盖。
 
 覆盖：ChatHistory.append / get_recent / delete_by_timestamp / clear / annotate_chunks。

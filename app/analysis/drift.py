@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: c02dde8a
+
 """偏移率追踪 — 检测用户行为倾向的偏移方向 (纯规则, 零 LLM)。
 
 spend (愿投, +) ←→ frugal (省钱, λ) ←→ drift (放弃, -)

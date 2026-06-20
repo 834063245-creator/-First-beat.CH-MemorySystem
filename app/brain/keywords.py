@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: fdd3b374
+
 """共享关键词常量 — 意图和情绪关键词的唯一来源。
 
 circuit.py、models.py、train_chuchu.py 统一从这里导入，

@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 0cfc1ccd
+
 """
 初痕真实记忆审计套件 v4 — 开源版
 基于生产数据直接测试检索层能力，诚实地测每一条通路。

@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: b1084e1f
+
 """测试 app/llm/deepseek.py — generate()/generate_stream() HTTP mock。
 
 覆盖：完整消息构建路径 + HTTP 响应解析 + DSML 清理。

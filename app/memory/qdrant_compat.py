@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 44da844b
+
 """旧 ChromaDB Collection API 兼容层 — Qdrant 翻译适配器。
 
 从 qdrant.py 中提取，消除模块内循环依赖。

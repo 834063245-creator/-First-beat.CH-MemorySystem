@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 4bafda8a
+
 """FastAPI 依赖注入 — 单用户上下文。
 
 直接从 app/ 模块导入，不操作 sys.path。

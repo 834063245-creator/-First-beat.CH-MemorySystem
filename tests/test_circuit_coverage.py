@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: ff766664
+
 """测试 circuit.py 未覆盖路径：weave_context 叙述层 + ChatCircuit.run() 分支。"""
 import json
 import time

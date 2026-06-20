@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 501e7de9
+
 """聊天端点 — 引擎闭环的入口和出口。"""
 import asyncio
 import json

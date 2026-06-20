@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: d257ab92
+
 """Memory layer -- Qdrant storage/retrieval + context management (sole vector backend).
 
 Phase 4: million-scale -- quantization + payload index + embedding cache LRU.

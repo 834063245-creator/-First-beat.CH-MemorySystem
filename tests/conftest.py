@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 6213e87a
+
 """pytest 配置 — 注入项目根目录到 sys.path，确保 app.* 导入正常工作。
 
 包含：

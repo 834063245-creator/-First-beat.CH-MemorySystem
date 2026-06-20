@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 20566f47
+
 """Configuration — 优先从环境变量读取，.env 文件可选。
 
 这是新的配置中心。旧 backend/config.py 仍保留供旧模块使用，

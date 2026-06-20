@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: e5f8a96d
+
 """导出训练数据：从 Qdrant + ChatHistory 提取意图和情绪标注
 
 用法: python -m app.brain.export_training_data

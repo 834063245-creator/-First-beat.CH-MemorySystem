@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 8c2922a1
+
 """测试薄路由端点 — chat_history / consolidation / distill / personalities。
 
 覆盖：所有依赖 AppContext 的 GET/POST/DELETE 端点。

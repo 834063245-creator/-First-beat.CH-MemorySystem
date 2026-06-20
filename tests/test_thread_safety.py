@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: b175f906
+
 """ChatHistory 线程安全 + Impulse 锁 + get_brain 竞态 + emb_cache。
 
 扩展：增加 get_brain() 竞态条件测试和 _emb_cache 并发写测试。

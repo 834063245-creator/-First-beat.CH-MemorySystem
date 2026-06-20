@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 5e2ace4b
+
 """测试 app/core/bottleneck.py — 全链路卡顿监控。
 
 覆盖：record / _dump / _rotate_if_needed 以及阈值触发逻辑。

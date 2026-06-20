@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: e4ab5e22
+
 """画像特征提取器 — 纯函数集合，不依赖外部状态。
 
 从 app/background/distill.py 迁移的纯函数 + 新增的画像专用特征提取器。

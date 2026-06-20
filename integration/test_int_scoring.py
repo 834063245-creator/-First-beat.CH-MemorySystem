@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 325d281a
+
 """链路 5：评分与排序集成测试。
 
 compute_score 是纯计算函数，无需 fixture、无需 mock。

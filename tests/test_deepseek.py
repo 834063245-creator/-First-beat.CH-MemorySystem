@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 367af850
+
 """测试 app/llm/deepseek.py 纯函数。
 
 覆盖：now_hint / _relative_time / _confidence_label / _timeline_to_messages

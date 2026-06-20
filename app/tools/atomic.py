@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: be1b6755
+
 """原子文件写入 — 写临时文件 → os.replace() 一步替换。"""
 import json
 import os

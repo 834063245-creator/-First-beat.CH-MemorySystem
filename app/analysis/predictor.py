@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 8ecacfe4
+
 """行为预测器 — 从用户行为序列中学习意图转移模式，预测下一步。
 
 增量学习 + n 步马尔可夫链 + 多步预测。

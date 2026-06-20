@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 5ab2e75f
+
 """聊天历史 API。"""
 import logging
 from fastapi import APIRouter, Depends, HTTPException

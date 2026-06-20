@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: d583900f
+
 """AI 自我镜像生成器 — 检索 AI 在相似情绪下的历史回应, 组装为 prompt 上下文。
 
 纯读操作, 零 LLM 调用, 不落盘。

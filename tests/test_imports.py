@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 73ac0e92
+
 """测试 app/brain/ 层纯导出/常量模块的导入完整性和数据完整性。
 
 覆盖：brain/models.py（语义脑外壳）、brain/keywords.py（意图/情绪常量）。

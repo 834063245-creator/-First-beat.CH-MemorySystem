@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: f85b5462
+
 """链路 1：写入→检索闭环集成测试。
 
 验证：对话写入后，能通过各检索通路找回来。

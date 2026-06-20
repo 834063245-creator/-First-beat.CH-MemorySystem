@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 86c7a8f3
+
 from typing import Optional, List, Any
 from pydantic import BaseModel, Field
 

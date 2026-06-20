@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 049bb7aa
+
 """测试 app/api/system.py — 系统端点（不需 AppContext 依赖的路径）。
 
 覆盖：/api/ping /api/user/list /prompt GET/POST /login /api/user/switch

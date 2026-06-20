@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 856d4be8
+
 """测试 app/llm/deepseek.py — _build_prompt / _build_stable_system_prompt。
 
 覆盖：记忆区格式化、置信度标签、人格区、核心规则注入、stale 处理。

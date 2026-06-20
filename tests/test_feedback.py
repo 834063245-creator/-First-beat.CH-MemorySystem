@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 1a5c4d1d
+
 """测试 app/core/feedback.py — 记忆错误报告记录与清除。
 
 覆盖：log_error_report / clear_memory_errors 文件写入。

@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 6e79d5f1
+
 """链路 4：巩固流水线集成测试。
 
 验证：巩固引擎在真实 Qdrant 数据上的行为。

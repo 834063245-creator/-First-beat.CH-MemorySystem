@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 9ba6c22e
+
 """认知五连线端到端 smoke 验证 — 每条连线真的通了吗？
 
 用法: python scripts/verify_cognitive_wiring.py

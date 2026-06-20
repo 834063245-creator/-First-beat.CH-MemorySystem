@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 78a8913e
+
 """embed.py 测试 — 缓存命中、合并器并发、向量归一化。"""
 import math
 import threading

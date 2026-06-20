@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 4943b3ed
+
 """Tests for query_explore and related tool functions."""
 import uuid
 import pytest

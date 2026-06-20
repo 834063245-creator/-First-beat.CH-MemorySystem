@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 57af4c09
+
 """测试 app/api/openai.py — OpenAI Chat Completions API 兼容层。
 
 覆盖：parse_openai_messages / format_openai_chunk / format_openai_response 纯函数。

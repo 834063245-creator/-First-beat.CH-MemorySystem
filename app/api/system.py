@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 0a973897
+
 """系统端点 — 健康检查、提示词管理、用户活跃检测、登录等。"""
 import asyncio
 import json

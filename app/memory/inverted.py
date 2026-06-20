@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 622a4957
+
 """词→记忆ID映射。启动时从所有记忆的summary构建，支持增量更新。
 
 线程安全（threading.Lock）。

@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: d6e1b7d8
+
 """认知画像系统 (Portrait System) — 认知结论的统一汇聚层。
 
 PORTRAIT.md 替代分散的 PersonalityStore + DistillEngine + personality_notes 注入，

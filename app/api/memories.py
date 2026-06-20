@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: ae316bf8
+
 """记忆管理 API。"""
 import json
 import logging

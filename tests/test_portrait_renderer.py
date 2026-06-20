@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: bf571185
+
 """测试 app/portrait/renderer.py — 画像 Prompt 渲染。
 
 测试渲染逻辑对条目过滤、分类、文本剥离的正确性。

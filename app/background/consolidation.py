@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 4f4584e1
+
 """巩固引擎（Consolidation Engine）— 引擎的独立后台认知节律。
 
 两级机制：

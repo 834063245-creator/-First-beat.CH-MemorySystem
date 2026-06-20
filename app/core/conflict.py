@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: dcafb902
+
 """记忆冲突用户消解 — 用户确认后标记旧记忆 stale。
 
 流程：

@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: bee0d264
+
 """测试 app/portrait/writer.py — 画像写入引擎。
 
 覆盖: 静态方法、提取辅助、数据拉取逻辑（实时层浅层测试）。

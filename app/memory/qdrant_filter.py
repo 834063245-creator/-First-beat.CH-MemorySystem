@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 6758b6f2
+
 """旧 ChromaDB where 格式 → Qdrant Filter 翻译层 (Phase 2 遗留兼容)。
 
 从 qdrant.py 中提取，消除模块内循环依赖。纯函数，无 app 内部依赖。

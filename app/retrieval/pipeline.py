@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 931c715d
+
 """检索管线 — 从 backend/main.py 迁移而来。
 
 原 _run_chat_retrieval 整体迁移至此，路径导入已更新为 app 结构。

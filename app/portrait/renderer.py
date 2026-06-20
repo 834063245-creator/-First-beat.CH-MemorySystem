@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 91db3ca2
+
 """PortraitRenderer — PORTRAIT.md 渲染为 LLM prompt 片段。
 
 渲染规则（纯规则，不调 LLM）:

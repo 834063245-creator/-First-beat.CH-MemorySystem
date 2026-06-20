@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 85d0dacd
+
 """回路调度器 — 用户消息的标准处理通路。
 
 编排顺序：意图分析 → 记忆检索 → 一致性校验 → 响应选控（门控）

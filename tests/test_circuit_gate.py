@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 64e30b32
+
 """测试 app/core/circuit.py 的 basal_ganglia_gate()。
 
 覆盖：各意图/情绪组合的语气、响应模式、情绪压制、亲密值。

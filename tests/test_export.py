@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 81dd50c9
+
 """测试 app/brain/export_training_data.py — 意图/情绪分类器。
 
 覆盖：classify_intent / classify_emotion 纯函数。

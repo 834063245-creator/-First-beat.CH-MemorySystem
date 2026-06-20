@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 63438823
+
 """测试 app/tools/dispatch.py — dispatch 函数。
 
 覆盖：query_memory / query_explore / count_memories / analyze_pattern 核心路径。

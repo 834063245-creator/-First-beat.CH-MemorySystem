@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 19663682
+
 """测试 app/analysis/symmetry.py — 人格对称性分析。"""
 import json
 import os

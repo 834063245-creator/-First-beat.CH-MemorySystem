@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 63dc1364
+
 """测试 app/api/chat.py 核心端点（mock 全链路）。
 
 覆盖：/benchmark/inject /admin/reset /chat 非流式 /chat/stream 空消息/流式。

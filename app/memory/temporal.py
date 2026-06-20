@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 22dc33f7
+
 """时间模式索引 — 发现话题的时间规律，替代硬编码日期匹配。
 
 索引结构：(时间粒度, 话题标签) → {出现次数, 最后出现时间}

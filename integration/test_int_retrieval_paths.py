@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 6730e88a
+
 """链路 2：检索通路验证集成测试。
 
 验证：retrieve_all 各检索路径在真实数据下能返回结果。

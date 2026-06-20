@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 31e0d0c3
+
 """自主触发冲动系统 — 记忆系统主动敲门。
 
 每个冲动源是一个函数，返回 (content, priority) 或 None。

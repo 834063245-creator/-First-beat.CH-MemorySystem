@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 13647f38
+
 """记忆反馈模块 — 错误报告记录与清除。
 
 从 backend/main.py 迁移至此。

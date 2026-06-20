@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 37a24120
+
 """共享辅助函数 — 从 backend/main.py 迁移至此。
 
 包含：计时包装、trace/debug 构建、情绪反转加载、JSONL 缓存。

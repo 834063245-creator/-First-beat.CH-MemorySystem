@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: ac238dbc
+
 """测试 app/tools/dispatch.py 纯函数 — 提行覆盖。
 
 覆盖：_parse_natural_date 全部分支 / count_memories / _get_memory_collection。

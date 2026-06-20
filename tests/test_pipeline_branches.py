@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 1f6cd57d
+
 """测试 app/retrieval/pipeline.py 纯函数 — 提行覆盖。
 
 覆盖：_classify_intent / _resolve_route / _load_error_counts / _load_correction_boosts

@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 1ee19ad6
+
 """测试 app/brain/export_training_data.py — main() CLI 入口。
 
 覆盖：main() 从 chat_history.jsonl 读取 → 标注 → 输出 training_data.jsonl。

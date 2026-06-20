@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: c68e8479
+
 """单用户上下文。
 
 通过 X-Chuhen-User 请求头或 chuhen_user cookie 切换数据目录。

@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 5cc6204d
+
 """context.py 测试 — AppContext 主编排器：队列、预热、生命周期。"""
 import json
 import os

@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 0e55c64a
+
 """pytest 配置 — 注入项目根目录到 sys.path + 写入链路隔离 fixture。
 
 包含：

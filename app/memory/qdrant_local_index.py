@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: cf6864da
+
 """本地 Payload 索引 — 补偿 Qdrant 本地引擎无服务端索引的限制。
 
 从 qdrant.py 中提取，消除模块内循环依赖。

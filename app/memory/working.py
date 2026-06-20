@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: af347f45
+
 """工作记忆摘要 — 增量维护对话脉络，替代原始对话原文的 500K token 注入。
 
 每次对话后由本地 LLM（零成本）增量更新摘要，下次请求只带摘要（~3K tokens）

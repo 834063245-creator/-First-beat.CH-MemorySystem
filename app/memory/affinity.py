@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 9360dd64
+
 """话题亲和图 — 标签级关联网络，替代记忆ID级共现。
 
 数据来自对话中标签的先后出现关系，不依赖检索管线的命中记录。

@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: dce242e8
+
 """测试 app/core/circuit.py 纯函数 — 提行覆盖。
 
 覆盖：_compute_emotion_intensity 全部路径 / basal_ganglia_gate 全部分支

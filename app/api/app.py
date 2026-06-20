@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 97c55e70
+
 """初痕记忆引擎 — FastAPI 应用工厂。
 
 暴露接口：REST 管理端点、聊天端点、健康检查。

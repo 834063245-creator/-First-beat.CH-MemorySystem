@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 0f698f01
+
 """后台线程生命周期管理器 — 统一启动/停止 + 崩溃自动重启。
 
 用法：

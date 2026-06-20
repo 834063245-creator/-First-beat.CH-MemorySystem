@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: c8a02e65
+
 """测试 app/tools/atomic.py — 原子文件写入。"""
 import json
 import os

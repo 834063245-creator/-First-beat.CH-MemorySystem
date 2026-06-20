@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 9b50ebed
+
 """Embedding 统一入口 — Ollama GPU 推理（bge-m3）。
 
 v2: 请求合并器 — 短时间内的多次 local_embed 调用自动合并为一次 batch HTTP，

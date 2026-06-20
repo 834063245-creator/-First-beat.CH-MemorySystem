@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 8e8307d6
+
 """Phase 4 压力测试 - 百万级 Qdrant 性能基准。
 
 用法:

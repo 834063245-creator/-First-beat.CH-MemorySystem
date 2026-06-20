@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: ea81d17a
+
 """PortraitWriter — 画像写入引擎。
 
 三层更新:

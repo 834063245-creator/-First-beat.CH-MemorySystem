@@ -1,3 +1,7 @@
+# Copyright (c) 2026 初痕 (Chuchen)
+# SPDX-License-Identifier: MIT
+# wm: 47183501
+
 """测试 app/memory/temporal.py — 时间模式索引。
 
 覆盖：TemporalPatternIndex 的更新、查询、剪枝、删除。

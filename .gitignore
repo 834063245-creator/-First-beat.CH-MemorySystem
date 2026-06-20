@@ -74,4 +74,13 @@ hologram_graph_files.json
 # Agent guidance (local only, not part of the project)
 CLAUDE.md
 SPEC_DRIFT.md
+SPEC_EMBEDDING_STEERING.md
 audit/
+
+# Experiment artifacts
+scripts/steering_experiment_results/
+scripts/steering_phase*.py
+
+# qwen_embed extracted data (generated, large)
+data/qwen_embed_f32.npy
+data/qwen_tokenizer.json
