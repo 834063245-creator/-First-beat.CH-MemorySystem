@@ -27,15 +27,19 @@ if _project_root not in sys.path:
 # 全局 autouse fixture — mock Ollama embedding，避免测试卡住
 # ═══════════════════════════════════════════════════════════════════
 
-_DUMMY_EMB = [0.1] * 1024
+_EMB_BASE = 1.0 / (3584 ** 0.5)
+_DUMMY_EMB = [_EMB_BASE] * 3584
 
 
-def _text_dependent_emb(text: str) -> list[float]:
+def _text_dependent_emb(text: str) -> list[float] | None:
+    text = (text or "").strip()
+    if not text:
+        return None
     import hashlib
     h = hashlib.sha256(text.encode()).digest()
     val = int.from_bytes(h[:4], 'big') / (2 ** 32) * 0.1 - 0.05
-    emb = [0.1] * 1024
-    emb[0] = 0.1 + val
+    emb = [_EMB_BASE] * 3584
+    emb[0] = _EMB_BASE + val
     return emb
 
 
@@ -72,8 +76,8 @@ def _mock_ollama_http(request):
         yield
         return
 
-    with patch("app.llm.embed._embed_via_ollama", side_effect=_text_dependent_emb), \
-         patch("app.llm.embed._embed_via_ollama_batch",
+    with patch("app.llm.embed._embed_via_qwen", side_effect=_text_dependent_emb), \
+         patch("app.llm.embed._embed_via_qwen_batch",
                side_effect=_text_dependent_emb_batch), \
          patch("app.llm.local.LocalLLM.summarize",
                return_value="mock摘要"), \

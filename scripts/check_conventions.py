@@ -515,11 +515,11 @@ def check_background_threads():
 # 承重墙配置：键 → (期望默认值, 描述, 类型)
 LOAD_BEARING_SETTINGS = {
     "LLM_BASE_URL": ("https://api.deepseek.com", "LLM API 地址"),
-    "OLLAMA_EMBED_MODEL": ("bge-m3", "Embedding 模型名"),
+    "OLLAMA_EMBED_MODEL": ("qwen_embed", "Embedding 模型名（已切到 qwen_embed）"),
     "MEMORIES_COLLECTION": ("memories", "Qdrant 主记忆 collection 名"),
     "DATA_DIR": (None, "数据根目录", "exists"),  # 只检查存在
     "WORK_MEMORY_TOKEN_BUDGET": (200000, "工作记忆 token 预算"),
-    "DEFAULT_EMBED_MODEL": ("bge-m3", "默认 embedding 模型"),
+    "DEFAULT_EMBED_MODEL": ("qwen_embed", "默认 embedding 模型"),
 }
 
 

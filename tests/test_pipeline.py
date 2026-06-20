@@ -220,7 +220,7 @@ class TestRunChatRetrieval:
     def test_returns_tuple_of_four(self):
         from app.retrieval.pipeline import run_chat_retrieval
         ctx = _make_ctx_mock()
-        emb = [0.1] * 1024
+        emb = [0.1] * 3584
         result = run_chat_retrieval("测试消息", emb, ctx)
         assert isinstance(result, tuple)
         assert len(result) == 4
@@ -229,7 +229,7 @@ class TestRunChatRetrieval:
         from app.retrieval.pipeline import run_chat_retrieval
         ctx = _make_ctx_mock()
         ctx.memory_service.count.return_value = 0
-        emb = [0.1] * 1024
+        emb = [0.1] * 3584
         _, _, _, memories = run_chat_retrieval("测试消息", emb, ctx)
         assert isinstance(memories, list)
 
@@ -242,7 +242,7 @@ class TestRunChatRetrieval:
     def test_respects_given_intent(self):
         from app.retrieval.pipeline import run_chat_retrieval
         ctx = _make_ctx_mock()
-        emb = [0.1] * 1024
+        emb = [0.1] * 3584
         # 传入 intent 应该可以正常运行
         result = run_chat_retrieval("测试", emb, ctx, intent="recall")
         assert len(result) == 4
@@ -264,7 +264,7 @@ class TestRunChatRetrieval:
             "metadatas": [{"summary": "test"}],
             "documents": ["测试文档"],
         }
-        emb = [0.1] * 1024
+        emb = [0.1] * 3584
         _, _, _, memories = run_chat_retrieval("测试", emb, ctx)
         if memories:
             for m in memories:
@@ -274,7 +274,7 @@ class TestRunChatRetrieval:
         """返回的记忆应有 recency_weight 字段。"""
         from app.retrieval.pipeline import run_chat_retrieval
         ctx = _make_ctx_mock()
-        emb = [0.1] * 1024
+        emb = [0.1] * 3584
         _, _, _, memories = run_chat_retrieval("测试", emb, ctx)
         for m in memories:
             assert "recency_weight" in m
@@ -284,7 +284,7 @@ class TestRunChatRetrieval:
         from app.retrieval.pipeline import run_chat_retrieval
         ctx = _make_ctx_mock()
         ctx.dmn.get_preheated.return_value = [{"id": "pre1", "document": "预热记忆"}]
-        emb = [0.1] * 1024
+        emb = [0.1] * 3584
         _, _, _, memories = run_chat_retrieval("测试", emb, ctx)
         assert len(memories) == 1
         assert memories[0]["id"] == "pre1"
@@ -300,7 +300,7 @@ class TestRunChatRetrieval:
         ctx.chat_history.get_recent.return_value = [
             {"user_message": "之前聊过", "llm_reply": "是的之前的回复"}
         ]
-        emb = [0.1] * 1024
+        emb = [0.1] * 3584
         _, _, _, memories = run_chat_retrieval("测试", emb, ctx)
         assert isinstance(memories, list)
 
@@ -315,7 +315,7 @@ class TestRetrieveAll:
     def test_returns_list(self):
         from app.retrieval.pipeline import retrieve_all
         ctx = _make_ctx_mock()
-        emb = [0.1] * 1024
+        emb = [0.1] * 3584
         result = retrieve_all("测试", emb, ctx)
         assert isinstance(result, list)
 
@@ -323,7 +323,7 @@ class TestRetrieveAll:
         from app.retrieval.pipeline import retrieve_all
         ctx = _make_ctx_mock()
         ctx.memory_service.count.return_value = 0
-        emb = [0.1] * 1024
+        emb = [0.1] * 3584
         result = retrieve_all("测试", emb, ctx)
         assert result == []
 
@@ -339,7 +339,7 @@ class TestRetrieveAll:
             "metadatas": [{}, {}, {}, {}, {}],
             "documents": ["a", "b", "c", "d", "e"],
         }
-        emb = [0.1] * 1024
+        emb = [0.1] * 3584
         result = retrieve_all("测试", emb, ctx)
         # benchmark 模式下 <= 200 条会全量返回
         assert len(result) >= 4
@@ -348,7 +348,7 @@ class TestRetrieveAll:
         """不同 intent 走不同配额。"""
         from app.retrieval.pipeline import retrieve_all
         ctx = _make_ctx_mock()
-        emb = [0.1] * 1024
+        emb = [0.1] * 3584
         result = retrieve_all("测试", emb, ctx, intent="conflict")
         assert isinstance(result, list)
 
@@ -356,7 +356,7 @@ class TestRetrieveAll:
         """cached_tags 参数被复用。"""
         from app.retrieval.pipeline import retrieve_all
         ctx = _make_ctx_mock()
-        emb = [0.1] * 1024
+        emb = [0.1] * 3584
         result = retrieve_all("测试", emb, ctx, cached_tags=["Python", "编程"])
         assert isinstance(result, list)
 

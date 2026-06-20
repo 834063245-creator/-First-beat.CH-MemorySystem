@@ -349,7 +349,7 @@ class PatternDiscovery:
             return []
 
     def _extract_tags(self, text: str) -> list[str]:
-        """从文本提取标签（语义层 bge-m3 KeyBERT）。"""
+        """从文本提取标签（语义层 qwen_embed KeyBERT）。"""
         try:
             from app.brain.semantic import extract_tags
             return extract_tags(text, topk=3)

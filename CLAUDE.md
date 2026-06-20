@@ -1,7 +1,7 @@
 # 初痕 (First Beat) CH Memory System
 
 > **这是项目的唯一权威文档。** 其他所有 .md 都以此文档为准。Agent 启动时自动加载。
-> 修改代码后必须同步更新本文档。最后修订 2026-06-20 (Steering Trajectory 概念确立 — 16模块×28层=448自由度认知调制器)。
+> 修改代码后必须同步更新本文档。最后修订 2026-06-21 (Embedding 统一切换 bge-m3→qwen_embed，检索+入库+注入全用同一空间，3584维，1007 tests green)。
 
 ---
 
@@ -10,7 +10,8 @@
 一个 **本地优先的 AI Agent 记忆引擎**。给大模型装上长期记忆——存对话、检索回忆、建画像、主动发起话题。
 
 - 156 个 .py 文件 · ~40,000 行源码 · ~13,400 行测试（60 文件）
-- DeepSeek API (主 LLM) + Ollama 本地 (bge-m3 embedding / qwen2.5 实体抽取)
+- DeepSeek API (主 LLM) + qwen_embed 本地 (3584维，纯 Python+numpy) + Ollama 本地 (qwen2.5 实体抽取/摘要)
+- **新增：本地 CVEC 残差注入模式** — `LOCAL_LLM_MODE=true` 时引擎走本地 qwen2.5 + 16 模块分层 steering，不走 API
 - FastAPI 服务 · 单用户单实例 · Benchmark 模式可选
 
 ---
@@ -91,7 +92,7 @@ d:\First Beat CH Memory System\
 │   │   ├── temporal.py             #   TemporalPatternIndex：话题时间规律发现 (171行)
 │   │   ├── tree.py                 #   话题树：从标签亲和图自动聚类 (179行)
 │   │   ├── affinity.py             #   话题亲和图：标签级关联网络 (86行)
-│   │   └── tag_index.py            #   标签嵌入索引：bge-m3 + 余弦最近邻查找 (140行)
+│   │   └── tag_index.py            #   标签嵌入索引：qwen_embed + 余弦最近邻查找 (140行)
 │   │
 │   ├── retrieval/                  # 检索管线：多路并行召回
 │   │   ├── pipeline.py             #   ★ 核心：run_chat_retrieval() 14步 + retrieve_all() 9路并行 (703行)
@@ -100,7 +101,9 @@ d:\First Beat CH Memory System\
 │   │
 │   ├── llm/                        # LLM 适配层
 │   │   ├── deepseek.py             #   ★ LLMClient：主 LLM 调用，10段消息结构，前缀缓存优化 (1051行)
-│   │   ├── embed.py                #   ★ 嵌入层：local_embed()，四级缓存+请求合并，bge-m3 (390行)
+│   │   ├── steering.py             #   ★ SteeringInjector：本地 CVEC 残差注入引擎 (310行，NEW 2026-06-21)
+│   │   ├── embed.py                #   ★ 嵌入层：local_embed()，两级缓存，qwen_embed 3584维 (190行，v3: 切自 bge-m3)
+│   │   ├── qwen_embed.py           #   ★ qwen2.5 独立嵌入模型，查表 351x 加速，检索/入库/注入统一后端 (221行)
 │   │   └── local.py                #   本地 LLM 封装 (qwen2.5:7b)，用于摘要生成 (118行)
 │   │
 │   ├── portrait/                   # 画像系统：12维认知画像（替代旧 PersonalityStore）
@@ -224,6 +227,9 @@ d:\First Beat CH Memory System\
 
 ## 3. 一次对话的完整数据流
 
+> **2026-06-21 新增本地 CVEC 模式**：`LOCAL_LLM_MODE=true` 时，步骤 6 走 `steering.py:SteeringInjector.generate()` 替代 DeepSeek API。
+> 引擎产出 16 模块短文本 → qwen_embed → CVEC 分层注入到本地 qwen2.5 残差流，不走 prompt 拼装。
+
 这是理解整个系统的关键。当用户发一条消息时，以下是完整的调用链：
 
 ```
@@ -231,6 +237,8 @@ d:\First Beat CH Memory System\
 │
 ├─ 1. API 层 [app/api/chat.py]
 │   POST /chat → chat_endpoint() → 获取/创建 AppContext
+│   ┌─ 远程模式 (默认): user_ctx.llm_client.generate(cognitive_state=utterance_spec)
+│   └─ 本地 CVEC 模式 (LOCAL_LLM_MODE=true): user_ctx.steering_injector.generate(user_msg, utterance_spec)
 │
 ├─ 2. 预处理 [app/core/circuit.py → ChatCircuit.run()]
 │   ├─ intent = classify_intent(user_msg)           # 7类意图分类，~50μs
@@ -299,10 +307,10 @@ d:\First Beat CH Memory System\
 └─ 8. 记忆入库 [app/core/context.py]
     _store_conversation() 异步执行:
     ├─ 本地 LLM 摘要 (qwen2.5:7b)
-    ├─ 标签提取 (bge-m3 KeyBERT)
+    ├─ 标签提取 (qwen_embed KeyBERT)
     ├─ 实体抽取 (qwen2.5:3b + 正则)
     ├─ 情绪分析 (Russell 2D)
-    ├─ embedding 计算 (bge-m3, 1024维)
+    ├─ embedding 计算 (qwen_embed, 3584维)
     ├─ Qdrant upsert (user + AI 双写)
     ├─ 冲突检测 → mark_stale
     ├─ 情绪反转检测
@@ -471,7 +479,7 @@ message[last]: user         ← 当前消息
 | 配置 | 改了会怎样 |
 |------|-----------|
 | `LLM_BASE_URL` / `LLM_MODEL` | 前缀缓存策略可能完全失效 |
-| `OLLAMA_EMBED_MODEL = "bge-m3"` | 旧记忆 embedding 全部作废，需全量重建 |
+| `OLLAMA_EMBED_MODEL = "qwen_embed"` | v3: 已切到 qwen_embed，不再依赖 Ollama embedding |
 | `BENCHMARK_MODE` | 非 benchmark 开它会降低回复质量 |
 | `DATA_DIR` | 所有路径全变 |
 | `WORK_MEMORY_TOKEN_BUDGET` | 改太小丢对话上下文 |
@@ -480,7 +488,7 @@ message[last]: user         ← 当前消息
 
 ### 红线 5：Embedding 和实体抽取
 
-- `local_embed()` 依赖 Ollama `bge-m3`，9 路检索全部依赖它
+- `local_embed()` 依赖 `qwen_embed`（纯 Python+numpy，3584维），9 路检索+入库+注入全部依赖它
 - 实体抽取依赖 Ollama `qwen2.5:3b`，改模型→实体对/超边质量下降
 - Phase 4 embedding 缓存：`_emb_cache` 为 `OrderedDict` LRU，`_emb_cache_put()` 统一写入口。外部不要直接写 `_emb_cache` 或在外面加 `_emb_cache_lock`→死锁
 
@@ -523,7 +531,8 @@ E2E/test_background.py       — "后台在干什么？"
 ## 7. 运行命令
 
 ```bash
-python run.py                          # 启动服务 (端口 8000)
+python run.py                          # 启动服务 (端口 8000, 默认远程 DeepSeek API)
+LOCAL_LLM_MODE=true python run.py      # 启动服务 (本地 CVEC 模式, qwen2.5 + 残差注入)
 python -m pytest tests/ -q             # 单元测试
 python -m pytest E2E/ -v               # E2E 测试
 python -m pytest integration/ -v       # 集成测试
@@ -559,6 +568,36 @@ cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 ---
 
 ## 8. 当前状态
+
+### 最近完成 (2026-06-21) — Embedding 统一切换 bge-m3→qwen_embed ⭐
+
+- ✅ **检索管线全量切 qwen_embed** — `app/llm/embed.py` 从 Ollama HTTP (bge-m3) 切换到纯 Python+numpy qwen_embed (3584维)
+  - 去掉 Ollama HTTP 客户端、请求合并器、n-gram 近似缓存（~200行删除）
+  - 保留请求级缓存 + LRU 全局缓存
+  - 速度 351x（3247 vs 9 emb/s），Recall@5=100% 持平 bge-m3
+- ✅ **Qdrant collection 维度 1024→3584** — qdrant.py / qdrant_cooccur.py / qdrant_hyperedge.py 全部更新
+- ✅ **settings.py 更新** — `DEFAULT_EMBED_MODEL="qwen_embed"`，EMBED_MODELS 新增 qwen_embed 条目
+- ✅ **全项目注释清理** — 所有 bge-m3 引用替换为 qwen_embed（20+ 文件）
+- ✅ **conftest mock 适配** — mock `_embed_via_qwen` 替代 `_embed_via_ollama`，维度 3584
+- ✅ **test_embed.py 重写** — 移除 n-gram/合并器测试，维度 3584
+- ✅ **1007 tests passed, 0 failed** — 零回归，embed 测试从 skip 变真实运行
+
+### 最近完成 (2026-06-21) — 残差注入引擎落地 ⭐
+
+- ✅ **`app/llm/steering.py` 落地** — 310 行，`build_steering_segments()` + `SteeringInjector` 单例
+  - `build_steering_segments(utterance_spec)` → 16 模块各产短中文，从 UtteranceSpec 直接提取
+  - `SteeringInjector.generate(user_message, utterance_spec)` → qwen_embed → CVEC 分层注入 → 本地生成
+  - `SteeringInjector.generate_stream(...)` — 流式生成，与 `LLMClient.generate_stream()` 接口兼容
+  - MODULE_LAYER_MAP: 16 个模块 × 层号 + α 值（来自 Phase 8 实验标定）
+  - 线程安全：单例 + Lock 保护 CVEC buffer，单用户自然无争用
+- ✅ **`app/api/chat.py` 本地模式分支** — 两个端点各加 `if local_llm_mode` 分支
+  - 流式 (`/chat/stream`): `_steering_stream()` async wrapper → SSE 同格式输出
+  - 非流式 (`/chat`): `steering_injector.generate()` 直接返回，跳过工具调用循环
+  - 本地模式 v1 暂不支持工具调用（纯对话），后续补
+- ✅ **`app/config/settings.py` 新增 5 配置项** — `LOCAL_LLM_MODE` / `QWEN_GGUF_PATH` / `STEERING_ENABLED` / `STEERING_STRENGTH` / `MINGW_BIN_DIR`
+- ✅ **`app/core/context.py`** — AppContext 条件创建 `steering_injector`
+- ✅ **Smoke 验证通过** — CVEC 注入后回复从"建议从简单项目开始"变"我理解你的感受"，共情明显提升
+- ✅ **994 tests passed, 0 failed** — 零回归
 
 ### 最近完成 (2026-06-20)
 

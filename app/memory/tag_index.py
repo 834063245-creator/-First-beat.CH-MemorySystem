@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # wm: 6cf8e118
 
-"""标签嵌入索引 — 用 bge-m3 embedding + cosine 相似度找近邻标签。
+"""标签嵌入索引 — 用 qwen_embed + cosine 相似度找近邻标签。
 
 替代 TopicTree 分支扩展：不需要等共现数据累积，从第一个标签起就能做最近邻扩展。
 每次浅巩固时增量更新——新标签嵌一次入库，后续检索时 cosine 查 top-K。
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 class TagEmbeddingIndex:
-    """标签 → bge-m3 embedding → cosine 最近邻查询。"""
+    """标签 → qwen_embed → cosine 最近邻查询。"""
 
     MAX_NEAREST = 10
     CACHE_FILE = "tag_embeddings.json"
@@ -37,7 +37,7 @@ class TagEmbeddingIndex:
     def __init__(self, data_dir: str, embed_fn: callable | None = None):
         self._path = os.path.join(data_dir, self.CACHE_FILE)
         self._lock = threading.Lock()
-        # tag → embedding (list[float], 1024-dim)
+        # tag → embedding (list[float], 3584-dim)
         self._embeddings: dict[str, list[float]] = {}
         self._embed_fn = embed_fn  # lazy set via set_embed_fn() if needed
         self._load()

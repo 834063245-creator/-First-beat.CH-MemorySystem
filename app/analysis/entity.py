@@ -20,7 +20,7 @@ def extract_entities(text: str) -> list[dict]:
     """从文本中抽取命名实体和关键词。
 
     实体：Ollama qwen2.5:3b（不可用时降级返回 []）。
-    关键词：语义层 bge-m3 KeyBERT。
+    关键词：语义层 qwen_embed KeyBERT。
     金额/数字：正则提取。
     """
     if not text or not text.strip():
@@ -39,7 +39,7 @@ def extract_entities(text: str) -> list[dict]:
     for m in re.finditer(r'(\d+[\.\d]*)\s*(万|亿|元|块|美元|欧元|日|天|小时|分钟|岁)', text):
         entities.append({"text": m.group(0).strip(), "type": "AMOUNT"})
 
-    # 3. 关键词（bge-m3 KeyBERT top 5）
+    # 3. 关键词（qwen_embed KeyBERT top 5）
     try:
         tags = extract_tags(text, topk=5)
         for tag in tags:

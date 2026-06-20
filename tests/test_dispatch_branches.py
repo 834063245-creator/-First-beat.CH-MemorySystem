@@ -113,6 +113,6 @@ class TestQueryMemory:
         col.count.return_value = 5
         col.query.return_value = {"ids": [[]], "documents": [[]],
                                   "metadatas": [[]], "distances": [[]]}
-        with patch("app.llm.embed.local_embed", return_value=[0.1] * 1024):
+        with patch("app.llm.embed.local_embed", return_value=[0.1] * 3584):
             result = query_memory(col, query="稀有查询词", from_date="", to_date="")
             assert isinstance(result, list) or isinstance(result, dict)

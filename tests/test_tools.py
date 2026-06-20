@@ -25,7 +25,7 @@ def _make_collection(tmp_path):
                 "emotional_intensity": min(i, 3),
                 "emotion_valence": "positive" if i % 2 == 0 else "negative",
             },
-            embedding=[0.1] * 1024,
+            embedding=[0.1] * 3584,
             id=str(uuid.uuid4()),
         )
     return svc

@@ -35,20 +35,26 @@ if _project_root not in sys.path:
 # 全局 autouse fixture — mock Ollama embedding，避免测试卡住
 # ═══════════════════════════════════════════════════════════════════
 
-_DUMMY_EMB = [0.1] * 1024  # 确定性 dummy 向量
+# qwen_embed 维度 3584，单位向量的均匀值 ≈ 1/sqrt(3584) ≈ 0.0167
+_EMB_BASE = 1.0 / (3584 ** 0.5)
+_DUMMY_EMB = [_EMB_BASE] * 3584  # 确定性 dummy 单位向量
 
 
-def _text_dependent_emb(text: str) -> list[float]:
+def _text_dependent_emb(text: str) -> list[float] | None:
     """根据文本内容生成确定性但不同的 embedding。
 
     避免所有文本返回同一向量导致语义分类始终选第一个原型。
+    空文本返回 None，与真实 qwen_embed 行为一致。
     """
+    text = (text or "").strip()
+    if not text:
+        return None
     import hashlib
     h = hashlib.sha256(text.encode()).digest()
-    # 用 hash 的前 4 字节决定向量的第 0 维偏移（范围 -0.05~+0.05）
+    # 用 hash 决定 dim[0] 偏移，保证不同文本产生不同向量且接近单位范数
     val = int.from_bytes(h[:4], 'big') / (2**32) * 0.1 - 0.05
-    emb = [0.1] * 1024
-    emb[0] = 0.1 + val
+    emb = [_EMB_BASE] * 3584
+    emb[0] = _EMB_BASE + val
     return emb
 
 
@@ -86,19 +92,18 @@ def pytest_collection_modifyitems(config, items):
 
 
 def _clear_embed_caches():
-    """清空 embed 模块的全局缓存（不碰合并定时器，避免破坏正在进行的测试）。"""
+    """清空 embed 模块的全局缓存。"""
     import app.llm.embed as _mod
     _mod._embed_cache.clear()
-    _mod._ngram_cache.clear()
 
 
 @pytest.fixture(autouse=True)
 def _mock_ollama_http(request):
-    """自动 mock Ollama 所有 HTTP 调用。
+    """自动 mock 嵌入和 Ollama 调用。
 
     未启动 Ollama 时防止测试因 HTTP 连接卡住。
     精确 mock 策略（不影响 FastAPI TestClient）：
-    1) mock _embed_via_ollama / _embed_via_ollama_batch（文本相关向量，保证语义分类可用）
+    1) mock _embed_via_qwen / _embed_via_qwen_batch（文本相关向量，保证语义分类可用）
     2) mock LocalLLM.summarize（避免 Ollama HTTP 摘要调用）
     3) mock extract_entities（semantic 中直接调用 Ollama /api/chat）
 
@@ -109,8 +114,8 @@ def _mock_ollama_http(request):
         return
 
     try:
-        with patch("app.llm.embed._embed_via_ollama", side_effect=_text_dependent_emb), \
-             patch("app.llm.embed._embed_via_ollama_batch",
+        with patch("app.llm.embed._embed_via_qwen", side_effect=_text_dependent_emb), \
+             patch("app.llm.embed._embed_via_qwen_batch",
                    side_effect=_text_dependent_emb_batch), \
              patch("app.llm.local.LocalLLM.summarize",
                    return_value="mock摘要"), \
@@ -118,15 +123,9 @@ def _mock_ollama_http(request):
                    return_value=[]):
             yield
     finally:
-        # 测试结束后强制清空：缓存 + 未决合并队列 + 定时器
-        # 防止 mock 嵌入向量或未决回调节点污染后续 real_embed 测试
+        # 测试结束后强制清空缓存，防止 mock 嵌入向量污染后续 real_embed 测试
         import app.llm.embed as _mod
         _mod._embed_cache.clear()
-        _mod._ngram_cache.clear()
-        _mod._coalesce_pending.clear()
-        if _mod._coalesce_timer is not None:
-            _mod._coalesce_timer.cancel()
-            _mod._coalesce_timer = None
 
 
 # ═══════════════════════════════════════════════════════════════════

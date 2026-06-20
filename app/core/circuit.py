@@ -6,7 +6,7 @@
 
 编排顺序：意图分析 → 记忆检索 → 一致性校验 → 响应选控（门控）
 
-意图/情绪分类由 app.brain.semantic 驱动（bge-m3 原型匹配）。
+意图/情绪分类由 app.brain.semantic 驱动（qwen_embed 原型匹配）。
 """
 
 import json
@@ -65,7 +65,7 @@ def _compute_emotion_intensity(text: str) -> float:
 
 
 def analyze_user_message(user_message: str, chat_history=None) -> UserMessageAnalysis:
-    """分析用户消息的意图和情绪 — 纯语义层（bge-m3 原型匹配）。
+    """分析用户消息的意图和情绪 — 纯语义层（qwen_embed 原型匹配）。
 
     Ollama 不可用时降级为默认值（casual / neutral），不崩溃。
     """
@@ -278,7 +278,7 @@ class CircuitOrchestrator:
             _ticks.append((name, _t.perf_counter()))
         _log_step('prep')
 
-        # ① 先跑用户消息分析（语义层 bge-m3 原型匹配）
+        # ① 先跑用户消息分析（语义层 qwen_embed 原型匹配）
         prefrontal = analyze_user_message(user_message, self._chat_history)
 
         # ② 若调用方未提供检索结果，自动补充（传 intent 让 pipeline 复用语义结果）

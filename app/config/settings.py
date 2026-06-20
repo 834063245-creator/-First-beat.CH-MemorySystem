@@ -26,9 +26,9 @@ EMBED_PROVIDER = os.getenv("EMBED_PROVIDER", "ollama")  # "vllm" 启用新后端
 # ============================================================
 # vLLM 推理服务 — 替代 Ollama (Phase 1+)
 # ============================================================
-# vLLM 实例1: bge-m3 embedding
+# vLLM 实例1: embedding（已统一切到 qwen_embed，vLLM embed 仅保留兼容）
 VLLM_EMBED_URL = os.getenv("VLLM_EMBED_URL", "http://localhost:8001")
-VLLM_EMBED_MODEL = os.getenv("VLLM_EMBED_MODEL", "BAAI/bge-m3")
+VLLM_EMBED_MODEL = os.getenv("VLLM_EMBED_MODEL", "Qwen/Qwen2.5-7B")
 VLLM_EMBED_TIMEOUT = int(os.getenv("VLLM_EMBED_TIMEOUT", "30"))
 
 # vLLM 实例2: qwen2.5:3b 摘要 + 实体抽取
@@ -39,7 +39,7 @@ VLLM_CHAT_TIMEOUT = int(os.getenv("VLLM_CHAT_TIMEOUT", "60"))
 # ============================================================
 # Embedding (Ollama GPU) — 回退保留
 # ============================================================
-OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "bge-m3")
+OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "qwen_embed")  # v3: 已切到 qwen_embed，不再用 Ollama
 
 # ============================================================
 # LLM API（主模型生成回答）
@@ -101,6 +101,25 @@ LOCAL_LLM_ENABLED = os.getenv("LOCAL_LLM_ENABLED", "true").lower() == "true"
 LOCAL_LLM_OLLAMA_URL = os.getenv("LOCAL_LLM_OLLAMA_URL", "http://localhost:11434")
 LOCAL_LLM_MODEL = os.getenv("LOCAL_LLM_MODEL", "qwen2.5:7b")
 LOCAL_LLM_TIMEOUT = int(os.getenv("LOCAL_LLM_TIMEOUT", "30"))
+
+# ============================================================
+# 本地推理模式 — llama.cpp + CVEC 残差注入（替代 DeepSeek API）
+# ============================================================
+# LOCAL_LLM_MODE=true → 引擎走本地 qwen2.5 + CVEC steering，不走 DeepSeek API
+LOCAL_LLM_MODE = os.getenv("LOCAL_LLM_MODE", "false").lower() == "true"
+
+# qwen2.5 GGUF 路径（本地推理用）
+_QWEN_GGUF_DEFAULT = "D:/ollama_models/blobs/sha256-2bada8a7450677000f678be90653b85d364de7db25eb5ea54136ada5f3933730"
+QWEN_GGUF_PATH = os.getenv("QWEN_GGUF_PATH", _QWEN_GGUF_DEFAULT)
+
+# CVEC steering 开关（本地模式下默认开启）
+STEERING_ENABLED = os.getenv("STEERING_ENABLED", str(LOCAL_LLM_MODE)).lower() == "true"
+
+# CVEC steering 全局强度倍率（1.0=默认强度，调小减弱，调大增强）
+STEERING_STRENGTH = float(os.getenv("STEERING_STRENGTH", "1.0"))
+
+# MinGW DLL 目录（Windows llama-cpp-python 运行时依赖）
+MINGW_BIN_DIR = os.getenv("MINGW_BIN_DIR", "D:/mingw64/bin")
 
 # 注：OLLAMA_MODELS 环境变量仅在 Ollama 服务端进程生效，
 # Python 端设置无效。保留此变量供子进程 spawn 时继承。
@@ -193,12 +212,18 @@ ATTENTION_WINDOW = 3
 # ============================================================
 # Embedding 模型注册中心
 # ============================================================
-DEFAULT_EMBED_MODEL = "bge-m3"
+DEFAULT_EMBED_MODEL = "qwen_embed"
 EMBED_MODELS = {
+    "qwen_embed": {
+        "dimension": 3584,
+        "collection": "memories",
+        "provider": "local",  # qwen_embed 纯 Python+numpy，不走 HTTP
+    },
+    # 保留旧条目供 backfill 兼容
     "bge-m3": {
         "dimension": 1024,
         "collection": "memories",
-        "provider": EMBED_PROVIDER,  # "vllm" or "ollama"
+        "provider": "legacy",
     },
 }
 EMBED_BACKFILL_MARKER = os.path.join(DATA_DIR, ".embed_model_backfill_done")

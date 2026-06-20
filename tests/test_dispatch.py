@@ -33,7 +33,7 @@ class TestQueryMemory:
         # mock embedding
         coll.query.return_value = {"ids": [[]], "metadatas": [[{}]], "documents": [[""]], "distances": [[0.5]]}
         coll.get.return_value = {"ids": [], "documents": [], "metadatas": []}
-        with patch("app.tools.dispatch.local_embed", return_value=[0.1] * 1024):
+        with patch("app.tools.dispatch.local_embed", return_value=[0.1] * 3584):
             result = query_memory(coll, query="Python")
         assert isinstance(result, list)
 
@@ -79,7 +79,7 @@ class TestQueryMemory:
         coll = MagicMock()
         coll.query.return_value = {"ids": [[]], "metadatas": [[{}]], "documents": [[""]], "distances": [[0.5]]}
         coll.get.return_value = {"ids": [], "documents": [], "metadatas": []}
-        with patch("app.tools.dispatch.local_embed", return_value=[0.1] * 1024):
+        with patch("app.tools.dispatch.local_embed", return_value=[0.1] * 3584):
             result = query_memory(coll, query="test", from_date="bad_date", to_date="")
         assert isinstance(result, list)
 

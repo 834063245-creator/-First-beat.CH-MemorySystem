@@ -5,7 +5,7 @@
 """链路 1：写入→检索闭环集成测试。
 
 验证：对话写入后，能通过各检索通路找回来。
-使用真实 Qdrant + 真实 embedding（Ollama bge-m3），仅 mock extract_tags。
+使用真实 Qdrant + 真实 embedding（qwen_embed），仅 mock extract_tags。
 BENCHMARK_MODE=true 路径：embed + 标签 + Qdrant + 倒排索引。
 """
 import time

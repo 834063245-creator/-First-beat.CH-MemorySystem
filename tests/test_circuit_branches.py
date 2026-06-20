@@ -126,7 +126,7 @@ class TestAnalyzeUserMessageEdgeCases:
         assert result.intent == "casual"
         assert result.emotion == "neutral"
 
-    @patch("app.llm.embed.local_embed", return_value=[0.0] * 1024)
+    @patch("app.llm.embed.local_embed", return_value=[0.0] * 3584)
     def test_whitespace_only(self, mock_embed):
         from app.core.circuit import analyze_user_message
         result = analyze_user_message("   ")

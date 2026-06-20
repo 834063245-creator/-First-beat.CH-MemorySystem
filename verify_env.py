@@ -139,13 +139,17 @@ try:
         models = r.json().get("models", [])
         model_names = [m["name"] for m in models]
 
-        embed_model = os.getenv("OLLAMA_EMBED_MODEL", "bge-m3")
-        found = [n for n in model_names if n.startswith(embed_model)]
-        if found:
-            check(f"Embedding 模型: {embed_model}", True)
+        # v3: embedding 已切到 qwen_embed（纯 Python+numpy），不再依赖 Ollama bge-m3
+        # 检查 qwen_embed 数据文件是否存在
+        qwen_embed_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                       "data", "qwen_embed_f32.npy")
+        qwen_tokenizer_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                           "data", "qwen_tokenizer.json")
+        if os.path.exists(qwen_embed_path) and os.path.exists(qwen_tokenizer_path):
+            check("qwen_embed 数据文件", True)
         else:
-            check(f"Embedding 模型: {embed_model}", False,
-                  f"ollama pull {embed_model}")
+            check("qwen_embed 数据文件", False,
+                  "运行: python scripts/extract_qwen_embed.py")
 
         if model_names:
             print(f"  已安装模型 ({len(models)} 个):")
@@ -154,7 +158,7 @@ try:
                 print(f"      {m['name']}  ({size_mb:.0f} MB)")
         else:
             warn("没有安装任何模型",
-                 "ollama pull bge-m3")
+                 "v3 embedding 已切到 qwen_embed，Ollama 模型仅用于摘要/实体抽取")
     else:
         check(f"Ollama 响应异常 ({ollama_url})", False,
               f"HTTP {r.status_code}，请检查 Ollama 是否正常运行")

@@ -129,7 +129,7 @@ class TestMemoriesDelete:
 
 
 class TestMemoriesCorrect:
-    @patch("app.llm.embed.local_embed", return_value=[0.1] * 1024)
+    @patch("app.llm.embed.local_embed", return_value=[0.1] * 3584)
     def test_correct_empty_summary_rejected(self, mock_embed, client):
         resp = client.post("/api/memories/m1/correct", json={"corrected_summary": ""})
         assert resp.status_code == 400

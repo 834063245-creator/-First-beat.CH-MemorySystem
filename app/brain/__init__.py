@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # wm: bfb6245e
 
-"""初痕语义引擎 — bge-m3 嵌入 + Ollama 实体抽取。"""
+"""初痕语义引擎 — qwen_embed 嵌入 + Ollama 实体抽取。"""
 
 from app.brain.models import (
     classify_intent,

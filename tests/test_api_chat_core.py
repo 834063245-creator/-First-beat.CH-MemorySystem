@@ -51,6 +51,9 @@ def _make_chat_ctx():
 
     # llm_client
     ctx.llm_client = MagicMock()
+    # local_llm_mode — 默认 False（远程 API 模式）
+    ctx.local_llm_mode = False
+    ctx.steering_injector = None
     # personality_store / dmn / etc
     ctx.personality_store = MagicMock()
     ctx.impulse_scheduler = MagicMock()
@@ -129,7 +132,7 @@ class TestChatNonStream:
     @patch("app.api.chat.CircuitOrchestrator")
     def test_returns_response(self, mock_circuit_cls, mock_retrieval, mock_embed, client):
         cli, ctx = client
-        mock_embed.return_value = [0.1] * 1024
+        mock_embed.return_value = [0.1] * 3584
         mock_retrieval.return_value = ([], "", [], [])
         # fake utterance_spec
         fake_spec = MagicMock()
@@ -165,7 +168,7 @@ class TestChatNonStream:
     @patch("app.api.chat.CircuitOrchestrator")
     def test_llm_error_handled(self, mock_circuit_cls, mock_retrieval, mock_embed, client):
         cli, ctx = client
-        mock_embed.return_value = [0.1] * 1024
+        mock_embed.return_value = [0.1] * 3584
         mock_retrieval.return_value = ([], "", [], [])
         fake_spec = MagicMock()
         fake_spec.user.intent = "casual"
@@ -184,7 +187,7 @@ class TestChatNonStream:
     @patch("app.api.chat.CircuitOrchestrator")
     def test_test_mode_skips_storage(self, mock_circuit_cls, mock_retrieval, mock_embed, client):
         cli, ctx = client
-        mock_embed.return_value = [0.1] * 1024
+        mock_embed.return_value = [0.1] * 3584
         mock_retrieval.return_value = ([], "", [], [])
         fake_spec = MagicMock()
         fake_spec.user.intent = "casual"
@@ -206,7 +209,7 @@ class TestChatNonStream:
     @patch("app.api.chat.CircuitOrchestrator")
     def test_benchmark_inject_skips_history(self, mock_circuit_cls, mock_retrieval, mock_embed, client):
         cli, ctx = client
-        mock_embed.return_value = [0.1] * 1024
+        mock_embed.return_value = [0.1] * 3584
         mock_retrieval.return_value = ([], "", [], [])
         fake_spec = MagicMock()
         fake_spec.user.intent = "casual"
@@ -234,7 +237,7 @@ class TestChatStream:
     @patch("app.api.chat.CircuitOrchestrator")
     def test_stream_emits_content(self, mock_circuit_cls, mock_retrieval, mock_embed, client):
         cli, ctx = client
-        mock_embed.return_value = [0.1] * 1024
+        mock_embed.return_value = [0.1] * 3584
         mock_retrieval.return_value = ([], "", [], [])
         fake_spec = MagicMock()
         fake_spec.user.intent = "casual"
@@ -258,7 +261,7 @@ class TestChatStream:
     @patch("app.api.chat.CircuitOrchestrator")
     def test_stream_emits_trace(self, mock_circuit_cls, mock_retrieval, mock_embed, client):
         cli, ctx = client
-        mock_embed.return_value = [0.1] * 1024
+        mock_embed.return_value = [0.1] * 3584
         mock_retrieval.return_value = ([], "", [], [])
         fake_spec = MagicMock()
         fake_spec.user.intent = "casual"
@@ -280,7 +283,7 @@ class TestChatStream:
     @patch("app.api.chat.CircuitOrchestrator")
     def test_stream_with_tool_calls_loops(self, mock_circuit_cls, mock_retrieval, mock_embed, client):
         cli, ctx = client
-        mock_embed.return_value = [0.1] * 1024
+        mock_embed.return_value = [0.1] * 3584
         mock_retrieval.return_value = ([], "", [], [])
         fake_spec = MagicMock()
         fake_spec.user.intent = "casual"
@@ -310,7 +313,7 @@ class TestChatStream:
     @patch("app.api.chat.CircuitOrchestrator")
     def test_stream_error_emits_error_event(self, mock_circuit_cls, mock_retrieval, mock_embed, client):
         cli, ctx = client
-        mock_embed.return_value = [0.1] * 1024
+        mock_embed.return_value = [0.1] * 3584
         mock_retrieval.return_value = ([], "", [], [])
         fake_spec = MagicMock()
         fake_spec.user.intent = "casual"

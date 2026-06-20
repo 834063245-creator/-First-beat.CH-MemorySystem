@@ -35,6 +35,7 @@ from app.llm.deepseek import LLMClient, parse_dsml_tool_calls, strip_dsml, now_h
 from app.api.openai import parse_openai_messages, format_openai_chunk, format_openai_response
 from app.api.deps import AppContext
 from app.config.settings import DEBUG_INCLUDE_PROMPT
+from app.config.settings import LOCAL_LLM_MODE
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["chat"])
@@ -104,6 +105,21 @@ async def _handle_tool_call(tc: dict, extra_msgs: list, ctx: AppContext, *,
         result = "\n".join(matches) if matches else "未匹配到文件"
         extra_msgs.append(asst_msg)
         extra_msgs.append({"role": "tool", "tool_call_id": tc["id"], "content": result})
+
+
+# ── 本地模式辅助：同步生成器 → 异步生成器 ─────────────────
+
+async def _steering_stream(user_ctx, user_message, utterance_spec):
+    """本地 CVEC 模式流式生成 — async 包装同步生成器。"""
+    loop = asyncio.get_running_loop()
+    sync_gen = user_ctx.steering_injector.generate_stream(
+        user_message, utterance_spec)
+    while True:
+        try:
+            item = await loop.run_in_executor(None, next, sync_gen)
+            yield item
+        except StopIteration:
+            break
 
 
 # ── POST /chat/stream ─────────────────────────────────────────
@@ -182,70 +198,82 @@ async def chat_stream(req: ChatRequest, user_ctx = Depends(get_user_context)):
         extra_msgs: list | None = None
 
         try:
-            for round_idx in range(2):
-                # 工具注册：LLM 只保留纯功能工具，认知型工具归引擎
-                stream_tools = ALL_TOOLS if round_idx == 0 and not extra_msgs else None
-                tool_calls_result = None
-                async for tag, token in user_ctx.llm_client.generate_stream(
-                    user_message,
-                    cognitive_state=utterance_spec,
-                    timeline_recent=timeline_recent,
-                    session_context=session_context,
-                    extra_messages=extra_msgs,
-                    tools=stream_tools,
-                ):
-                    if tag == "reason":
-                        safe = token.replace('\n', '\\n')
-                        yield "data: [REASON]" + safe + chr(10) + chr(10)
-                    elif tag == "content":
-                        full_text += token
-                        # 在 yield 前剥离 DSML，不让其裸奔到前端
-                        clean = strip_dsml(token)
-                        if clean:
-                            safe = clean.replace('\n', '\\n')
-                            yield "data: [CONTENT]" + safe + chr(10) + chr(10)
-                    elif tag == "tool_calls":
-                        tool_calls_result = token
-                        # 通知前端工具有调用
-                        tc_data = token.get("calls", token) if isinstance(token, dict) else token
-                        if tc_data:
-                            tool_names = [t.get("function", {}).get("name", "?") for t in tc_data]
-                            yield "data: [TOOL]" + ",".join(tool_names) + chr(10) + chr(10)
-
-                # 统一工具调用检测：结构化 JSON + DSML 格式
-                if not tool_calls_result:
-                    dsml_calls = parse_dsml_tool_calls(full_text)
-                    if dsml_calls:
-                        tool_calls_result = {"calls": dsml_calls, "reasoning_content": ""}
-                        full_text = strip_dsml(full_text)
-
-                if tool_calls_result:
-                    extra_msgs = extra_msgs or []
-                    reasoning = tool_calls_result.get("reasoning_content") if isinstance(tool_calls_result, dict) else None
-                    tc_data = tool_calls_result.get("calls", tool_calls_result) if isinstance(tool_calls_result, dict) else tool_calls_result
-                    for tc in tc_data:
-                        await _handle_tool_call(tc, extra_msgs, user_ctx,
-                                                reasoning_content=reasoning or "", is_stream=True)
-                    continue
-                break
-            else:
-                # 两轮均为工具调用，第三轮兜底（不给工具，强迫 LLM 产出文本）
-                logger.info("流式两轮均为工具调用，第三轮兜底（无工具）")
-                async for tag, token in user_ctx.llm_client.generate_stream(
-                    user_message,
-                    cognitive_state=utterance_spec,
-                    timeline_recent=timeline_recent,
-                    session_context=session_context,
-                    extra_messages=extra_msgs,
+            # ── 本地 CVEC 模式：跳过工具调用循环，直接生成 ──
+            if getattr(user_ctx, "local_llm_mode", False) and user_ctx.steering_injector:
+                async for tag, token in _steering_stream(
+                    user_ctx, user_message, utterance_spec
                 ):
                     if tag == "content":
                         full_text += token
-                        clean = strip_dsml(token)
-                        if clean:
-                            safe = clean.replace('\n', '\\n')
-                            yield "data: [CONTENT]" + safe + chr(10) + chr(10)
-                    elif tag == "tool_calls":
-                        logger.warning("流式第三轮兜底仍产出工具调用，放弃文本产出")
+                        safe = token.replace('\n', '\\n')
+                        yield "data: [CONTENT]" + safe + chr(10) + chr(10)
+
+            else:
+                # ── 远程 API 模式：标准工具调用循环 ──
+                for round_idx in range(2):
+                    # 工具注册：LLM 只保留纯功能工具，认知型工具归引擎
+                    stream_tools = ALL_TOOLS if round_idx == 0 and not extra_msgs else None
+                    tool_calls_result = None
+                    async for tag, token in user_ctx.llm_client.generate_stream(
+                        user_message,
+                        cognitive_state=utterance_spec,
+                        timeline_recent=timeline_recent,
+                        session_context=session_context,
+                        extra_messages=extra_msgs,
+                        tools=stream_tools,
+                    ):
+                        if tag == "reason":
+                            safe = token.replace('\n', '\\n')
+                            yield "data: [REASON]" + safe + chr(10) + chr(10)
+                        elif tag == "content":
+                            full_text += token
+                            # 在 yield 前剥离 DSML，不让其裸奔到前端
+                            clean = strip_dsml(token)
+                            if clean:
+                                safe = clean.replace('\n', '\\n')
+                                yield "data: [CONTENT]" + safe + chr(10) + chr(10)
+                        elif tag == "tool_calls":
+                            tool_calls_result = token
+                            # 通知前端工具有调用
+                            tc_data = token.get("calls", token) if isinstance(token, dict) else token
+                            if tc_data:
+                                tool_names = [t.get("function", {}).get("name", "?") for t in tc_data]
+                                yield "data: [TOOL]" + ",".join(tool_names) + chr(10) + chr(10)
+
+                    # 统一工具调用检测：结构化 JSON + DSML 格式
+                    if not tool_calls_result:
+                        dsml_calls = parse_dsml_tool_calls(full_text)
+                        if dsml_calls:
+                            tool_calls_result = {"calls": dsml_calls, "reasoning_content": ""}
+                            full_text = strip_dsml(full_text)
+
+                    if tool_calls_result:
+                        extra_msgs = extra_msgs or []
+                        reasoning = tool_calls_result.get("reasoning_content") if isinstance(tool_calls_result, dict) else None
+                        tc_data = tool_calls_result.get("calls", tool_calls_result) if isinstance(tool_calls_result, dict) else tool_calls_result
+                        for tc in tc_data:
+                            await _handle_tool_call(tc, extra_msgs, user_ctx,
+                                                    reasoning_content=reasoning or "", is_stream=True)
+                        continue
+                    break
+                else:
+                    # 两轮均为工具调用，第三轮兜底（不给工具，强迫 LLM 产出文本）
+                    logger.info("流式两轮均为工具调用，第三轮兜底（无工具）")
+                    async for tag, token in user_ctx.llm_client.generate_stream(
+                        user_message,
+                        cognitive_state=utterance_spec,
+                        timeline_recent=timeline_recent,
+                        session_context=session_context,
+                        extra_messages=extra_msgs,
+                    ):
+                        if tag == "content":
+                            full_text += token
+                            clean = strip_dsml(token)
+                            if clean:
+                                safe = clean.replace('\n', '\\n')
+                                yield "data: [CONTENT]" + safe + chr(10) + chr(10)
+                        elif tag == "tool_calls":
+                            logger.warning("流式第三轮兜底仍产出工具调用，放弃文本产出")
 
             # 发送溯源 trace 数据
             trace_payload = _build_trace(memories)
@@ -254,9 +282,12 @@ async def chat_stream(req: ChatRequest, user_ctx = Depends(get_user_context)):
             if req.debug:
                 debug_prompt = None
                 if req.debug_include_prompt or DEBUG_INCLUDE_PROMPT:
-                    debug_prompt = user_ctx.llm_client._build_prompt(
-                            memories, personalities=personalities, timeline_recent=timeline_recent
-                        ) + "\n" + now_hint()
+                    if not getattr(user_ctx, "local_llm_mode", False):
+                        debug_prompt = user_ctx.llm_client._build_prompt(
+                                memories, personalities=personalities, timeline_recent=timeline_recent
+                            ) + "\n" + now_hint()
+                    else:
+                        debug_prompt = "[本地 CVEC 模式 — prompt 由 steering segments 替代]"
                 debug_info = build_debug_info(memories, personalities, timeline_recent, prompt=debug_prompt)
                 yield "data: [DEBUG]" + json.dumps(debug_info, ensure_ascii=False) + chr(10) + chr(10)
             yield "data: [DONE]" + chr(10) + chr(10)
@@ -343,32 +374,41 @@ async def chat(req: ChatRequest, user_ctx = Depends(get_user_context)):
         logger.debug("画像实时更新跳过: %s", exc)
 
     try:
-        extra_messages = []
-        for tool_round in range(2):
-            result = await user_ctx.llm_client.generate(
-                user_message,
-                cognitive_state=utterance_spec,
-                timeline_recent=timeline_recent,
-                tools=ALL_TOOLS,
-                extra_messages=extra_messages,
-            )
-            if not result["tool_calls"]:
-                ai_response = result["content"]
-                break
-            for tc in result["tool_calls"]:
-                await _handle_tool_call(tc, extra_messages, user_ctx,
-                                        reasoning_content=result.get("reasoning_content", ""),
-                                        is_stream=False)
-        else:
-            # 两轮工具调用后兜底：不再给 memories 位置参数（cognitive_state 已包含一切）
-            result = await user_ctx.llm_client.generate(
-                user_message,
-                extra_messages=extra_messages,
-                timeline_recent=timeline_recent,
-                cognitive_state=utterance_spec,
-                session_context=session_context,
+        # ── 本地 CVEC 模式：直接生成，跳过工具调用循环 ──
+        if getattr(user_ctx, "local_llm_mode", False) and user_ctx.steering_injector:
+            result = await loop.run_in_executor(
+                None,
+                lambda: user_ctx.steering_injector.generate(user_message, utterance_spec)
             )
             ai_response = result["content"]
+        else:
+            # ── 远程 API 模式：标准工具调用循环 ──
+            extra_messages = []
+            for tool_round in range(2):
+                result = await user_ctx.llm_client.generate(
+                    user_message,
+                    cognitive_state=utterance_spec,
+                    timeline_recent=timeline_recent,
+                    tools=ALL_TOOLS,
+                    extra_messages=extra_messages,
+                )
+                if not result["tool_calls"]:
+                    ai_response = result["content"]
+                    break
+                for tc in result["tool_calls"]:
+                    await _handle_tool_call(tc, extra_messages, user_ctx,
+                                            reasoning_content=result.get("reasoning_content", ""),
+                                            is_stream=False)
+            else:
+                # 两轮工具调用后兜底
+                result = await user_ctx.llm_client.generate(
+                    user_message,
+                    extra_messages=extra_messages,
+                    timeline_recent=timeline_recent,
+                    cognitive_state=utterance_spec,
+                    session_context=session_context,
+                )
+                ai_response = result["content"]
     except Exception as exc:
         logger.error("LLM 调用失败: %s %s", type(exc).__name__, exc)
         import traceback

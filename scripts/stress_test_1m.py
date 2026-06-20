@@ -69,8 +69,8 @@ def _random_date(start_days_ago: int = 365) -> datetime:
     return datetime.now() - timedelta(days=days)
 
 
-def _gen_embedding(dim: int = 1024) -> list[float]:
-    """生成伪随机单位向量（近似 bge-m3 分布）。"""
+def _gen_embedding(dim: int = 3584) -> list[float]:
+    """生成伪随机单位向量（近似 qwen_embed 分布）。"""
     vec = [random.gauss(0, 1) for _ in range(dim)]
     norm = math.sqrt(sum(v * v for v in vec))
     return [v / norm for v in vec]
@@ -110,7 +110,7 @@ def _gen_memory(idx: int) -> dict:
             "hit_count": random.randint(0, 50),
             "last_hit_time": ts + random.randint(0, 86400 * 30),
             "heat": random.choices(["hot", "warm", "cool"], weights=[0.2, 0.5, 0.3], k=1)[0],
-            "embed_model": "bge-m3",
+            "embed_model": "qwen_embed",
             "stale": random.random() < 0.05,
             "archived": False,
             "superseded_by": "",

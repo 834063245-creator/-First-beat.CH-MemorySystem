@@ -129,7 +129,7 @@ class QdrantService:
             self._client.create_collection(
                 collection_name=self._collection_name,
                 vectors_config=models.VectorParams(
-                    size=1024,
+                    size=3584,
                     distance=models.Distance.COSINE,
                     on_disk=QDRANT_ON_DISK,
                     hnsw_config=models.HnswConfigDiff(
@@ -223,7 +223,7 @@ class QdrantService:
         payload.setdefault("hit_count", 0)
         payload.setdefault("embed_model", DEFAULT_EMBED_MODEL)
 
-        vec = embedding if embedding is not None else [0.0] * 1024
+        vec = embedding if embedding is not None else [0.0] * 3584
 
         with self._lock:
             self._client.upsert(
@@ -285,7 +285,7 @@ class QdrantService:
         for k, v in extra.items():
             payload.setdefault(k, v)
 
-        vec = embedding if embedding is not None else [0.0] * 1024
+        vec = embedding if embedding is not None else [0.0] * 3584
 
         with self._lock:
             self._client.upsert(

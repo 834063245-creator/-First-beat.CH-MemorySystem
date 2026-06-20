@@ -72,7 +72,7 @@ def _get_local_llm() -> "LocalLLM":
 
 
 def _extract_noun_tags(text: str, topk: int = 8) -> list[str]:
-    """提取标签：语义层关键词提取（bge-m3 KeyBERT）。"""
+    """提取标签：语义层关键词提取（qwen_embed KeyBERT）。"""
     from app.brain.semantic import extract_tags
     return extract_tags(text, topk=topk)
 
@@ -96,6 +96,14 @@ class AppContext:
             collection_name=AI_COLLECTION,
         )
         self.llm_client = LLMClient()
+        # 本地推理模式：SteeringInjector 替代 DeepSeek API
+        from app.config.settings import LOCAL_LLM_MODE
+        self.local_llm_mode = LOCAL_LLM_MODE
+        self.steering_injector = None
+        if LOCAL_LLM_MODE:
+            from app.llm.steering import get_steering_injector
+            self.steering_injector = get_steering_injector()
+            logger.info("本地推理模式已启用 (CVEC steering=%s)", self.steering_injector.is_loaded)
         self.storage_executor = ThreadPoolExecutor(max_workers=5)
         self.retrieval_executor = ThreadPoolExecutor(max_workers=3)
         import atexit

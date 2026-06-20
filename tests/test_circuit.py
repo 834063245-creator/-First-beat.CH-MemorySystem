@@ -284,7 +284,7 @@ class TestCircuitOrchestratorProcess:
             MagicMock(), MagicMock(), MagicMock(),
         )
         result = orch.process(
-            "你好", [0.1] * 1024, MagicMock(),
+            "你好", [0.1] * 3584, MagicMock(),
             timeline_recent=[], session_context="",
             personalities=[], memories=[],
         )
@@ -303,7 +303,7 @@ class TestCircuitOrchestratorProcess:
             {"id": "1", "document": "关于Python的讨论", "metadata": {"tags": "Python", "summary": "Python学习"}}
         ]
         result = orch.process(
-            "Python学习", [0.1] * 1024, MagicMock(),
+            "Python学习", [0.1] * 3584, MagicMock(),
             timeline_recent=[], session_context="",
             personalities=[], memories=memories,
         )
@@ -321,7 +321,7 @@ class TestCircuitOrchestratorProcess:
             {"user_message": "你好", "llm_reply": "你好！", "timestamp": "2026-06-01"}
         ]
         result = orch.process(
-            "继续", [0.1] * 1024, MagicMock(),
+            "继续", [0.1] * 3584, MagicMock(),
             timeline_recent=timeline, session_context="之前聊过天",
             personalities=[], memories=[],
         )

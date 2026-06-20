@@ -55,17 +55,17 @@ QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", None)
 
 VLLM_EMBED_URL = os.getenv("VLLM_EMBED_URL", "http://localhost:8001")
-VLLM_EMBED_MODEL = os.getenv("VLLM_EMBED_MODEL", "BAAI/bge-m3")
+VLLM_EMBED_MODEL = os.getenv("VLLM_EMBED_MODEL", "Qwen/Qwen2.5-7B")
 
 VLLM_CHAT_URL = os.getenv("VLLM_CHAT_URL", "http://localhost:8002")
 VLLM_CHAT_MODEL = os.getenv("VLLM_CHAT_MODEL", "Qwen/Qwen2.5-3B-Instruct")
 
 OLLAMA_URL = os.getenv("LOCAL_LLM_OLLAMA_URL", "http://localhost:11434")
-OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "bge-m3")
+OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "qwen_embed")
 OLLAMA_CHAT_MODEL = os.getenv("LOCAL_LLM_MODEL", "qwen2.5:3b")
 
 TEST_COLLECTION = "_verify_infra_test_" + str(uuid.uuid4())[:8]
-VERIFY_DIM = 1024  # bge-m3 expected dimension
+VERIFY_DIM = 3584  # qwen_embed expected dimension
 
 # ============================================================
 # Rich / plain output
@@ -174,7 +174,7 @@ def verify_qdrant():
 # 2. vLLM Embed 实例
 # ============================================================
 def verify_vllm_embed():
-    print_header("2. vLLM Embedding 实例 (bge-m3)")
+    print_header("2. vLLM Embedding 实例 (qwen_embed)")
 
     if httpx is None:
         print_fail("httpx 未安装。运行: pip install httpx")
@@ -340,17 +340,15 @@ def verify_ollama(quick: bool = False):
 
     try:
         with httpx.Client(timeout=30) as client:
-            # bge-m3 embedding
-            resp = client.post(
-                f"{OLLAMA_URL}/api/embeddings",
-                json={"model": OLLAMA_EMBED_MODEL, "prompt": "测试消息"},
-            )
-            resp.raise_for_status()
-            emb = resp.json().get("embedding", [])
-            if len(emb) == VERIFY_DIM:
-                print_ok(f"Ollama bge-m3 embedding 维度正确: {len(emb)}")
+            # qwen_embed 检查：验证本地数据文件
+            import os as _os
+            _data_dir = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "data")
+            _npy_path = _os.path.join(_data_dir, "qwen_embed_f32.npy")
+            _tok_path = _os.path.join(_data_dir, "qwen_tokenizer.json")
+            if _os.path.exists(_npy_path) and _os.path.exists(_tok_path):
+                print_ok(f"qwen_embed 数据文件就绪（维度: {VERIFY_DIM}）")
             else:
-                print_fail(f"Ollama bge-m3 维度错误: {len(emb)}")
+                print_fail("qwen_embed 数据文件缺失，运行: python scripts/extract_qwen_embed.py")
                 all_ok = False
 
             if not quick:

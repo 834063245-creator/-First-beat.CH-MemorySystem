@@ -534,7 +534,7 @@ class TestPatternDiscovery:
         if len(observations) == 0:
             pytest.skip(
                 f"observations 为空（chat_history 记录数: {len(ctx.chat_history.records)}）。"
-                f"可能 bge-m3 embedding 不可用，导致 _extract_tags 无法提取标签。"
+                f"可能 qwen_embed 不可用，导致 _extract_tags 无法提取标签。"
             )
         assert len(found_types) >= 1, (
             f"至少应有 1 种已知模式类型，实际找到: {found_types}，"

@@ -44,7 +44,7 @@ class HyperEdgeStore:
             self._client.create_collection(
                 collection_name=self._coll,
                 vectors_config=models.VectorParams(
-                    size=1024,
+                    size=3584,
                     distance=models.Distance.COSINE,
                     on_disk=QDRANT_ON_DISK,
                 ),
@@ -97,7 +97,7 @@ class HyperEdgeStore:
         if len(entities) < 2:
             return
 
-        avg_vec = self._compute_avg_embedding(entities) if self._embed_batch_fn else [0.0] * 1024
+        avg_vec = self._compute_avg_embedding(entities) if self._embed_batch_fn else [0.0] * 3584
         point_id = str(uuid.uuid4())
         try:
             self._client.upsert(
@@ -330,15 +330,15 @@ class HyperEdgeStore:
     # ── 辅助 ──
 
     def _compute_avg_embedding(self, entities: list[str]) -> list[float]:
-        """计算实体名称列表的平均 bge-m3 embedding。"""
+        """计算实体名称列表的平均 qwen_embed embedding。"""
         if not self._embed_batch_fn:
-            return [0.0] * 1024
+            return [0.0] * 3584
         try:
             embs = self._embed_batch_fn(entities)
         except Exception:
-            return [0.0] * 1024
+            return [0.0] * 3584
         valid = [e for e in embs if e is not None]
         if not valid:
-            return [0.0] * 1024
+            return [0.0] * 3584
         n = len(valid)
         return [sum(dim) / n for dim in zip(*valid)]

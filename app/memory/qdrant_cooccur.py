@@ -49,7 +49,7 @@ class CoOccurrenceStore:
             self._client.create_collection(
                 collection_name=self._coll,
                 vectors_config=models.VectorParams(
-                    size=1024,
+                    size=3584,
                     distance=models.Distance.COSINE,
                     on_disk=QDRANT_ON_DISK,
                 ),
@@ -125,7 +125,7 @@ class CoOccurrenceStore:
             if self._embed_getter:
                 emb = self._embed_getter(a)  # id_a 的 embedding
             if emb is None:
-                emb = [0.0] * 1024
+                emb = [0.0] * 3584
             points.append(models.PointStruct(
                 id=pid,
                 vector=emb,

@@ -5,7 +5,7 @@
 """语义层 — 零 CNN、零 jieba 的纯语义工具集。
 
 替代：5 个 ChuchuCNN 模型 + 27 处 jieba 调用。
-依赖：bge-m3 (local_embed) + qwen2.5:3b (实体抽取)。
+依赖：qwen_embed (local_embed) + qwen2.5:3b (实体抽取)。
 
 7 个公开函数：
     extract_tags(text, topk=5)      — 语义关键词提取（KeyBERT）
@@ -196,7 +196,7 @@ _NEGATION_WHITELIST = {
 # ═════════════════════════════════════════════════════════════
 
 def extract_tags(text: str, topk: int = 5) -> list[str]:
-    """语义关键词提取（KeyBERT 思路，bge-m3 嵌入）。
+    """语义关键词提取（KeyBERT 思路，qwen_embed 嵌入）。
 
     候选：汉字段内 2-6 字子串 + 完整英文 token。
     产出独立完整的词/短语，可被 InvertedIndex 精确匹配。

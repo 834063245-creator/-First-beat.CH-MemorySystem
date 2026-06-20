@@ -2,14 +2,17 @@
 # SPDX-License-Identifier: MIT
 # wm: 78a8913e
 
-"""embed.py 测试 — 缓存命中、合并器并发、向量归一化。"""
+"""embed.py 测试 — 缓存命中、向量归一化、批量嵌入。
+
+v3: 从 bge-m3 (Ollama HTTP) 切换到 qwen_embed（纯 Python+numpy）。
+    去掉 n-gram 签名、合并器测试；维度 1024→3584。
+"""
 import math
 import threading
 import time
 
-import pytest
-
-pytestmark = pytest.mark.real_embed  # 需要真实 Ollama embedding，跳过 autouse mock
+# v3: qwen_embed 是纯 Python，不再需要 Ollama
+# 移除 pytestmark = pytest.mark.real_embed
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -17,14 +20,14 @@ pytestmark = pytest.mark.real_embed  # 需要真实 Ollama embedding，跳过 au
 # ═══════════════════════════════════════════════════════════════
 
 class TestEmbedCache:
-    """精确缓存 + n-gram 近似缓存。"""
+    """精确缓存命中。"""
 
     def test_exact_cache_hit(self):
         """同一文本两次调用，第二次应命中精确缓存（<1ms）。"""
         from app.llm.embed import local_embed
 
         r1 = local_embed("缓存命中测试文本")
-        assert r1 is not None and len(r1) == 1024
+        assert r1 is not None and len(r1) == 3584
 
         t0 = time.perf_counter()
         r2 = local_embed("缓存命中测试文本")
@@ -47,7 +50,7 @@ class TestEmbedCache:
         assert r1 != r2
 
     def test_empty_text_returns_none(self):
-        """空文本 / 纯空白返回 None，不调 Ollama。"""
+        """空文本 / 纯空白返回 None。"""
         from app.llm.embed import local_embed
 
         assert local_embed("") is None
@@ -65,36 +68,6 @@ class TestEmbedCache:
             size = len(_embed_cache)
         # 不超过上限
         assert size <= _EMBED_CACHE_MAX, f"缓存溢出: {size} > {_EMBED_CACHE_MAX}"
-
-
-# ═══════════════════════════════════════════════════════════════
-# n-gram 签名
-# ═══════════════════════════════════════════════════════════════
-
-class TestNgramSignature:
-    """n-gram 签名和相似度计算。"""
-
-    def test_signature_non_empty(self):
-        from app.llm.embed import _ngram_sig
-        sig = _ngram_sig("你好世界")
-        assert len(sig) > 0
-
-    def test_signature_empty(self):
-        from app.llm.embed import _ngram_sig
-        assert _ngram_sig("") == {}
-
-    def test_identical_texts_similarity(self):
-        from app.llm.embed import _ngram_sig, _ngram_sim
-        a = _ngram_sig("这是一段测试文本用于验证相似度")
-        b = _ngram_sig("这是一段测试文本用于验证相似度")
-        assert _ngram_sim(a, b) > 0.99
-
-    def test_different_texts_low_similarity(self):
-        from app.llm.embed import _ngram_sig, _ngram_sim
-        a = _ngram_sig("今天天气真好")
-        b = _ngram_sig("数据库迁移脚本")
-        sim = _ngram_sim(a, b)
-        assert sim < 0.5, f"不相关文本相似度过高: {sim:.3f}"
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -120,83 +93,12 @@ class TestVectorNormalization:
             assert abs(norm - 1.0) < 0.01, f"batch[{i}] 未归一化: norm={norm:.4f}"
 
     def test_vector_dimension(self):
-        """bge-m3 输出 1024 维。"""
+        """qwen_embed 输出 3584 维。"""
         from app.llm.embed import local_embed, local_embed_batch
 
-        assert len(local_embed("维度测试")) == 1024
+        assert len(local_embed("维度测试")) == 3584
         for r in local_embed_batch(["a", "b"]):
-            assert len(r) == 1024
-
-
-# ═══════════════════════════════════════════════════════════════
-# 请求合并器
-# ═══════════════════════════════════════════════════════════════
-
-class TestCoalescer:
-    """并发请求自动合并为一次 batch HTTP。"""
-
-    def test_concurrent_merged(self):
-        """N 个并发 local_embed 应合并，总耗时远小于 N × 单次耗时。"""
-        from app.llm.embed import local_embed
-
-        results = []
-        errors = []
-
-        def embed_one(i):
-            try:
-                r = local_embed(f"合并器并发测试_{i:03d}")
-                results.append((i, len(r) if r else 0))
-            except Exception as e:
-                errors.append((i, str(e)))
-
-        N = 8
-        threads = [threading.Thread(target=embed_one, args=(i,)) for i in range(N)]
-
-        t0 = time.perf_counter()
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-        elapsed_ms = (time.perf_counter() - t0) * 1000
-
-        assert len(errors) == 0, f"并发错误: {errors}"
-        assert len(results) == N, f"结果数不足: {len(results)}/{N}"
-        assert all(d == 1024 for _, d in results), f"有结果维度异常: {results}"
-
-        # 8 并发合并为 1-2 批，总耗时应远小于 8×单次
-        # 保守估计：单次 ~200ms，8次串行 ~1600ms，合并后应 < 1000ms
-        assert elapsed_ms < 2000, (
-            f"合并器未生效？8并发耗时 {elapsed_ms:.0f}ms（预期 <2000ms）"
-        )
-
-    def test_single_request_still_works(self):
-        """合并器在单条请求时也能正常返回（不卡死）。"""
-        from app.llm.embed import local_embed
-
-        t0 = time.perf_counter()
-        r = local_embed("单条合并器测试文本")
-        elapsed_ms = (time.perf_counter() - t0) * 1000
-
-        assert r is not None and len(r) == 1024
-        # 单条不应超时（之前有 30 秒死循环 bug）
-        assert elapsed_ms < 5000, f"单条请求超时: {elapsed_ms:.0f}ms"
-
-    def test_coalescer_preserves_correctness(self):
-        """合并器返回的向量与直接 batch 调用一致。"""
-        from app.llm.embed import local_embed, local_embed_batch
-
-        text = "验证合并器结果正确性"
-
-        # 走合并器
-        r_coalesced = local_embed(text)
-
-        # 走 batch
-        r_batch = local_embed_batch([text])[0]
-
-        assert r_coalesced is not None and r_batch is not None
-        # 两次调用同一文本应得到相近向量（可能略有浮点差异）
-        dot = sum(a * b for a, b in zip(r_coalesced, r_batch))
-        assert dot > 0.99, f"合并器与 batch 结果不一致: dot={dot:.4f}"
+            assert len(r) == 3584
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -214,7 +116,7 @@ class TestBatchEmbed:
         from app.llm.embed import local_embed_batch
         results = local_embed_batch(["单条"])
         assert len(results) == 1
-        assert len(results[0]) == 1024
+        assert len(results[0]) == 3584
 
     def test_batch_all_succeed(self):
         from app.llm.embed import local_embed_batch
@@ -223,10 +125,10 @@ class TestBatchEmbed:
         assert len(results) == 10
         for i, r in enumerate(results):
             assert r is not None, f"batch[{i}] 失败"
-            assert len(r) == 1024
+            assert len(r) == 3584
 
     def test_batch_with_duplicates(self):
-        """重复文本在 batch 中走缓存，不重复调 Ollama。"""
+        """重复文本在 batch 中走缓存，不重复 embed。"""
         from app.llm.embed import local_embed_batch
 
         # 先嵌入一次写入缓存

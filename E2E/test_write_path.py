@@ -4,7 +4,7 @@
 
 """链路一：写入链路 Benchmark 测试（W1~W12）。
 
-每个节点独立测试，使用真实 Qdrant + bge-m3 + 本地 LLM，固定 seed。
+每个节点独立测试，使用真实 Qdrant + qwen_embed + 本地 LLM，固定 seed。
 断言直接引用 BENCHMARK_SPEC.md 中的「验证方法」。
 """
 import json
@@ -49,7 +49,7 @@ class TestW1Embedding:
         # 非全零
         assert any(abs(v) > 1e-8 for v in emb), "嵌入向量不应全零"
 
-        # 归一化校验：L2 范数应接近 1（bge-m3 输出已归一化）
+        # 归一化校验：L2 范数应接近 1（qwen_embed 输出已归一化）
         import numpy as np
         norm = float(np.linalg.norm(np.array(emb, dtype=np.float32)))
         assert abs(norm - 1.0) < 0.01, f"L2 范数应接近 1，实际 {norm:.6f}"
@@ -134,7 +134,7 @@ class TestW4Entities:
 
         entities = extract_entities("张三在阿里巴巴用Python写代码")
 
-        # 至少应有 KEYWORD 类型实体（bge-m3 提取）
+        # 至少应有 KEYWORD 类型实体（qwen_embed 提取）
         entity_texts = [e["text"] for e in entities]
         # 不强制要求 Ollama 成功（可能不可用），但至少有关键词
         assert len(entities) >= 0, "空列表也是合法输出"
