@@ -645,10 +645,44 @@ def retrieve_all(
         except Exception as exc:
             logger.debug("retrieve_all AI表达检索失败: %s", exc)
 
-    # ── 第一阶段：9 路并行（+ 全文 + AI 表达）──
+    def _path_aura():
+        """⑪ AuraSDK 事实召回 — SDR 稀疏哈希 + MinHash n-gram + 倒排索引 (CLAUDE.md §10.3)。
+
+        零 embedding，确定性编码，<1ms 召回。
+        结果以 "aura" source 标记，与其他路径合并后统一评分。
+        """
+        if not (hasattr(ctx_obj, 'aura') and ctx_obj.aura is not None and ctx_obj.aura_enabled):
+            return
+        try:
+            from app.config.settings import AURA_RECALL_TOP_K
+            _top_k = min(AURA_RECALL_TOP_K, 20)
+            aura_results = ctx_obj.aura.recall_structured(user_message, top_k=_top_k)
+            if not aura_results:
+                return
+            local = []
+            for r in aura_results:
+                _id = r.get("id", "")
+                _content = r.get("content", "")
+                _score = r.get("score", 0.0)
+                _tags = r.get("tags", [])
+                # AuraSDK score → cosine distance 映射 (higher=better → 0=close, 1=far)
+                _dist = max(0.0, 1.0 - float(_score))
+                local.append(_make_mem(
+                    _id,
+                    {"summary": _content[:200], "tags": _tags, "source": "aura"},
+                    _content,
+                    _dist,
+                    "aura",
+                ))
+            if local:
+                _merge(local)
+        except Exception as exc:
+            logger.debug("retrieve_all AuraSDK 召回失败: %s", exc)
+
+    # ── 第一阶段：10 路并行（+ 全文 + AI 表达 + AuraSDK）──
     paths = [_path_semantic, _path_keyword, _path_tag,
              _path_entity, _path_temporal, _path_topic, _path_attention,
-             _path_fulltext, _path_ai_memory]
+             _path_fulltext, _path_ai_memory, _path_aura]
     _ex = executor if isinstance(executor, ThreadPoolExecutor) else None
     if _ex is None:
         _ex = ThreadPoolExecutor(max_workers=min(len(paths), 8))

@@ -127,6 +127,19 @@ MINGW_BIN_DIR = os.getenv("MINGW_BIN_DIR", "D:/mingw64/bin")
 # 默认关闭（实验特性），开启需同时 LOCAL_LLM_MODE=true + STEERING_ENABLED=true
 STEERING_DIRECT = os.getenv("STEERING_DIRECT", "false").lower() == "true"
 
+# ============================================================
+# AuraSDK — 零 embedding 事实召回引擎（Rust 核心 + Python 绑定）
+# ============================================================
+# SDR 稀疏哈希 (256k bits, 512 active) + MinHash n-gram + 倒排索引
+# 确定性编码, <1ms 召回, ~3MB 内存, 不依赖任何 embedding 模型
+# 替代 9 路检索管线的事实召回部分 (CLAUDE.md §10)
+AURA_ENABLED = os.getenv("AURA_ENABLED", "true").lower() == "true"
+AURA_DATA_DIR = os.getenv("AURA_DATA_DIR", os.path.join(DATA_DIR, "aura"))
+# 默认 Level: Domain — 通用领域知识
+AURA_DEFAULT_LEVEL = os.getenv("AURA_DEFAULT_LEVEL", "Domain")
+# 召回 top-k
+AURA_RECALL_TOP_K = int(os.getenv("AURA_RECALL_TOP_K", "10"))
+
 # 注：OLLAMA_MODELS 环境变量仅在 Ollama 服务端进程生效，
 # Python 端设置无效。保留此变量供子进程 spawn 时继承。
 _OLLAMA_MODELS = os.getenv("OLLAMA_MODELS")

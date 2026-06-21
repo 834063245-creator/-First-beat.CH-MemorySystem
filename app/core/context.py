@@ -38,6 +38,7 @@ from app.config.settings import (                  # noqa: E402
     PORTRAIT_FILE_PATH,
     DRIFT_DECISION_LOG,
     STOP_WORDS as _STOP_WORDS,
+    AURA_ENABLED, AURA_DATA_DIR, AURA_DEFAULT_LEVEL, AURA_RECALL_TOP_K,
 )
 from app.memory.qdrant import QdrantService
 from app.llm.deepseek import LLMClient
@@ -104,6 +105,20 @@ class AppContext:
             from app.llm.steering import get_steering_injector
             self.steering_injector = get_steering_injector()
             logger.info("本地推理模式已启用 (CVEC steering=%s)", self.steering_injector.is_loaded)
+        # AuraSDK — 零 embedding 事实召回引擎 (CLAUDE.md §10.3)
+        self.aura = None
+        self.aura_enabled = AURA_ENABLED
+        if AURA_ENABLED:
+            try:
+                from app.memory.aurasdk import Aura
+                _aura_dir = os.path.join(data_dir, "aura")
+                os.makedirs(_aura_dir, exist_ok=True)
+                self.aura = Aura(_aura_dir)
+                logger.info("AuraSDK 已启用 (data=%s)", _aura_dir)
+            except Exception as e:
+                logger.warning("AuraSDK 初始化失败，事实召回回退到 Qdrant: %s", e)
+                self.aura = None
+                self.aura_enabled = False
         self.storage_executor = ThreadPoolExecutor(max_workers=5)
         self.retrieval_executor = ThreadPoolExecutor(max_workers=3)
         import atexit
@@ -766,6 +781,17 @@ class AppContext:
                 # M@q 记忆场: 新记忆写入后异步重建 M 矩阵
                 self._rebuild_m_field_async()
 
+                # AuraSDK: 同步写入事实召回引擎 (零 embedding, <1ms)
+                if self.aura is not None and self.aura_enabled:
+                    try:
+                        from app.memory.aurasdk import Level
+                        _lvl_name = AURA_DEFAULT_LEVEL
+                        _lvl = getattr(Level, _lvl_name, Level.Domain)
+                        _aura_tags = tags[:8] if tags else []
+                        self.aura.store(ai_message, level=_lvl, tags=_aura_tags)
+                    except Exception:
+                        pass  # AuraSDK 写入静默失败，不影响主流程
+
                 return
             except Exception as exc:
                 last_exc = exc
@@ -1009,6 +1035,12 @@ class AppContext:
             self.ai_memory_service.close()
         except Exception:
             pass
+        # 关闭 AuraSDK
+        if self.aura is not None:
+            try:
+                self.aura.close()
+            except Exception:
+                pass
 
 
 # ── ctx_manager 导出 ──────────────────────────────────────────

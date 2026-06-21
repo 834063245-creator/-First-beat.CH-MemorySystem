@@ -86,6 +86,9 @@ d:\First Beat CH Memory System\
 │   │   ├── qdrant.py               #   ★ QdrantService：唯一向量后端，量化+payload索引+LRU缓存 (~1400行)
 │   │   ├── qdrant_cooccur.py       #   CoOccurrenceStore：共现独立 collection
 │   │   ├── qdrant_hyperedge.py     #   HyperEdgeStore：超边独立 collection
+│   │   ├── aurasdk/                #   ★ AuraSDK：Rust 核心 SDR+MinHash 事实召回引擎 (NEW)
+│   │   │   ├── __init__.py         #      Python 绑定，<1ms 召回，零 embedding
+│   │   │   └── _core.cp314-win_amd64.pyd  # 编译的 Rust 核心 (~5MB)
 │   │   ├── history.py              #   ChatHistory：对话历史 JSONL，内存缓存最近 500 条 (270行)
 │   │   ├── working.py              #   工作记忆摘要：增量 LLM 摘要，替代注入全量历史 (165行)
 │   │   ├── inverted.py             #   词→记忆ID 倒排索引，线程安全增量更新 (157行)
@@ -194,6 +197,7 @@ d:\First Beat CH Memory System\
 │   ├── steering_phase7_debug.py        # Phase 7: 调试/扫参（α + 层号）
 │   ├── steering_phase8_layered.py      # ★★ Phase 8: 16 模块分层注入（15 向量 → L3-26）
 │   ├── verify_steering_direct.py   # ★ SteeringDirect smoke 验证：7 项检测，概念向量语义+trajectory
+│   ├── migrate_to_aura.py          # ★ Qdrant → AuraSDK 迁移脚本：批量同步现有记忆 (NEW)
 │   ├── memory_field_prototype.py   # ★★ M@q 记忆场原型：构建+验证+性能基准 (600+行)
 │   ├── compare_memory_field.py     # ★ M@q vs 无记忆 vs 无steering 轨迹对比 (200+行)
 │   ├── live_compare_minimal.py     # ★ M@q live 生成对比：3场景×3路径 单进程 (140行)
@@ -271,7 +275,8 @@ d:\First Beat CH Memory System\
 │   │   │   ├─ path7: attention (注意力漂移)       │
 │   │   │   ├─ path8: fulltext (MatchText 全文)   │
 │   │   │   ├─ path9: ai_memory (AI 自我记忆)     │
-│   │   │   └─ + co_occurrence (共现扩展) ────────┘ ← 依赖前9路seen_ids
+│   │   │   ├─ path10: aura (AuraSDK SDR+MinHash) │ ← NEW: 零embedding事实召回
+│   │   │   └─ + co_occurrence (共现扩展) ────────┘ ← 依赖前10路seen_ids
 │   │   ├─ 注意力邻近度评分 (weighted-average embedding drift)
 │   │   ├─ 近期性权重 (90天线性衰减)
 │   │   └─ 纠错反馈 boost/downgrade
@@ -605,6 +610,17 @@ cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
   - 端到端：26/28 层活跃，19.9ms 构建
   - Direct vs Text 向量相似度分析完成
 - ✅ **1007 tests passed, 0 failed** — 零回归
+
+### 最近完成 (2026-06-21) — AuraSDK 集成到检索管线 ⭐
+
+- ✅ **AuraSDK 集成完成** — 零 embedding 事实召回引擎接入 10 路并行检索 (path10_aura)
+  - **`app/memory/aurasdk/`** — Rust 核心 `.pyd` + Python 绑定 `__init__.py`，`<1ms` 召回
+  - **`app/config/settings.py`** — 新增 `AURA_ENABLED` / `AURA_DATA_DIR` / `AURA_DEFAULT_LEVEL` / `AURA_RECALL_TOP_K`
+  - **`app/core/context.py`** — AppContext 初始化 `self.aura` + 写路径同步写入 AuraSDK + close 关闭
+  - **`app/retrieval/pipeline.py`** — 新增 `_path_aura()` 第 10 路召回，SDR score → cosine distance 映射
+  - **`scripts/migrate_to_aura.py`** — 迁移脚本，530 条 Qdrant → AuraSDK (1.8s, 287/s, 7 条去重)
+  - **circuit.py 零改动** — aura 结果作为 `source="aura"` 混入统一 memories 列表，走相同评分/编织管线
+  - **1007 tests passed, 19 integration passed, 0 failed** — 零回归
 
 ### 最近完成 (2026-06-21) — M@q 记忆场落地 + AuraSDK 验证 ⭐⭐⭐
 
@@ -961,7 +977,8 @@ M @ q 产的向量是加权质心——连续、不可逆、无法反推原文�
 
 1. ✅ **AuraSDK 事实召回** — N=5000 压力测试通过（2026-06-21）。写读一致性 99.5% rank-1，确定性 100%，衰减精确 0.80^N。弱项：200 条同领域噪音中信号稀释（rank-1→4~7），由 M@q 覆盖。
 2. ✅ **M@q 原型** — 落地到 steering_direct (2026-06-21)。M=3584² (~49MB), M@q 3.1ms, 与其他模块完全正交 (cos~0.001), 1007 tests green。跨场景区分度待 N 增长 (>500) 后重新评估。
-3. 🚧 **端到端**：AuraSDK.recall() → prompt + M@q → 残差 + trajectory → LLM 生成 → 对比当前回复质量
+3. ✅ **AuraSDK 集成** — 集成到检索管线 path10_aura (2026-06-21)。`app/memory/aurasdk/` + `_path_aura()` + 写通 + 530条迁移 + 1007 tests green。
+4. 🚧 **端到端**：AuraSDK.recall() → prompt + M@q → 残差 + trajectory → LLM 生成 → 对比当前回复质量。AuraSDK 结果现已作为 `source="aura"` 混入 memories 列表，经由现有评分/编织管线自然流入 prompt。
 
 ---
 
