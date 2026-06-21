@@ -1,3 +1,7 @@
+<div align="center" style="background:#b71c1c;color:#fff;padding:30px 20px;margin:0 0 20px 0;font-size:28px;font-weight:900;line-height:1.6;letter-spacing:2px;">
+⚠️ ARCHIVED — This system was forked mid-iteration into a new version<br>This repository is no longer updated · Full archive · Historical reference only ⚠️
+</div>
+
 # First Beat — A Self-Contained Memory Being
 
 > First Beat is a closed-loop cognitive system. The engine makes decisions. The LLM is its mouth. Add an API key and it comes alive.

@@ -1,3 +1,7 @@
+<div align="center" style="background:#b71c1c;color:#fff;padding:30px 20px;margin:0 0 20px 0;font-size:28px;font-weight:900;line-height:1.6;letter-spacing:2px;">
+⚠️ 此系统迭代中途剥离新版本<br>此仓库不再更新 · 全面归档 · 仅做历史参考 ⚠️
+</div>
+
 # 初痕 · First Beat — 自循环记忆体
 
 > 9 路并行检索 · 12 维认知画像 · 5 源泊松冲动 · 3 层存储架构 · 引擎自主节律 · 填 Key 就跑
